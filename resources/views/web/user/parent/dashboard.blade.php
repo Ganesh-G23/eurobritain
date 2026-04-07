@@ -1,0 +1,39 @@
+@php
+    $student = $student ?? null;
+@endphp
+@extends('web.user.layouts.app')
+
+@section('content')
+<div class="container-xxl flex-grow-1 container-p-y">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Parent Dashboard</h5>
+                </div>
+                <div class="card-body">
+                    @if($student)
+                        <div class="row g-4">
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Selected Student</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-2"><strong>Name:</strong> {{ $student->name }}</div>
+                                        <div class="mb-2"><strong>Email:</strong> {{ $student->email }}</div>
+                                        <div class="mb-2"><strong>Phone:</strong> {{ $student->phone }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    @else
+                        <p>No student selected. <a href="{{ url('user/select-student') }}">Select a student</a>.</p>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection

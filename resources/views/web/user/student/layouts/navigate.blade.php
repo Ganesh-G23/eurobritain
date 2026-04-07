@@ -1,0 +1,227 @@
+@php
+    $portalUser = session('portal_user');
+    $initial = strtoupper(substr(trim($portalUser['name'] ?? 'U'), 0, 1));
+    $active_tab = $active_tab ?? '';
+    $teacher = $teacher ?? null;
+@endphp
+
+<nav class="layout-navbar navbar navbar-expand-xl align-items-center" id="layout-navbar">
+    <div class="container-xxl">
+        <div class="navbar-brand app-brand demo d-none d-xl-flex py-0 me-4 ms-0">
+            <a href="{{ url('user/student/dashboard') }}" class="app-brand-link">
+                <span class="app-brand-logo demo">
+                    <img src="{{ url('public/admin_theme/assets/img/logo.png') }}" alt="EliteGrade Logo" class="img-fluid"
+                        style="max-height: 40px;">
+                </span>
+                <span class="app-brand-text demo menu-text fw-bold text-heading d-none">EliteGrade</span>
+            </a>
+        </div>
+
+        <div class="navbar-nav-right d-flex align-items-center justify-content-end" id="navbar-collapse">
+            <ul class="navbar-nav flex-row align-items-center ms-md-auto">
+                @php
+                    $currentTeacher = $teacher;
+                    if (!$currentTeacher) {
+                        $selectedTeacherId = (int) (session('selected_teacher_id') ?? 0);
+                        if ($selectedTeacherId > 0) {
+                            $currentTeacher = \App\Models\PortalUser::where('role', 1)->find($selectedTeacherId);
+                        }
+                    }
+                    // Fetch mapped teachers for quick switcher
+                    $studentId = (int) (session('portal_user.id') ?? (session('portal_user')['id'] ?? 0));
+                    $studentTeachers = \Illuminate\Support\Facades\DB::table('portal_user as t')
+                        ->join('student_teacher_map as stm', 'stm.teacher_id', '=', 't.id')
+                        ->leftJoin('classrooms as c', 'c.id', '=', 'stm.classroom_id')
+                        ->leftJoin('batches as b', 'b.id', '=', 'stm.batch_id')
+                        ->where('t.role', 1)
+                        ->where('stm.student_id', $studentId)
+                        ->whereNull('t.deleted_at')
+                        ->orderBy('t.name')
+                        ->select([
+                            't.id as teacher_id',
+                            't.name as teacher_name',
+                            't.email as teacher_email',
+                            'c.name as classroom_name',
+                            'b.name as batch_name',
+                        ])
+                        ->get();
+                @endphp
+
+                <li class="nav-item dropdown me-2">
+                    <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3"
+                        id="nav-teacher" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="icon-base ti tabler-user-star icon-22px text-heading me-2"></i>
+                        <span class="d-none d-sm-inline">
+                            {{ $currentTeacher ? $currentTeacher->name ?? 'Teacher' : 'Select Teacher' }}
+                        </span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-teacher" style="min-width: 260px;">
+                        @if (($studentTeachers ?? collect())->count() > 0)
+                            <li class="px-3 py-2 text-muted small">Switch teacher</li>
+                            @foreach ($studentTeachers as $t)
+                                <li>
+                                    <a class="dropdown-item"
+                                        href="{{ url('user/select-teacher/access/' . (int) $t->teacher_id) }}">
+                                        <div class="d-flex align-items-start justify-content-between">
+                                            <div>
+                                                <div>{{ $t->teacher_name }}</div>
+                                                <div class="text-body-secondary small">
+                                                    @if ($t->classroom_name)
+                                                        <span class="{{ $t->batch_name}}">Classroom:
+                                                            {{ $t->classroom_name }}</span>
+                                                    @endif
+                                                </div>
+                                                <div class="text-body-secondary small">
+                                                    @if ($t->batch_name)
+                                                        <span>Batch: {{ $t->batch_name }}</span>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            @if ($currentTeacher && (int) ($currentTeacher->id ?? 0) === (int) $t->teacher_id)
+                                                <i class="icon-base ti tabler-check text-success ms-2"></i>
+                                            @endif
+                                        </div>
+                                    </a>
+                                </li>
+                            @endforeach
+                            <li>
+                                <div class="dropdown-divider my-1"></div>
+                            </li>
+                        @endif
+                        <li>
+                            <a class="dropdown-item" href="{{ url('user/select-teacher') }}">
+                                <i class="icon-base ti tabler-switch-3 me-2"></i> Manage teachers
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
+                        id="nav-theme" href="javascript:void(0);" data-bs-toggle="dropdown">
+                        <i class="icon-base ti tabler-sun icon-22px theme-icon-active text-heading"></i>
+                        <span class="d-none ms-2" id="nav-theme-text">Toggle theme</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-theme-text">
+                        <li>
+                            <button type="button" class="dropdown-item align-items-center active"
+                                data-bs-theme-value="light" aria-pressed="false">
+                                <span><i class="icon-base ti tabler-sun icon-22px me-3" data-icon="sun"></i>Light</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="dark"
+                                aria-pressed="true">
+                                <span><i class="icon-base ti tabler-moon-stars icon-22px me-3"
+                                        data-icon="moon-stars"></i>Dark</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="system"
+                                aria-pressed="false">
+                                <span><i class="icon-base ti tabler-device-desktop-analytics icon-22px me-3"
+                                        data-icon="device-desktop-analytics"></i>System</span>
+                            </button>
+                        </li>
+                    </ul>
+                </li>
+                <li class="nav-item navbar-dropdown dropdown-user dropdown">
+                    <a class="nav-link dropdown-toggle hide-arrow p-0" href="javascript:void(0);"
+                        data-bs-toggle="dropdown">
+                        <div class="avatar avatar-online">
+                            <span class="avatar-initial rounded-circle bg-label-primary">{{ $initial }}</span>
+                        </div>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item mt-0" href="{{ url('user/profile') }}">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-shrink-0 me-2">
+                                        <div class="avatar avatar-online">
+                                            <span
+                                                class="avatar-initial rounded-circle bg-label-primary">{{ $initial }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0">{{ $portalUser['name'] ?? '' }}</h6>
+                                        <small class="text-body-secondary">{{ $portalUser['email'] ?? '' }}</small>
+                                    </div>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <div class="dropdown-divider my-1 mx-n2"></div>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url('user/profile') }}">
+                                <i class="icon-base ti tabler-user me-3 icon-md"></i><span class="align-middle">My
+                                    Profile</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url('user/security') }}">
+                                <i class="icon-base ti tabler-lock me-3 icon-md"></i><span class="align-middle">Change
+                                    Password</span>
+                            </a>
+                        </li>
+                        <li>
+                            <div class="dropdown-divider my-1 mx-n2"></div>
+                        </li>
+                        <li>
+                            <div class="d-grid px-2 pt-2 pb-1">
+                                <a class="btn btn-sm btn-danger d-flex" href="{{ url('user/logout') }}">
+                                    <small class="align-middle">Logout</small>
+                                    <i class="icon-base ti tabler-logout ms-2 icon-14px"></i>
+                                </a>
+                            </div>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<aside id="layout-menu" class="layout-menu-horizontal menu-horizontal menu flex-grow-0">
+    <div class="container-xxl d-flex h-100">
+        <ul class="menu-inner">
+            <li class="menu-item {{ $active_tab === 'student_dashboard' ? 'active' : '' }}">
+                <a href="{{ url('user/student/dashboard') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-smart-home"></i>
+                    <div>Dashboard</div>
+                </a>
+            </li>
+            <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
+                <a href="javascript:void(0)" class="menu-link menu-toggle">
+                    <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
+                    <div>Accounts</div>
+                </a>
+                <ul class="menu-sub">
+                    <li class="menu-item {{ $active_tab === 'profile' ? 'active' : '' }}">
+                        <a href="{{ url('user/profile') }}" class="menu-link">
+                            <i class="menu-icon icon-base ti tabler-user"></i>
+                            <div>My Profile</div>
+                        </a>
+                    </li>
+                    <li class="menu-item {{ $active_tab === 'security' ? 'active' : '' }}">
+                        <a href="{{ url('user/security') }}" class="menu-link">
+                            <i class="menu-icon icon-base ti tabler-lock"></i>
+                            <div>Change Password</div>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <!-- <li class="menu-item {{ $active_tab === 'student_attendance' ? 'active' : '' }}">
+    <a href="{{ url('user/student/attendance') }}" class="menu-link">
+     <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
+     <div>Attendance</div>
+    </a>
+   </li>
+   <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
+    <a href="{{ url('user/student/report') }}" class="menu-link">
+     <i class="menu-icon icon-base ti tabler-report-analytics"></i>
+     <div>Report</div>
+    </a>
+   </li> -->
+        </ul>
+    </div>
+</aside>
