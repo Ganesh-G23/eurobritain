@@ -2,16 +2,20 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class PortalUser extends Model
 {
-    use HasFactory, SoftDeletes;
+    use CanResetPassword, HasFactory, Notifiable, SoftDeletes;
 
     protected $table = 'portal_user';
+
     protected $guarded = [];
 
     protected $fillable = [
@@ -36,7 +40,9 @@ class PortalUser extends Model
 
     // Role constants
     const ROLE_TEACHER = 'teacher';
+
     const ROLE_STUDENT = 'student';
+
     const ROLE_PARENTS = 'parents';
 
     public static function getRoles()
@@ -82,8 +88,25 @@ class PortalUser extends Model
     {
         return $this->belongsToMany(PortalUser::class, 'parent_student_map', 'parent_id', 'student_id');
     }
-    
 
+    public function sendPasswordResetNotification($token): void
+    {
+        $resetUrl = route('web.password.reset', [
+            'token' => $token,
+            'email' => $this->getEmailForPasswordReset(),
+        ]);
 
-    // Password is hashed in controller before saving
+        try {
+            Mail::send('web.emails.password_reset', [
+                'user' => $this,
+                'resetUrl' => $resetUrl,
+            ], function ($message) {
+                $message->to((string) $this->getEmailForPasswordReset())
+                    ->subject('Reset your password');
+            });
+        } catch (\Throwable $e) {
+            Log::error('Portal password reset email failed: '.$e->getMessage());
+            throw $e;
+        }
+    }
 }
