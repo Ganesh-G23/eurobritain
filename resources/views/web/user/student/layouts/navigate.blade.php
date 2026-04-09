@@ -31,8 +31,13 @@
                     $studentId = (int) (session('portal_user.id') ?? (session('portal_user')['id'] ?? 0));
                     $studentTeachers = \Illuminate\Support\Facades\DB::table('portal_user as t')
                         ->join('student_teacher_map as stm', 'stm.teacher_id', '=', 't.id')
-                        ->leftJoin('classrooms as c', 'c.id', '=', 'stm.classroom_id')
-                        ->leftJoin('batches as b', 'b.id', '=', 'stm.batch_id')
+                        ->leftJoin('student_classroom_map as scm', function ($join) {
+                            $join->on('scm.student_id', '=', 'stm.student_id')
+                                ->on('scm.teacher_id', '=', 'stm.teacher_id')
+                                ->whereRaw('scm.id = (SELECT MIN(scm2.id) FROM student_classroom_map scm2 WHERE scm2.student_id = stm.student_id AND scm2.teacher_id = stm.teacher_id)');
+                        })
+                        ->leftJoin('classrooms as c', 'c.id', '=', 'scm.classroom_id')
+                        ->leftJoin('batches as b', 'b.id', '=', 'scm.batch_id')
                         ->where('t.role', 1)
                         ->where('stm.student_id', $studentId)
                         ->whereNull('t.deleted_at')
@@ -48,12 +53,14 @@
                 @endphp
 
                 <li class="nav-item dropdown me-2">
-                    <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3"
-                        id="nav-teacher" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="icon-base ti tabler-user-star icon-22px text-heading me-2"></i>
+                    <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3 gap-1"
+                        id="nav-teacher" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false"
+                        title="Switch teacher">
+                        <i class="icon-base ti tabler-user-star icon-22px text-heading"></i>
                         <span class="d-none d-sm-inline">
                             {{ $currentTeacher ? $currentTeacher->name ?? 'Teacher' : 'Select Teacher' }}
                         </span>
+                        <i class="icon-base ti tabler-chevron-down icon-18px text-heading dropdown-chevron" aria-hidden="true"></i>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-teacher" style="min-width: 260px;">
                         @if (($studentTeachers ?? collect())->count() > 0)
@@ -67,7 +74,7 @@
                                                 <div>{{ $t->teacher_name }}</div>
                                                 <div class="text-body-secondary small">
                                                     @if ($t->classroom_name)
-                                                        <span class="{{ $t->batch_name}}">Classroom:
+                                                        <span>Classroom:
                                                             {{ $t->classroom_name }}</span>
                                                     @endif
                                                 </div>
@@ -95,6 +102,7 @@
                         </li>
                     </ul>
                 </li>
+
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
                         id="nav-theme" href="javascript:void(0);" data-bs-toggle="dropdown">

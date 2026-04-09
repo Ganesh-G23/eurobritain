@@ -79,6 +79,11 @@ class PortalUser extends Model
         return $this->belongsToMany(PortalUser::class, 'student_teacher_map', 'teacher_id', 'student_id');
     }
 
+    public function studentClassroomMaps()
+    {
+        return $this->hasMany(StudentClassroomMap::class, 'student_id');
+    }
+
     public function parents()
     {
         return $this->belongsToMany(PortalUser::class, 'parent_student_map', 'student_id', 'parent_id');

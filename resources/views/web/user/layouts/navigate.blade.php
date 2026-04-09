@@ -5,6 +5,21 @@
     $currentTeacherId = (int) (request()->route('teacherId') ?? 0);
     $selectedTeacherId = (int) (session('selected_teacher_id') ?? 0);
     $portalRole = (int) ($portalUser['role'] ?? 0);
+    $teacherNavClassrooms = collect();
+    $teacherCurrentClassroomId = 0;
+    if ($portalRole === 1 && !empty($portalUser['id'])) {
+        $teacherNavClassrooms = \App\Models\Classroom::where('teacher_id', (int) $portalUser['id'])
+            ->withCount('batches')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        if (preg_match('#^user/teacher/classrooms/details/(\d+)$#', request()->path(), $m)) {
+            $teacherCurrentClassroomId = (int) $m[1];
+        }
+    }
+    $teacherNavCurrentClassroom =
+        $teacherCurrentClassroomId > 0
+            ? $teacherNavClassrooms->firstWhere('id', $teacherCurrentClassroomId)
+            : null;
 @endphp
 <nav class="layout-navbar navbar navbar-expand-xl align-items-center" id="layout-navbar">
     <div class="container-xxl">
@@ -96,6 +111,54 @@
                                     <i class="icon-base ti tabler-switch-3 me-2"></i> Manage students
                                 </a>
                             </li>
+                        </ul>
+                    </li>
+                @endif
+
+                @if ($portalRole === 1)
+                    <li class="nav-item dropdown ms-2">
+                        <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3 gap-1"
+                            id="nav-classroom" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Switch classroom">
+                            <i class="icon-base ti tabler-school icon-22px text-heading"></i>
+                            <span class="d-none d-sm-inline">
+                                {{ $teacherNavCurrentClassroom ? $teacherNavCurrentClassroom->name : 'Classrooms' }}
+                            </span>
+                            <i class="icon-base ti tabler-chevron-down icon-18px text-heading" aria-hidden="true"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-classroom" style="min-width: 280px;">
+                            @if ($teacherNavClassrooms->isNotEmpty())
+                                <li class="px-3 py-2 text-muted small">Switch classroom</li>
+                                @foreach ($teacherNavClassrooms as $cr)
+                                    <li>
+                                        <a class="dropdown-item"
+                                            href="{{ url('user/teacher/classrooms/details/' . $cr->id) }}">
+                                            <div class="d-flex align-items-start justify-content-between">
+                                                <div>
+                                                    <div>{{ $cr->name }}</div>
+                                                    @if (($cr->batches_count ?? 0) > 0)
+                                                        <div class="text-body-secondary small">
+                                                            {{ (int) $cr->batches_count }}
+                                                            batch{{ (int) $cr->batches_count === 1 ? '' : 'es' }}
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                                @if ($teacherCurrentClassroomId === (int) $cr->id)
+                                                    <i class="icon-base ti tabler-check text-success ms-2 flex-shrink-0"></i>
+                                                @endif
+                                            </div>
+                                        </a>
+                                    </li>
+                                @endforeach
+                                <!-- <li>
+                                    <div class="dropdown-divider my-1"></div>
+                                </li> -->
+                            @endif
+                            <!-- <li>
+                                <a class="dropdown-item" href="{{ url('user/teacher/classrooms') }}">
+                                    <i class="icon-base ti tabler-switch-3 me-2"></i> Manage classrooms
+                                </a>
+                            </li> -->
                         </ul>
                     </li>
                 @endif
@@ -222,6 +285,27 @@
                         <i class="menu-icon icon-base ti tabler-users"></i>
                         <div data-i18n="Students">Students</div>
                     </a>
+                </li>
+
+                <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
+                    <a href="javascript:void(0)" class="menu-link menu-toggle">
+                        <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
+                        <div data-i18n="Accounts">Accounts</div>
+                    </a>
+                    <ul class="menu-sub">
+                        <li class="menu-item {{ $active_tab === 'profile' ? 'active' : '' }}">
+                            <a href="{{ url('user/profile') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-user"></i>
+                                <div data-i18n="My Profile">My Profile</div>
+                            </a>
+                        </li>
+                        <li class="menu-item {{ $active_tab === 'security' ? 'active' : '' }}">
+                            <a href="{{ url('user/security') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-lock"></i>
+                                <div data-i18n="Change Password">Change Password</div>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
             @else
                 <!-- Student/Parent -->

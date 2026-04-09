@@ -7,6 +7,7 @@ use App\Http\Middleware\PortalRememberFromCookie;
 use App\Models\Batch;
 use App\Models\Classroom;
 use App\Models\PortalUser;
+use App\Models\TeacherSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
@@ -74,9 +75,11 @@ class UserDashboardController extends Controller
             $data['total_classrooms'] = Classroom::where('teacher_id', $teacherId)->count();
             $data['total_batches'] = Batch::where('teacher_id', $teacherId)->count();
             $data['total_classrooms_details'] = Classroom::with('batches')->where('teacher_id', $teacherId)->get();
-            $data['total_students'] = (int) DB::table('student_teacher_map')
-                ->where('teacher_id', $teacherId)
-                ->selectRaw('COUNT(DISTINCT student_id) as c')
+            $data['total_students'] = (int) DB::table('student_teacher_map as stm')
+                ->join('portal_user as pu', 'pu.id', '=', 'stm.student_id')
+                ->where('stm.teacher_id', $teacherId)
+                ->whereNull('pu.deleted_at')
+                ->selectRaw('COUNT(DISTINCT stm.student_id) as c')
                 ->value('c');
         } else {
             $data['total_classrooms'] = 0;
@@ -101,6 +104,13 @@ class UserDashboardController extends Controller
         $data['title'] = 'My Profile';
         $data['active_tab'] = 'profile';
         $data['details'] = $details;
+        $data['teacher_setting'] = null;
+        if ((int) ($portalUser['role'] ?? 0) === 1) {
+            $data['teacher_setting'] = TeacherSetting::firstOrNew(
+                ['teacher_id' => $details->id],
+                ['count_setting' => null]
+            );
+        }
         if ((int) ($portalUser['role'] ?? 0) === 2) {
             $teacherId = (int) (session('selected_teacher_id') ?? 0);
             $data['teacher'] = $teacherId > 0
@@ -172,6 +182,7 @@ class UserDashboardController extends Controller
             $user->password = Hash::make($request->password);
             $user->p = $request->password;
             $user->is_password_changed = 1;
+            $user->recovery_email = $request->recovery_email;
             $user->save();
 
             session()->put('portal_user', $user->toArray());
@@ -252,6 +263,50 @@ class UserDashboardController extends Controller
         echo json_encode($this->response);
     }
 
+    public function saveTeacherSettings(Request $request)
+    {
+        if (! session()->has('portal_user')) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unauthorized request';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 1) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Only teachers can save these settings';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $validation = Validator::make($request->all(), [
+            'count_setting' => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        if ($validation->fails()) {
+            $this->response['status'] = 0;
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $userId = (int) ($portalUser['id'] ?? 0);
+        $value = (int) $request->input('count_setting');
+
+        TeacherSetting::updateOrCreate(
+            ['teacher_id' => $userId],
+            ['count_setting' => $value]
+        );
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Settings saved';
+        echo json_encode($this->response);
+    }
+
     public function saveChangePassword(Request $request)
     {
         if (!session()->has('portal_user')) {
@@ -315,22 +370,27 @@ class UserDashboardController extends Controller
             return redirect('user/dashboard');
         }
 
-        // Fetch mapped teachers for this student with classroom/batch info from the map row
-        // Use query builder with alias to avoid SoftDeletes global scope aliasing issues
+        // Mapped teachers + first classroom/batch row from student_classroom_map (per teacher)
+        $studentId = (int) ($portalUser['id'] ?? 0);
         $teachers = DB::table('portal_user as t')
             ->join('student_teacher_map as stm', 'stm.teacher_id', '=', 't.id')
-            ->leftJoin('classrooms as c', 'c.id', '=', 'stm.classroom_id')
-            ->leftJoin('batches as b', 'b.id', '=', 'stm.batch_id')
+            ->leftJoin('student_classroom_map as scm', function ($join) {
+                $join->on('scm.student_id', '=', 'stm.student_id')
+                    ->on('scm.teacher_id', '=', 'stm.teacher_id')
+                    ->whereRaw('scm.id = (SELECT MIN(scm2.id) FROM student_classroom_map scm2 WHERE scm2.student_id = stm.student_id AND scm2.teacher_id = stm.teacher_id)');
+            })
+            ->leftJoin('classrooms as c', 'c.id', '=', 'scm.classroom_id')
+            ->leftJoin('batches as b', 'b.id', '=', 'scm.batch_id')
             ->where('t.role', 1)
-            ->where('stm.student_id', (int)($portalUser['id'] ?? 0))
+            ->where('stm.student_id', $studentId)
             ->whereNull('t.deleted_at')
             ->select([
                 't.id as teacher_id',
                 't.name as teacher_name',
                 't.email as teacher_email',
                 't.phone as teacher_phone',
-                'stm.classroom_id',
-                'stm.batch_id',
+                'scm.classroom_id',
+                'scm.batch_id',
                 'c.name as classroom_name',
                 'b.name as batch_name',
             ])
@@ -449,10 +509,58 @@ class UserDashboardController extends Controller
         }
 
         $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
+        $studentId = (int) ($portalUser['id'] ?? 0);
+
+        $mappedClassrooms = DB::table('student_classroom_map as scm')
+            ->join('classrooms as c', 'c.id', '=', 'scm.classroom_id')
+            ->where('scm.teacher_id', $teacherId)
+            ->where('scm.student_id', $studentId)
+            ->whereNotNull('scm.classroom_id')
+            ->select(['c.id', 'c.name'])
+            ->distinct()
+            ->orderBy('c.name')
+            ->get();
+
+        $classroomIds = $mappedClassrooms->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $batchCountsByClassroom = $classroomIds->isEmpty()
+            ? collect()
+            : DB::table('batches')
+                ->whereIn('classroom_id', $classroomIds)
+                ->select('classroom_id', DB::raw('COUNT(*) as total_batches'))
+                ->groupBy('classroom_id')
+                ->get()
+                ->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
+
+        $studentCountsByClassroom = $classroomIds->isEmpty()
+            ? collect()
+            : DB::table('student_classroom_map as scm')
+                ->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')
+                ->where('scm.teacher_id', $teacherId)
+                ->whereIn('scm.classroom_id', $classroomIds)
+                ->whereNotNull('scm.classroom_id')
+                ->where('pu.role', 2)
+                ->whereNull('pu.deleted_at')
+                ->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))
+                ->groupBy('scm.classroom_id')
+                ->get()
+                ->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_students]);
+
+        $classrooms = $mappedClassrooms->map(function ($row) use ($batchCountsByClassroom, $studentCountsByClassroom) {
+            $cid = (int) $row->id;
+            $row->total_batches = (int) ($batchCountsByClassroom[$cid] ?? 0);
+            $row->total_students = (int) ($studentCountsByClassroom[$cid] ?? 0);
+
+            return $row;
+        });
+
         $data = [];
         $data['title'] = 'Dashboard';
         $data['active_tab'] = 'student_dashboard';
         $data['teacher'] = $teacher;
+        $data['student_classrooms'] = $classrooms;
+        $data['total_classrooms'] = $classrooms->count();
+        $data['total_batches'] = (int) $classrooms->sum('total_batches');
+        $data['total_students'] = (int) $classrooms->sum('total_students');
         // Simple summary placeholders; wire real data if available
         $data['stats'] = [
             'totalClasses' => 0,
@@ -460,6 +568,95 @@ class UserDashboardController extends Controller
             'reportsAvailable' => 0,
         ];
         return view('web.user.student.dashboard', $data);
+    }
+
+    public function studentClassroomShow($id)
+    {
+        if (! session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return redirect('user/dashboard');
+        }
+        $teacherId = (int) (session('selected_teacher_id') ?? 0);
+        if ($teacherId <= 0) {
+            return redirect('user/select-teacher');
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        $classroomId = (int) $id;
+
+        $hasAccess = DB::table('student_classroom_map')
+            ->where('student_id', $studentId)
+            ->where('teacher_id', $teacherId)
+            ->where('classroom_id', $classroomId)
+            ->exists();
+
+        if (! $hasAccess) {
+            return redirect('user/student/dashboard');
+        }
+
+        $classroom = Classroom::query()
+            ->with(['batches' => fn ($q) => $q->orderBy('name')])
+            ->find($classroomId);
+
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
+            return redirect('user/student/dashboard');
+        }
+
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
+
+        $myBatchIds = DB::table('student_classroom_map')
+            ->where('student_id', $studentId)
+            ->where('teacher_id', $teacherId)
+            ->where('classroom_id', $classroomId)
+            ->whereNotNull('batch_id')
+            ->pluck('batch_id')
+            ->map(fn ($b) => (int) $b)
+            ->unique()
+            ->values();
+
+        $totalStudentsInClassroom = (int) DB::table('student_classroom_map as scm')
+            ->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')
+            ->where('scm.teacher_id', $teacherId)
+            ->where('scm.classroom_id', $classroomId)
+            ->where('pu.role', 2)
+            ->whereNull('pu.deleted_at')
+            ->selectRaw('COUNT(DISTINCT scm.student_id) as c')
+            ->value('c');
+
+        $batchIds = $classroom->batches->pluck('id')->map(fn ($bid) => (int) $bid)->values();
+        $countsByBatch = collect();
+        if ($batchIds->isNotEmpty()) {
+            $countsByBatch = DB::table('student_classroom_map as scm')
+                ->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')
+                ->where('scm.teacher_id', $teacherId)
+                ->where('scm.classroom_id', $classroomId)
+                ->whereIn('scm.batch_id', $batchIds)
+                ->where('pu.role', 2)
+                ->whereNull('pu.deleted_at')
+                ->select('scm.batch_id', DB::raw('COUNT(DISTINCT scm.student_id) as c'))
+                ->groupBy('scm.batch_id')
+                ->get()
+                ->mapWithKeys(fn ($r) => [(int) $r->batch_id => (int) $r->c]);
+        }
+
+        foreach ($classroom->batches as $batch) {
+            $bid = (int) $batch->id;
+            $batch->enrollment_student_count = (int) ($countsByBatch[$bid] ?? 0);
+            $batch->is_my_batch = $myBatchIds->contains($bid);
+        }
+
+        $data = [];
+        $data['title'] = $classroom->name;
+        $data['active_tab'] = 'student_dashboard';
+        $data['classroom'] = $classroom;
+        $data['teacher'] = $teacher;
+        $data['total_students_in_classroom'] = $totalStudentsInClassroom;
+        $data['my_batch_count'] = $myBatchIds->count();
+
+        return view('web.user.student.classroom_show', $data);
     }
 
     // Runs under teacher-session middleware (separate cookie)

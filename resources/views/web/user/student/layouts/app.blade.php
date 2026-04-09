@@ -21,6 +21,7 @@
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/apex-charts/apex-charts.css') }}" />
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/fonts/flag-icons.css') }}" />
+	<script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script>
 
 	<script src="{{ url('public/admin_theme/assets/vendor/js/helpers.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
@@ -31,9 +32,9 @@
 			<div class="layout-page">
 				<div class="content-wrapper d-flex flex-column">
 					@include('web.user.student.layouts.navigate')
-					<div class="container-fluid flex-grow-1 pt-2 pb-3">
+					<!-- <div class="container-fluid flex-grow-1 pt-2 pb-3"> -->
 						@yield('content')
-					</div>
+					<!-- </div> -->
 					<footer class="content-footer footer bg-footer-theme">
 						<div class="container-xxl">
 							<div class="footer-container d-flex align-items-center justify-content-between py-4 flex-md-row flex-column">

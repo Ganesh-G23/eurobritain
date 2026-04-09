@@ -26,4 +26,14 @@ class Batch extends Model
     {
         return $this->belongsTo(PortalUser::class, 'teacher_id');
     }
+
+    public function students()
+    {
+        return $this->hasMany(PortalUser::class, 'batch_id');
+    }
+
+    public function exams()
+    {
+        return $this->hasMany(Exam::class, 'batch_id');
+    }
 }

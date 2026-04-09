@@ -11,6 +11,7 @@ use App\Http\Controllers\Web\PortalPasswordResetController;
 use App\Http\Controllers\Web\UserDashboardController;
 use App\Http\Controllers\Web\UserTeacherController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\StudentController;
 
 // Web Frontend Routes
 Route::get('/', [HomeController::class, 'index'])->name('web.home');
@@ -34,6 +35,7 @@ Route::prefix('user')->group(function () {
     Route::get('/dashboard', [UserDashboardController::class, 'index']);
     Route::get('/profile', [UserDashboardController::class, 'profile']);
     Route::post('/profile/save_profile', [UserDashboardController::class, 'saveProfile']);
+    Route::post('/profile/save_teacher_settings', [UserDashboardController::class, 'saveTeacherSettings']);
     Route::get('/security', [UserDashboardController::class, 'security']);
     Route::post('/security/save_change_password', [UserDashboardController::class, 'saveChangePassword']);
     Route::post('/update_password_popup', [UserDashboardController::class, 'updatePasswordPopup']);
@@ -46,6 +48,7 @@ Route::prefix('user')->group(function () {
     Route::get('/select-teacher/access/{teacherId}', [UserDashboardController::class, 'accessTeacher']); // legacy
     // Student module pages under selected teacher context
     Route::get('/student/dashboard', [UserDashboardController::class, 'studentDashboard']);
+    Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
     Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
     Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
 
@@ -68,10 +71,13 @@ Route::prefix('user')->group(function () {
         Route::post('/batches/save', [UserTeacherController::class, 'saveBatch']);
         Route::post('/batches/delete', [UserTeacherController::class, 'deleteBatch']);
         Route::post('/students/save', [UserTeacherController::class, 'saveStudent']);
+        Route::post('/students/sync-enrollments', [UserTeacherController::class, 'syncStudentEnrollments']);
+        Route::get('/batches-by-classroom', [UserTeacherController::class, 'getBatchesByClassroom']);
         Route::post('/students/delete', [UserTeacherController::class, 'deleteStudent']);
         Route::get('/students/bulk-sample', [UserTeacherController::class, 'downloadStudentBulkSample']);
         Route::post('/students/bulk-upload', [UserTeacherController::class, 'bulkUploadStudents']);
         Route::get('/classrooms/details/{id}', [UserTeacherController::class, 'classroomsDetails']);
+        Route::post('/exams/save', [UserTeacherController::class, 'saveExam']);
     });
 });
 
@@ -108,10 +114,20 @@ Route::middleware('prevent-back')->prefix('admin')->group(function () {
         Route::post('teacher/save_batch', [TeacherController::class, 'saveBatch']);
         Route::post('teacher/delete_batch', [TeacherController::class, 'deleteBatch']);
         Route::post('teacher/save_student', [TeacherController::class, 'saveStudent']);
+        Route::post('teacher/sync_student_enrollments', [TeacherController::class, 'syncStudentEnrollments']);
         Route::post('teacher/delete_student', [TeacherController::class, 'deleteStudent']);
         Route::get('teacher/student_view', [TeacherController::class, 'viewStudent']);
         Route::get('teacher/get_batches_by_classroom', [TeacherController::class, 'getBatchesByClassroom']);
         Route::get('teacher/login_as/{id}', [TeacherController::class, 'loginAs']);
+
+        // student
+        Route::get('student', [StudentController::class, 'list']);
+        Route::get('student/add', [StudentController::class, 'add']);
+        Route::get('student/edit', [StudentController::class, 'edit']);
+        Route::get('student/enrollment-options', [StudentController::class, 'enrollmentOptions']);
+        Route::post('student/delete', [StudentController::class, 'deleteStudent']);
+        Route::get('student/form', [StudentController::class, 'form']);
+        Route::post('student/save', [StudentController::class, 'saveStudent']);
 
         // Admin bulk student upload/sample
         Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);
