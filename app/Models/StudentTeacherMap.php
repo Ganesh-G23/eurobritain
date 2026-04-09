@@ -11,7 +11,5 @@ class StudentTeacherMap extends Model
     protected $fillable = [
         'student_id',
         'teacher_id',
-        'classroom_id',
-        'batch_id',
     ];
 }

@@ -1,17 +1,15 @@
 @extends('web.user.layouts.app')
 @section('content')
-	<div class="container-xxl flex-grow-1 container-p-y">
+	<div class="container-xxl flex-grow-1 container-p-y pt-2 pb-2">
 		<div class="row g-6">
 			<div class="col-12">
 				<div class="card">
 					<div class="card-header d-flex justify-content-between align-items-center">
 						<h5 class="mb-0">My Students</h5>
 						<div class="d-flex gap-2">
-							<a href="{{ url('user/teacher/students/bulk-sample') }}" class="btn btn-label-secondary btn-sm">
-								<i class="icon-base ti tabler-download me-1"></i> Download Sample
-							</a>
-							<button type="button" class="btn btn-label-primary btn-sm" data-bs-toggle="modal" data-bs-target="#bulkStudentModal">
-								<i class="icon-base ti tabler-upload me-1"></i> Bulk Upload
+							<button type="button" class="btn btn-label-primary btn-sm" data-bs-toggle="modal"
+								data-bs-target="#portalImportStudentsModal">
+								<i class="icon-base ti tabler-upload me-1"></i> Import students
 							</button>
 							<button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#studentModal">
 								<i class="icon-base ti tabler-plus me-1"></i> Add Student
@@ -67,32 +65,40 @@
 								</thead>
 								<tbody>
 									@forelse($students as $index => $student)
+									@php
+										$mapsForRow = $student->studentClassroomMaps;
+										$firstMap = $mapsForRow->first();
+										$crDisplay = $firstMap->classroom->name ?? ($student->classroom->name ?? '—');
+										$batchDisplay = $firstMap->batch->name ?? ($student->batch->name ?? '—');
+										$mapsJson = $mapsForRow->map(static function ($m) {
+											return ['classroom_id' => (int) $m->classroom_id, 'batch_id' => (int) $m->batch_id];
+										})->values()->toJson();
+										$parentRow = !empty($student->parent_id) ? \App\Models\PortalUser::find($student->parent_id) : null;
+									@endphp
 									<tr>
 										<td>{{ (($page ?? 1) - 1) * ($per_page ?? 50) + $index + 1 }}</td>
 										<td>{{ $student->name }}</td>
 										<td>{{ $student->email }}</td>
 										<td>{{ $student->phone }}</td>
-										<td>{{ $student->classroom->name ?? '-' }}</td>
-										<td>{{ $student->batch->name ?? '-' }}</td>
+										<td>{{ $crDisplay }}</td>
+										<td>{{ $batchDisplay }}</td>
 										<td><small class="text-body-secondary">{{ optional($student->created_at)->format('d-m-Y') }}</small></td>
 										<td>
-											<div class="d-flex gap-2">
+											<div class="d-flex flex-wrap gap-1">
 												<a href="{{ url('user/teacher/students/view/' . base64_encode($student->id)) }}" class="btn btn-sm btn-icon btn-label-info" title="View">
 													<i class="icon-base ti tabler-eye"></i>
 												</a>
-												@php
-													$parentRow = null;
-													if (!empty($student->parent_id)) {
-														$parentRow = \App\Models\PortalUser::find($student->parent_id);
-													}
-												@endphp
+												<button type="button" class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments"
+													data-student-id="{{ base64_encode($student->id) }}"
+													data-maps="{{ $mapsJson }}"
+													title="Classrooms &amp; batches">
+													<i class="icon-base ti tabler-school"></i>
+												</button>
 												<button type="button" class="btn btn-sm btn-icon btn-label-primary edit-student"
 													data-id="{{ base64_encode($student->id) }}"
 													data-name="{{ $student->name }}"
 													data-email="{{ $student->email }}"
 													data-phone="{{ $student->phone }}"
-													data-classroom_id="{{ $student->classroom_id }}"
-													data-batch_id="{{ $student->batch_id }}"
 													data-parent_name="{{ $parentRow->name ?? '' }}"
 													data-parent_email="{{ $parentRow->email ?? '' }}"
 													data-parent_phone="{{ $parentRow->phone ?? '' }}"
@@ -134,31 +140,47 @@
 		</div>
 	</div>
 
-	<!-- Bulk Upload Students Modal -->
-	<div class="modal fade" id="bulkStudentModal" tabindex="-1" aria-hidden="true">
+	<!-- Import students (CSV) — same flow as admin -->
+	<div class="modal fade" id="portalImportStudentsModal" tabindex="-1" aria-hidden="true">
 		<div class="modal-dialog modal-lg modal-dialog-centered">
 			<div class="modal-content">
 				<div class="modal-header">
-					<h5 class="modal-title">Bulk Upload Students (CSV)</h5>
+					<h5 class="modal-title">Import students (CSV)</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
-					<div class="alert alert-info py-2 mb-3">
-						Step 1: Download sample file. Step 2: Fill data. Step 3: Upload CSV.<br>
-						CSV required columns: <strong>name,email,phone,classroom,batch</strong><br>
-						Optional columns: <strong>parent_name,parent_email,parent_phone</strong><br>
-						Use classroom and batch names exactly as created (example: <strong>8th Class</strong>, <strong>Batch A</strong>).
+					<div class="alert alert-info py-2 mb-3 small">
+						<strong>1.</strong> Students are imported for your account
+						@if(!empty($teacher_name)) (<strong>{{ $teacher_name }}</strong>) @endif.<br>
+						<strong>2.</strong> Download the sample and fill rows using your classroom and batch names (or numeric IDs).<br>
+						<strong>3.</strong> Required columns:
+						<strong>name, email, phone, classroom, batch</strong> (first pair = primary display).<br>
+						<strong>Optional extra enrollments:</strong>
+						<strong>classroom_2, batch_2</strong> and <strong>classroom_3, batch_3</strong> — leave blank if not used.<br>
+						Each row’s pairs <strong>replace</strong> that student’s classroom/batch mappings for you (same as the school icon in the list).<br>
+						Optional parent columns: <strong>parent_name, parent_email, parent_phone</strong>.
 					</div>
 					<div class="mb-3">
-						<label class="form-label">Upload CSV File</label>
-						<input type="file" class="form-control" id="bulk_student_file" accept=".csv,text/csv">
-						<small class="text-body-secondary">Max file size: 5MB</small>
+						<label class="form-label">Teacher</label>
+						<input type="text" class="form-control" value="{{ $teacher_name ?? 'You' }}" readonly>
 					</div>
-					<div class="mb-0" id="bulk-student-msg"></div>
+					<div class="mb-3">
+						<button type="button" class="btn btn-label-primary" id="btn-portal-import-download-sample">
+							<i class="icon-base ti tabler-download me-1"></i> Download sample CSV
+						</button>
+					</div>
+					<div class="mb-3">
+						<label class="form-label">CSV file</label>
+						<input type="file" class="form-control" id="portal_import_student_csv_file" accept=".csv,text/csv">
+						<small class="text-body-secondary">Max 5 MB</small>
+					</div>
+					<div id="portal-import-student-msg" class="mb-0"></div>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
-					<button type="button" class="btn btn-primary" id="upload-bulk-students-btn">Upload</button>
+					<button type="button" class="btn btn-primary" id="btn-portal-import-students-upload">
+						<i class="icon-base ti tabler-upload me-1"></i> Upload
+					</button>
 				</div>
 			</div>
 		</div>
@@ -177,6 +199,7 @@
 					<form id="student-form">
 						@csrf
 						<input type="hidden" name="id" id="student_id">
+						<p class="text-body-secondary small mb-3">Set classrooms and batches using the <strong>school</strong> icon in the list after saving.</p>
 						<div class="row g-3">
 							<div class="col-md-4 ajax-field">
 								<label class="form-label">Name <span class="text-danger">*</span></label>
@@ -193,27 +216,6 @@
 								<input type="text" class="form-control" name="phone" id="student_phone" placeholder="Enter student phone">
 								<span class="ajax-error text-danger small"></span>
 							</div>
-							<div class="col-md-4 ajax-field">
-								<label class="form-label">Classroom <span class="text-danger">*</span></label>
-								<select class="form-select" name="classroom_id" id="student_classroom_id">
-									<option value="">Select Classroom</option>
-									@foreach(\App\Models\Classroom::where('teacher_id', (int)(session('portal_user')['id'] ?? 0))->orderBy('name')->get() as $cr)
-										<option value="{{ $cr->id }}">{{ $cr->name }}</option>
-									@endforeach
-								</select>
-								<span class="ajax-error text-danger small"></span>
-							</div>
-							<div class="col-md-4 ajax-field">
-								<label class="form-label">Batch <span class="text-danger">*</span></label>
-								<select class="form-select" name="batch_id" id="student_batch_id">
-									<option value="">Select Batch</option>
-									@foreach(\App\Models\Batch::where('teacher_id', (int)(session('portal_user')['id'] ?? 0))->orderBy('name')->get() as $b)
-										<option value="{{ $b->id }}" data-classroom_id="{{ $b->classroom_id }}">{{ $b->name }} ({{ $b->classroom->name ?? 'N/A' }})</option>
-									@endforeach
-								</select>
-								<span class="ajax-error text-danger small"></span>
-							</div>
-							<div class="col-md-4"></div>
 							<div class="col-md-4 ajax-field">
 								<label class="form-label">Parent Name</label>
 								<input type="text" class="form-control" name="parent_name" id="parent_name" placeholder="Enter parent name">
@@ -240,11 +242,74 @@
 		</div>
 	</div>
 
+	<div class="modal fade" id="studentEnrollmentsModal" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Classrooms &amp; batches</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<form id="studentEnrollmentsForm">
+						<input type="hidden" name="student_id" id="enr_student_id" value="">
+						<input type="hidden" name="teacher_id" value="{{ $teacher_id ?? 0 }}">
+						<p class="text-body-secondary small">Add one row per classroom and batch. The first row sets the student&apos;s primary classroom and batch.</p>
+						<div id="student-enrollment-rows" class="mb-3"></div>
+						<button type="button" class="btn btn-sm btn-label-primary" id="add-enrollment-row">
+							<i class="icon-base ti tabler-plus me-1"></i> Add row
+						</button>
+					</form>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-primary" id="saveStudentEnrollmentsBtn">Save</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<template id="enrollment-row-template">
+		<div class="row g-2 align-items-end enrollment-row mb-3 pb-3 border-bottom">
+			<div class="col-md-5">
+				<label class="form-label small mb-1">Classroom</label>
+				<select class="form-select enr-classroom" name="map_classroom_id[]">
+					<option value="">Choose classroom</option>
+					@foreach(($classrooms ?? []) as $classroom)
+						<option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
+					@endforeach
+				</select>
+			</div>
+			<div class="col-md-5">
+				<label class="form-label small mb-1">Batch</label>
+				<select class="form-select enr-batch" name="map_batch_id[]" disabled>
+					<option value="">Choose classroom first</option>
+				</select>
+			</div>
+			<div class="col-md-2 text-md-end">
+				<button type="button" class="btn btn-sm btn-label-danger remove-enr-row" title="Remove row">
+					<i class="icon-base ti tabler-trash"></i>
+				</button>
+			</div>
+		</div>
+	</template>
+@endsection
+
 @section('scripts')
 	<script>
 		$(document).ready(function() {
 			const addStudentModal = new bootstrap.Modal(document.getElementById('studentModal'));
-			const bulkStudentModal = new bootstrap.Modal(document.getElementById('bulkStudentModal'));
+			const studentEnrollmentsModal = new bootstrap.Modal(document.getElementById('studentEnrollmentsModal'));
+
+			const portalBulkSampleUrl = '{{ url("user/teacher/students/bulk-sample") }}';
+
+			$('#portalImportStudentsModal').on('hidden.bs.modal', function() {
+				$('#portal_import_student_csv_file').val('');
+				$('#portal-import-student-msg').html('');
+			});
+
+			$('#btn-portal-import-download-sample').on('click', function() {
+				window.location.href = portalBulkSampleUrl;
+			});
 
 			function clearAjaxErrors() {
 				$('.ajax-error').text('');
@@ -257,31 +322,101 @@
 				});
 			}
 
-			// Filter batches by classroom (no extra request)
-			function filterBatchesByClassroom() {
-				const classroomId = $('#student_classroom_id').val();
-				const $batch = $('#student_batch_id');
-				const current = $batch.val();
-				$batch.find('option').each(function(){
-					const cid = $(this).data('classroom_id');
-					if (!cid) return; // keep placeholder
-					$(this).toggle(String(cid) === String(classroomId));
-				});
-				// reset if invalid
-				if (current) {
-					const visible = $batch.find('option[value="'+current+'"]:visible');
-					if (visible.length === 0) $batch.val('');
+			function loadBatchesIntoSelect($batchSelect, classroomId, selectedBatchId, done) {
+				selectedBatchId = selectedBatchId || '';
+				if (!classroomId) {
+					$batchSelect.html('<option value="">Choose classroom first</option>').prop('disabled', true);
+					if (typeof done === 'function') done();
+					return;
 				}
+				$batchSelect.html('<option value="">Loading...</option>').prop('disabled', true);
+				$.get('{{ url("user/teacher/batches-by-classroom") }}', { classroom_id: classroomId }, function(res) {
+					if (res.status == 1 && res.data && res.data.length) {
+						$batchSelect.html('<option value="">Choose batch</option>');
+						$.each(res.data, function(index, batch) {
+							const selected = String(batch.id) === String(selectedBatchId) ? ' selected' : '';
+							$batchSelect.append('<option value="' + batch.id + '"' + selected + '>' + batch.name + '</option>');
+						});
+						$batchSelect.prop('disabled', false);
+					} else {
+						$batchSelect.html('<option value="">No batches found</option>').prop('disabled', true);
+					}
+					if (typeof done === 'function') done();
+				}, 'json');
 			}
 
-			$('#student_classroom_id').on('change', filterBatchesByClassroom);
+			function appendEnrollmentRow(classroomId, batchId) {
+				const tpl = document.getElementById('enrollment-row-template');
+				const frag = tpl.content.cloneNode(true);
+				const el = frag.querySelector('.enrollment-row');
+				$('#student-enrollment-rows').append(el);
+				const $row = $(el);
+				const $c = $row.find('.enr-classroom');
+				const $b = $row.find('.enr-batch');
+				if (classroomId) {
+					$c.val(String(classroomId));
+				}
+				loadBatchesIntoSelect($b, $c.val(), batchId);
+			}
+
+			$(document).on('change', '#studentEnrollmentsModal .enr-classroom', function() {
+				const $row = $(this).closest('.enrollment-row');
+				loadBatchesIntoSelect($row.find('.enr-batch'), $(this).val(), '');
+			});
+
+			$(document).on('click', '#add-enrollment-row', function() {
+				appendEnrollmentRow('', '');
+			});
+
+			$(document).on('click', '.remove-enr-row', function() {
+				const $rows = $('#student-enrollment-rows .enrollment-row');
+				if ($rows.length <= 1) {
+					$(this).closest('.enrollment-row').find('.enr-classroom').val('');
+					$(this).closest('.enrollment-row').find('.enr-batch').html('<option value="">Choose classroom first</option>').prop('disabled', true);
+					return;
+				}
+				$(this).closest('.enrollment-row').remove();
+			});
+
+			$(document).on('click', '.open-student-enrollments', function() {
+				const studentId = $(this).data('student-id');
+				let maps = $(this).attr('data-maps');
+				let parsed = [];
+				try {
+					parsed = maps ? JSON.parse(maps) : [];
+				} catch (e) {
+					parsed = [];
+				}
+				$('#enr_student_id').val(studentId);
+				$('#student-enrollment-rows').empty();
+				if (parsed && parsed.length) {
+					parsed.forEach(function(m) {
+						appendEnrollmentRow(m.classroom_id, m.batch_id);
+					});
+				} else {
+					appendEnrollmentRow('', '');
+				}
+				studentEnrollmentsModal.show();
+			});
+
+			$(document).on('click', '#saveStudentEnrollmentsBtn', function() {
+				const formData = $('#studentEnrollmentsForm').serializeArray();
+				formData.push({ name: '_token', value: '{{ csrf_token() }}' });
+				$.post('{{ url("user/teacher/students/sync-enrollments") }}', formData, function(res) {
+					if (res.status == 1) {
+						studentEnrollmentsModal.hide();
+						location.reload();
+					} else if (res.error) {
+						alert(res.error);
+					}
+				}, 'json');
+			});
 
 			// Clear form on hide
 			$('#studentModal').on('hidden.bs.modal', function () {
 				$('#student-form')[0].reset();
 				$('#student_id').val('');
 				$('#studentModalTitle').text('Add Student');
-				filterBatchesByClassroom();
 				clearAjaxErrors();
 			});
 
@@ -291,8 +426,6 @@
 				const name = $(this).data('name');
 				const email = $(this).data('email');
 				const phone = $(this).data('phone');
-				const classroom_id = $(this).data('classroom_id');
-				const batch_id = $(this).data('batch_id');
 				const parent_name = $(this).data('parent_name') || '';
 				const parent_email = $(this).data('parent_email') || '';
 				const parent_phone = $(this).data('parent_phone') || '';
@@ -301,9 +434,6 @@
 				$('#student_name').val(name);
 				$('#student_email').val(email);
 				$('#student_phone').val(phone);
-				$('#student_classroom_id').val(String(classroom_id));
-				filterBatchesByClassroom();
-				$('#student_batch_id').val(String(batch_id));
 				$('#parent_name').val(parent_name);
 				$('#parent_email').val(parent_email);
 				$('#parent_phone').val(parent_phone);
@@ -338,15 +468,15 @@
 				}, 'json');
 			});
 
-			$(document).on('click', '#upload-bulk-students-btn', function() {
-				const fileInput = document.getElementById('bulk_student_file');
+			$('#btn-portal-import-students-upload').on('click', function() {
+				const fileInput = document.getElementById('portal_import_student_csv_file');
 				const file = fileInput.files[0];
 				const $btn = $(this);
-				const $msg = $('#bulk-student-msg');
+				const $msg = $('#portal-import-student-msg');
 				$msg.html('');
 
 				if (!file) {
-					$msg.html('<div class="alert alert-danger mb-0">Please select a CSV file.</div>');
+					$msg.html('<div class="alert alert-danger mb-0">Choose a CSV file.</div>');
 					return;
 				}
 
@@ -354,7 +484,7 @@
 				data.append('_token', '{{ csrf_token() }}');
 				data.append('file', file);
 
-				$btn.attr('disabled', 'disabled').text('Uploading...');
+				$btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Uploading...');
 				$.ajax({
 					url: '{{ url("user/teacher/students/bulk-upload") }}',
 					type: 'POST',
@@ -363,47 +493,46 @@
 					contentType: false,
 					dataType: 'json',
 					success: function(res) {
-						$btn.removeAttr('disabled').text('Upload');
+						$btn.prop('disabled', false).html(
+							'<i class="icon-base ti tabler-upload me-1"></i> Upload');
 						if (res.status == 1) {
 							let html = '<div class="alert alert-success mb-2">' + escapeHtml(res.msg || 'Upload completed') + '</div>';
 							if (res.errors && res.errors.length) {
 								const items = res.errors.slice(0, 15).map(function(err) {
 									return '<li>' + escapeHtml(err) + '</li>';
 								}).join('');
-								html += '<div class="alert alert-warning mb-0"><strong>Row Issues:</strong><ul class="mb-0 mt-2">' + items + '</ul></div>';
+								html +=
+									'<div class="alert alert-warning mb-0"><strong>Row notes:</strong><ul class="mb-0 mt-2 small">' +
+									items + '</ul></div>';
 							}
 							$msg.html(html);
 							const created = Number(res.summary && res.summary.created ? res.summary.created : 0);
 							const updated = Number(res.summary && res.summary.updated ? res.summary.updated : 0);
 							if (created > 0 || updated > 0) {
-								setTimeout(function() { location.reload(); }, 1800);
+								setTimeout(function() { location.reload(); }, 1500);
 							}
 						} else if (res.error_array) {
 							const firstKey = Object.keys(res.error_array)[0];
-							const firstErr = firstKey ? res.error_array[firstKey][0] : 'Validation failed';
+							const firstErr = res.error_array[firstKey] ? res.error_array[firstKey][0] : 'Validation failed';
 							$msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(firstErr) + '</div>');
 						} else {
 							let html = '<div class="alert alert-danger mb-2">' + escapeHtml(res.error || 'Upload failed') + '</div>';
 							if (res.errors && res.errors.length) {
-								const items = res.errors.slice(0, 20).map(function(err) {
+								const items = res.errors.slice(0, 15).map(function(err) {
 									return '<li>' + escapeHtml(err) + '</li>';
 								}).join('');
-								html += '<div class="alert alert-warning mb-0"><strong>Row Issues:</strong><ul class="mb-0 mt-2">' + items + '</ul></div>';
+								html += '<div class="alert alert-warning mb-0"><ul class="mb-0 small">' + items + '</ul></div>';
 							}
 							$msg.html(html);
 						}
 					},
 					error: function(xhr) {
-						$btn.removeAttr('disabled').text('Upload');
-						const serverMsg = xhr && xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : '';
-						$msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(serverMsg || 'Upload failed. Please try again.') + '</div>');
+						$btn.prop('disabled', false).html(
+							'<i class="icon-base ti tabler-upload me-1"></i> Upload');
+						let serverMsg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : xhr.statusText;
+						$msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(serverMsg || 'Upload failed.') + '</div>');
 					}
 				});
-			});
-
-			$('#bulkStudentModal').on('hidden.bs.modal', function () {
-				$('#bulk_student_file').val('');
-				$('#bulk-student-msg').html('');
 			});
 
 			// Delete
@@ -424,5 +553,4 @@
 			});
 		});
 	</script>
-@endsection
 @endsection

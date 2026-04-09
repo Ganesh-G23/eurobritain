@@ -125,6 +125,12 @@
 							<input type="password" name="password_confirmation" class="form-control" placeholder="Confirm new password">
 							<span class="ajax-error text-danger small"></span>
 						</div>
+						<div class="mb-0 ajax-field">
+                            <label for="email" class="form-label">Recovery Email<span class="text-danger">*</span></label>
+                            <input class="form-control" type="text" id="recovery_email" name="recovery_email" 
+							placeholder="john.doe@example.com" />
+                            <span class="ajax-error text-danger small"></span>
+                        </div>
 					</form>
 				</div>
 				<div class="modal-footer">
@@ -138,6 +144,32 @@
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/popper/popper.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/js/bootstrap.js') }}"></script>
+	<script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
+	<script src="{{ url('public/admin_theme/assets/js/template-customizer.js') }}"></script>
+	<script>
+		if (typeof TemplateCustomizer !== 'undefined') {
+			window.templateCustomizer = new TemplateCustomizer({
+				displayCustomizer: false,
+				lang: localStorage.getItem('templateCustomizer-' + templateName + '--Lang') || 'en',
+				defaultPrimaryColor: '#FAAF3C',
+				defaultSkin: 1,
+				defaultTheme: 'light',
+				defaultContentLayout: 'compact',
+				defaultNavbarType: 'sticky',
+				controls: [
+					'color',
+					'theme',
+					'skins',
+					'semiDark',
+					'layoutCollapsed',
+					'layoutNavbarOptions',
+					'headerType',
+					'contentLayout',
+					'rtl'
+				]
+			});
+		}
+	</script>
 	<script>
 		function clearAjaxState(scope) {
 			const $scope = scope ? $(scope) : $(document);

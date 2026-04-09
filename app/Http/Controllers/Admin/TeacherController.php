@@ -7,7 +7,9 @@ use App\Models\ParentStudentMap;
 use App\Models\PortalUser;
 use App\Models\Classroom;
 use App\Models\Batch;
+use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
+use App\Support\StudentEnrollmentSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Validator;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class TeacherController extends Controller
 {
@@ -151,22 +154,23 @@ class TeacherController extends Controller
         $response['classrooms'] = Classroom::where('teacher_id', $id)->orderBy('id', 'desc')->get();
         $response['batches'] = Batch::where('teacher_id', $id)->with('classroom')->orderBy('id', 'desc')->get();
         $response['students'] = PortalUser::query()
-            ->select('portal_user.*', 'stm.classroom_id as classroom_id', 'stm.batch_id as batch_id')
-            ->join('student_teacher_map as stm', 'stm.student_id', '=', 'portal_user.id')
             ->where('portal_user.role', 2)
-            ->where('stm.teacher_id', $id)
-            ->with(['batch', 'classroom'])
+            ->whereHas('teachers', static function ($q) use ($id) {
+                $q->whereKey($id);
+            })
+            ->with(['studentClassroomMaps' => static function ($q) use ($id) {
+                $q->where('teacher_id', $id)->with(['classroom', 'batch']);
+            }])
             ->orderBy('portal_user.id', 'desc')
-            ->distinct()
             ->get();
-        $response['teachers'] = PortalUser::where('role', 1)->orderBy('name', 'asc')->get();
-        
+
         // Counts for overview
         $response['total_students'] = DB::table('portal_user')
             ->join('student_teacher_map as stm', 'stm.student_id', '=', 'portal_user.id')
             ->where('portal_user.role', 2)
             ->where('stm.teacher_id', $id)
             ->distinct('portal_user.id')
+            ->whereNull('portal_user.deleted_at')
             ->count('portal_user.id');
         $response['total_classrooms'] = Classroom::where('teacher_id', $id)->count();
         $response['total_batches'] = Batch::where('teacher_id', $id)->count();
@@ -192,7 +196,7 @@ class TeacherController extends Controller
             }
 
             $classroom->name = $request->name;
-            $classroom->teacher_id = $request->teacher_id;
+            $classroom->teacher_id = (int) $request->teacher_id;
             $classroom->save();
 
             $this->response['status'] = 1;
@@ -324,23 +328,38 @@ class TeacherController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email',
             'phone' => 'required|string',
-            'classroom_id' => 'required|exists:classrooms,id',
-            'batch_id' => 'required|exists:batches,id',
+            'teacher_id' => 'required|exists:portal_user,id',
             'parent_name' => 'nullable|string|max:255',
             'parent_email' => 'nullable|email',
             'parent_phone' => 'nullable|string|max:30',
         ];
         if ($request->id) {
-            $decodedId = base64_decode($request->id);
-            $rules['email'] = 'required|email|unique:portal_user,email,' . $decodedId;
-            $rules['phone'] = 'required|string|unique:portal_user,phone,' . $decodedId;
+            $decodedId = (int) base64_decode($request->id);
+            // Scope to students only so a linked parent (same table, role 3) can share phone/email.
+            $rules['email'] = [
+                'required',
+                'email',
+                Rule::unique('portal_user', 'email')
+                    ->ignore($decodedId)
+                    ->where(function ($query) {
+                        $query->where('role', 2)->whereNull('deleted_at');
+                    }),
+            ];
+            $rules['phone'] = [
+                'required',
+                'string',
+                Rule::unique('portal_user', 'phone')
+                    ->ignore($decodedId)
+                    ->where(function ($query) {
+                        $query->where('role', 2)->whereNull('deleted_at');
+                    }),
+            ];
         }
         $validation = Validator::make($request->all(), $rules);
 
         if (!$validation->fails()) {
             $id = $request->id ? base64_decode($request->id) : null;
-            $batch = Batch::find($request->batch_id);
-            $teacherId = $batch->teacher_id ?? null;
+            $teacherId = (int) $request->teacher_id;
             $plainPassword = null;
 
             DB::beginTransaction();
@@ -392,23 +411,12 @@ class TeacherController extends Controller
                 $student->name = $request->name;
                 $student->email = $request->email;
                 $student->phone = $request->phone;
-                if (!$student->classroom_id) {
-                    $student->classroom_id = $request->classroom_id;
-                }
-                if (!$student->batch_id) {
-                    $student->batch_id = $request->batch_id;
-                }
                 $student->save();
 
-                if ($teacherId) {
-                    StudentTeacherMap::updateOrCreate([
-                        'student_id' => $student->id,
-                        'teacher_id' => $teacherId,
-                    ], [
-                        'classroom_id' => $request->classroom_id,
-                        'batch_id' => $request->batch_id,
-                    ]);
-                }
+                StudentTeacherMap::firstOrCreate([
+                    'student_id' => $student->id,
+                    'teacher_id' => $teacherId,
+                ]);
 
             // Handle Parent creation/upsert in same portal_user table with role=3
             $parentName = trim((string)$request->parent_name);
@@ -462,7 +470,7 @@ class TeacherController extends Controller
                     $parent->p = $parentPlain;
                     $parent->is_password_changed = 0;
                     $parent->role = 3; // Parent
-                    $parent->created_by = $batch->teacher_id ?? null;
+                    $parent->created_by = $teacherId;
                 } else {
                     // If reusing existing parent, don't error on same value; allow updating email/phone only if not colliding
                     if ($parentEmail !== '' && $parentEmail !== (string)$parent->email) {
@@ -535,9 +543,11 @@ class TeacherController extends Controller
             $this->response['msg'] = "Student saved successfully";
             if (isset($request->reload) && ($request->reload == 'no')) {
                 $this->response['data']['row'] = $student;
+            } elseif ($request->boolean('return_student_list')) {
+                $this->response['redirect_url'] = url('admin/student');
             } else {
-                if ($batch && $batch->teacher_id) {
-                    $this->response['redirect_url'] = url("admin/teacher/view?id=" . base64_encode($batch->teacher_id));
+                if ($teacherId) {
+                    $this->response['redirect_url'] = url("admin/teacher/view?id=" . base64_encode($teacherId));
                 }
             }
         } else {
@@ -547,15 +557,84 @@ class TeacherController extends Controller
         echo json_encode($this->response);
     }
 
+    function syncStudentEnrollments(Request $request)
+    {
+        $studentId = $request->student_id ? (int) base64_decode($request->student_id) : 0;
+        $teacherId = (int) ($request->teacher_id ?? 0);
+
+        if ($studentId < 1 || $teacherId < 1) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Invalid student or teacher.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $student = PortalUser::where('role', 2)->find($studentId);
+        if (! $student) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Student not found.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $pairs = StudentEnrollmentSync::pairsFromRequestArrays(
+            (array) $request->input('map_classroom_id', []),
+            (array) $request->input('map_batch_id', [])
+        );
+
+        if (count($pairs) < 1) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Add at least one classroom and batch.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        [$ok, $err] = StudentEnrollmentSync::validatePairsForTeacher($teacherId, $pairs);
+        if (! $ok) {
+            $this->response['status'] = 0;
+            $this->response['error'] = $err;
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        try {
+            StudentEnrollmentSync::syncForTeacher($studentId, $teacherId, $pairs);
+        } catch (\Throwable $e) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unable to save enrollments. '.$e->getMessage();
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Classrooms saved successfully';
+        if ($request->boolean('return_student_list')) {
+            $this->response['redirect_url'] = url('admin/student');
+        } else {
+            $this->response['redirect_url'] = url('admin/teacher/view?id='.base64_encode($teacherId));
+        }
+        echo json_encode($this->response);
+    }
+
     function deleteStudent(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
-        
+        $requestedTeacherId = $request->teacher_id ? base64_decode($request->teacher_id) : null;
+
         if ($id) {
             $student = PortalUser::where('role', 2)->find($id);
             if ($student) {
-                $batch = Batch::find($student->batch_id);
-                $teacherId = $batch ? $batch->teacher_id : null;
+                $teacherId = $requestedTeacherId ? (int) $requestedTeacherId : null;
+                if (! $teacherId) {
+                    $batch = Batch::find($student->batch_id);
+                    $teacherId = $batch ? (int) $batch->teacher_id : null;
+                }
+                StudentClassroomMap::where('student_id', $student->id)->delete();
                 StudentTeacherMap::where('student_id', $student->id)->delete();
                 ParentStudentMap::where('student_id', $student->id)->delete();
                 $student->delete();
@@ -603,15 +682,23 @@ class TeacherController extends Controller
         if (!$teacherId) {
             $teacherId = (int)($student->teachers->first()->id ?? 0);
         }
+        $response['student_classroom_maps'] = collect();
         if ($teacherId) {
-            $mapRow = StudentTeacherMap::where('student_id', $student->id)
+            $maps = StudentClassroomMap::where('student_id', $student->id)
                 ->where('teacher_id', $teacherId)
-                ->first();
-            if ($mapRow) {
-                $student->classroom_id = $mapRow->classroom_id;
-                $student->batch_id = $mapRow->batch_id;
-                $student->setRelation('classroom', $mapRow->classroom_id ? Classroom::find($mapRow->classroom_id) : null);
-                $student->setRelation('batch', $mapRow->batch_id ? Batch::with('classroom')->find($mapRow->batch_id) : null);
+                ->with(['classroom', 'batch'])
+                ->orderBy('id')
+                ->get();
+            $response['student_classroom_maps'] = $maps;
+            $first = $maps->first();
+            if ($first) {
+                $student->classroom_id = $first->classroom_id;
+                $student->batch_id = $first->batch_id;
+                $student->setRelation('classroom', $first->classroom);
+                if ($first->batch) {
+                    $first->batch->loadMissing('classroom');
+                }
+                $student->setRelation('batch', $first->batch);
             }
         }
 
@@ -644,6 +731,58 @@ class TeacherController extends Controller
         echo json_encode($this->response);
     }
 
+    /**
+     * Resolve one classroom/batch pair for bulk CSV (name or id, scoped to teacher).
+     *
+     * @return array{skip?: true, error?: string, pair?: array{classroom_id: int, batch_id: int}}
+     */
+    private function resolveBulkClassroomBatchPair(int $teacherId, string $classroomRaw, string $batchRaw): array
+    {
+        $classroomRaw = trim($classroomRaw);
+        $batchRaw = trim($batchRaw);
+        if ($classroomRaw === '' && $batchRaw === '') {
+            return ['skip' => true];
+        }
+        if ($classroomRaw === '' || $batchRaw === '') {
+            return ['error' => 'Classroom and batch are both required for each pair.'];
+        }
+
+        $classroom = ctype_digit($classroomRaw)
+            ? Classroom::where('teacher_id', $teacherId)->find((int) $classroomRaw)
+            : Classroom::where('teacher_id', $teacherId)->whereRaw('LOWER(name)=?', [strtolower($classroomRaw)])->first();
+        $batch = ctype_digit($batchRaw)
+            ? Batch::where('teacher_id', $teacherId)->find((int) $batchRaw)
+            : Batch::where('teacher_id', $teacherId)->whereRaw('LOWER(name)=?', [strtolower($batchRaw)])->first();
+
+        if (! $classroom && $batch) {
+            $classroom = Classroom::where('teacher_id', $teacherId)->find((int) ($batch->classroom_id));
+        }
+        $classroomId = $classroom ? (int) $classroom->id : 0;
+        $batchId = $batch ? (int) $batch->id : 0;
+
+        if ($classroomId < 1 || $batchId < 1) {
+            return ['error' => 'Unknown classroom or batch for this teacher.'];
+        }
+
+        $classroom = Classroom::where('teacher_id', $teacherId)->find($classroomId);
+        $batch = Batch::where('teacher_id', $teacherId)->find($batchId);
+        if (! $classroom) {
+            return ['error' => 'Classroom does not belong to this teacher.'];
+        }
+        if (! $batch) {
+            return ['error' => 'Batch does not belong to this teacher.'];
+        }
+        if ((int) $batch->classroom_id !== (int) $classroom->id) {
+            $classroom = Classroom::where('teacher_id', $teacherId)->find((int) $batch->classroom_id);
+            if (! $classroom) {
+                return ['error' => 'Batch is not linked to a valid classroom for this teacher.'];
+            }
+            $classroomId = (int) $classroom->id;
+        }
+
+        return ['pair' => ['classroom_id' => $classroomId, 'batch_id' => $batchId]];
+    }
+
     public function downloadStudentBulkSample(Request $request)
     {
         $teacherId = (int)($request->teacher_id ?? 0);
@@ -655,10 +794,17 @@ class TeacherController extends Controller
         $sampleClassroom = $firstClassroom ? (string)$firstClassroom->name : '8th Class';
         $sampleBatch = $firstBatch ? (string)$firstBatch->name : 'Batch A';
 
+        $secondClassroom = Classroom::where('teacher_id', $teacherId)->orderBy('id')->skip(1)->first();
+        $secondBatch = $secondClassroom
+            ? Batch::where('teacher_id', $teacherId)->where('classroom_id', $secondClassroom->id)->orderBy('id')->first()
+            : null;
+        $sampleClassroom2 = $secondClassroom ? (string) $secondClassroom->name : '';
+        $sampleBatch2 = $secondBatch ? (string) $secondBatch->name : '';
+
         $rows = [
-            ['name', 'email', 'phone', 'classroom', 'batch', 'parent_name', 'parent_email', 'parent_phone'],
-            ['John Doe', 'john.doe@example.com', '9876543210', $sampleClassroom, $sampleBatch, 'Parent One', 'parent.one@example.com', '9000000001'],
-            ['Jane Smith', 'jane.smith@example.com', '9876543211', $sampleClassroom, $sampleBatch, 'Parent Two', 'parent.two@example.com', '9000000002'],
+            ['name', 'email', 'phone', 'classroom', 'batch', 'classroom_2', 'batch_2', 'classroom_3', 'batch_3', 'parent_name', 'parent_email', 'parent_phone'],
+            ['John Doe', 'john.doe@example.com', '9876543210', $sampleClassroom, $sampleBatch, '', '', '', '', 'Parent One', 'parent.one@example.com', '9000000001'],
+            ['Jane Smith', 'jane.smith@example.com', '9876543211', $sampleClassroom, $sampleBatch, $sampleClassroom2, $sampleBatch2, '', '', 'Parent Two', 'parent.two@example.com', '9000000002'],
         ];
 
         $headers = [
@@ -729,6 +875,7 @@ class TeacherController extends Controller
         $hasParentPhone = array_key_exists('parent_phone', $headerMap);
 
         $created = 0;
+        $updated = 0;
         $skipped = 0;
         $errors = [];
         $line = 1;
@@ -748,18 +895,54 @@ class TeacherController extends Controller
 
             if ($name === '' && $email === '' && $phone === '' && $classroomRaw === '' && $batchRaw === '') continue;
 
-            $classroom = ctype_digit($classroomRaw)
-                ? Classroom::where('teacher_id', $teacherId)->find((int)$classroomRaw)
-                : Classroom::where('teacher_id', $teacherId)->whereRaw('LOWER(name)=?', [strtolower($classroomRaw)])->first();
-            $batch = ctype_digit($batchRaw)
-                ? Batch::where('teacher_id', $teacherId)->find((int)$batchRaw)
-                : Batch::where('teacher_id', $teacherId)->whereRaw('LOWER(name)=?', [strtolower($batchRaw)])->first();
-
-            if (!$classroom && $batch) {
-                $classroom = Classroom::where('teacher_id', $teacherId)->find((int)($batch->classroom_id));
+            $r1 = $this->resolveBulkClassroomBatchPair($teacherId, $classroomRaw, $batchRaw);
+            if (isset($r1['error'])) {
+                $errors[] = 'Row ' . $line . ': ' . $r1['error'];
+                $skipped++;
+                continue;
             }
-            $classroomId = $classroom ? (int)$classroom->id : 0;
-            $batchId = $batch ? (int)$batch->id : 0;
+            if (isset($r1['skip'])) {
+                $errors[] = 'Row ' . $line . ': classroom and batch are required (first pair).';
+                $skipped++;
+                continue;
+            }
+
+            $pairsAssoc = [];
+            $p1 = $r1['pair'];
+            $pairsAssoc[$p1['classroom_id'].'-'.$p1['batch_id']] = $p1;
+
+            foreach ([['classroom_2', 'batch_2'], ['classroom_3', 'batch_3']] as $cols) {
+                [$ck, $bk] = $cols;
+                if (! isset($headerMap[$ck]) || ! isset($headerMap[$bk])) {
+                    continue;
+                }
+                $cRaw = trim((string) ($row[$headerMap[$ck]] ?? ''));
+                $bRaw = trim((string) ($row[$headerMap[$bk]] ?? ''));
+                $rx = $this->resolveBulkClassroomBatchPair($teacherId, $cRaw, $bRaw);
+                if (isset($rx['skip'])) {
+                    continue;
+                }
+                if (isset($rx['error'])) {
+                    $errors[] = 'Row ' . $line . ' (' . $ck . '/' . $bk . '): ' . $rx['error'];
+                    $skipped++;
+                    continue 2;
+                }
+                $px = $rx['pair'];
+                $pairsAssoc[$px['classroom_id'].'-'.$px['batch_id']] = $px;
+            }
+
+            $pairs = array_values($pairsAssoc);
+
+            [$pairsOk, $pairsErr] = StudentEnrollmentSync::validatePairsForTeacher($teacherId, $pairs);
+            if (! $pairsOk) {
+                $errors[] = 'Row ' . $line . ': ' . $pairsErr;
+                $skipped++;
+                continue;
+            }
+
+            $firstPair = $pairs[0];
+            $classroomId = $firstPair['classroom_id'];
+            $batchId = $firstPair['batch_id'];
 
             $rowValidator = Validator::make([
                 'name' => $name,
@@ -779,45 +962,91 @@ class TeacherController extends Controller
                 $skipped++; continue;
             }
 
-            $classroom = Classroom::where('teacher_id', $teacherId)->find($classroomId);
-            $batch = Batch::where('teacher_id', $teacherId)->find($batchId);
-            if (!$classroom) { $errors[] = 'Row ' . $line . ': classroom_id does not belong to teacher.'; $skipped++; continue; }
-            if (!$batch) { $errors[] = 'Row ' . $line . ': batch_id does not belong to teacher.'; $skipped++; continue; }
-            if ((int)$batch->classroom_id !== (int)$classroom->id) {
-                $classroom = Classroom::where('teacher_id', $teacherId)->find((int)$batch->classroom_id);
-                if (!$classroom) { $errors[] = 'Row ' . $line . ': batch_id not mapped to a valid classroom.'; $skipped++; continue; }
-                $classroomId = (int)$classroom->id;
+            // Email must be unique in DB; soft-deleted rows still occupy the unique index, so use withTrashed().
+            $conflictUser = PortalUser::withTrashed()->where('email', $email)->first();
+            if ($conflictUser && (int) ($conflictUser->role ?? 0) !== 2) {
+                $errors[] = 'Row ' . $line . ': email already used by a non-student account.';
+                $skipped++;
+                continue;
             }
 
-            // Insert-only, enforce email unique; phone may be unique at DB, so pre-check to avoid exception
-            if (PortalUser::where('email', $email)->exists()) {
-                $errors[] = 'Row ' . $line . ': email already exists.';
-                $skipped++; continue;
-            }
-            if (PortalUser::where('phone', $phone)->exists()) {
-                $errors[] = 'Row ' . $line . ': phone already exists.';
-                $skipped++; continue;
-            }
+            $studentByEmail = PortalUser::withTrashed()->where('role', 2)->where('email', $email)->first();
+            if ($studentByEmail) {
+                $phoneTakenByOther = PortalUser::where('role', 2)
+                    ->where('phone', $phone)
+                    ->where('id', '!=', $studentByEmail->id)
+                    ->exists();
+                if ($phoneTakenByOther) {
+                    $errors[] = 'Row ' . $line . ': phone already registered to another student.';
+                    $skipped++;
+                    continue;
+                }
 
-            $student = new PortalUser();
-            $plain = Str::random(8);
-            $student->password = Hash::make($plain);
-            $student->p = $plain;
-            $student->is_password_changed = 0;
-            $student->role = 2;
-            $student->created_by = $teacherId;
-            $student->name = $name;
-            $student->email = $email;
-            $student->phone = $phone;
-            $student->classroom_id = $classroomId;
-            $student->batch_id = $batchId;
+                if ($studentByEmail->trashed()) {
+                    $studentByEmail->restore();
+                    $plain = Str::random(8);
+                    $studentByEmail->password = Hash::make($plain);
+                    $studentByEmail->p = $plain;
+                    $studentByEmail->is_password_changed = 0;
+                }
 
-            try {
-                $student->save();
-                $created++;
-            } catch (\Throwable $e) {
-                $errors[] = 'Row ' . $line . ': failed to insert (' . $e->getMessage() . ')';
-                $skipped++; continue;
+                $studentByEmail->name = $name;
+                $studentByEmail->phone = $phone;
+                $studentByEmail->classroom_id = $classroomId;
+                $studentByEmail->batch_id = $batchId;
+                $studentByEmail->created_by = $teacherId;
+
+                try {
+                    $studentByEmail->save();
+                    StudentTeacherMap::firstOrCreate(
+                        [
+                            'student_id' => $studentByEmail->id,
+                            'teacher_id' => $teacherId,
+                        ]
+                    );
+                    StudentEnrollmentSync::syncForTeacher($studentByEmail->id, $teacherId, $pairs);
+                    $updated++;
+                } catch (\Throwable $e) {
+                    $errors[] = 'Row ' . $line . ': failed to update student (' . $e->getMessage() . ')';
+                    $skipped++;
+                    continue;
+                }
+                $student = $studentByEmail;
+            } else {
+                if (PortalUser::where('role', 2)->where('phone', $phone)->exists()) {
+                    $errors[] = 'Row ' . $line . ': phone already registered to another student.';
+                    $skipped++;
+                    continue;
+                }
+
+                $student = new PortalUser();
+                $plain = Str::random(8);
+                $student->password = Hash::make($plain);
+                $student->p = $plain;
+                $student->is_password_changed = 0;
+                $student->role = 2;
+                $student->created_by = $teacherId;
+                $student->name = $name;
+                $student->email = $email;
+                $student->phone = $phone;
+                $student->classroom_id = $classroomId;
+                $student->batch_id = $batchId;
+
+                try {
+                    $student->save();
+                    StudentTeacherMap::firstOrCreate(
+                        [
+                            'student_id' => $student->id,
+                            'teacher_id' => $teacherId,
+                        ]
+                    );
+                    StudentEnrollmentSync::syncForTeacher($student->id, $teacherId, $pairs);
+                    $created++;
+                } catch (\Throwable $e) {
+                    $errors[] = 'Row ' . $line . ': failed to insert (' . $e->getMessage() . ')';
+                    $skipped++;
+                    continue;
+                }
             }
 
         // Optional parent creation/link (role=3)
@@ -885,13 +1114,13 @@ class TeacherController extends Controller
 
         fclose($handle);
 
-        $status = $created > 0 ? 1 : 0;
+        $status = ($created + $updated) > 0 ? 1 : 0;
         return response()->json([
             'status' => $status,
-            'msg' => "Bulk upload completed. Created: {$created}, Skipped: {$skipped}.",
-            'summary' => ['created' => $created, 'skipped' => $skipped],
+            'msg' => "Bulk upload completed. Created: {$created}, Updated: {$updated}, Skipped: {$skipped}.",
+            'summary' => ['created' => $created, 'updated' => $updated, 'skipped' => $skipped],
             'errors' => $errors,
-            'error' => $status === 0 ? 'No rows were inserted. Please check row issues.' : null,
+            'error' => $status === 0 ? 'No rows were inserted or updated. Please check row issues.' : null,
             'redirect_url' => url('admin/teacher/view?id=' . base64_encode($teacherId)),
         ]);
     }

@@ -1,7 +1,6 @@
 @extends('web.user.layouts.app')
-
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y">
+<div class="container-xxl flex-grow-1 container-p-y pb-2">
     <div class="row g-6 mb-4">
         <div class="col-12 d-flex justify-content-between align-items-center">
             <h5 class="mb-0">My Batches</h5>

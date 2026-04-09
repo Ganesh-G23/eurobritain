@@ -18,6 +18,13 @@ $active_tab = $active_tab ?? "";
     </a>
 </li>
 
+<li class="menu-item {{ $active_tab == 'student' ? 'active' : '' }}">
+    <a href="{{ url('admin/student') }}" class="menu-link">
+        <i class="menu-icon icon-base ti tabler-user"></i>
+        <div data-i18n="Students">Students</div>
+    </a>
+</li>
+
 <!-- Forms & Tables -->
 <li class="menu-header small">
     <span class="menu-header-text" data-i18n="Settings">Settings</span>

@@ -1,6 +1,6 @@
 @extends('web.user.student.layouts.app')
 @section('content')
-<div class="container-xxl flex-grow-1 pt-2 pb-3">
+<div class="container-xxl flex-grow-1 pt-2 pb-2">
     <div class="row g-6">
         <div class="col-md-12">
             <ul class="nav nav-pills flex-column flex-md-row mb-4">

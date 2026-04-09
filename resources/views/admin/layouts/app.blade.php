@@ -54,27 +54,13 @@
     <!--! Template customizer & Theme config files MUST be included after core stylesheets and helpers.js in the <head> section -->
 
     <!--? Template customizer: To hide customizer set displayCustomizer value false in config.js.  -->
-    {{-- <script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script> --}}
+        <script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script>
 
     <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
 
-    <script>
-        // Fix assetsPath immediately before config.js loads
-        (function() {
-            const html = document.documentElement;
-            let assetsPath = html.getAttribute('data-assets-path');
-            if (assetsPath && !assetsPath.endsWith('/')) {
-                html.setAttribute('data-assets-path', assetsPath + '/');
-            }
-        })();
-    </script>
+  
     <script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
-    <script>
-        // Ensure window.assetsPath has trailing slash after config.js sets it
-        if (window.assetsPath && !window.assetsPath.endsWith('/')) {
-            window.assetsPath += '/';
-        }
-    </script>
+   
 </head>
 
 <body>
