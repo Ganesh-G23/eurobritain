@@ -34,6 +34,7 @@ Route::prefix('user')->group(function () {
     });
     Route::get('/dashboard', [UserDashboardController::class, 'index']);
     Route::get('/profile', [UserDashboardController::class, 'profile']);
+    Route::get('/profile/settings', [UserDashboardController::class, 'teacherProfileSettings']);
     Route::post('/profile/save_profile', [UserDashboardController::class, 'saveProfile']);
     Route::post('/profile/save_teacher_settings', [UserDashboardController::class, 'saveTeacherSettings']);
     Route::get('/security', [UserDashboardController::class, 'security']);
@@ -76,8 +77,11 @@ Route::prefix('user')->group(function () {
         Route::post('/students/delete', [UserTeacherController::class, 'deleteStudent']);
         Route::get('/students/bulk-sample', [UserTeacherController::class, 'downloadStudentBulkSample']);
         Route::post('/students/bulk-upload', [UserTeacherController::class, 'bulkUploadStudents']);
+        Route::match(['get', 'post'], '/classrooms/details/{id}/export', [UserTeacherController::class, 'exportClassroomMarks']);
+        Route::post('/classrooms/details/{id}/import-marks', [UserTeacherController::class, 'importMarksFromCsv']);
         Route::get('/classrooms/details/{id}', [UserTeacherController::class, 'classroomsDetails']);
         Route::post('/exams/save', [UserTeacherController::class, 'saveExam']);
+        Route::post('/exams/marks/save', [UserTeacherController::class, 'saveExamMarksColumn']);
     });
 });
 

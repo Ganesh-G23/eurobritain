@@ -74,7 +74,29 @@ class UserDashboardController extends Controller
         if ((int) ($portalUser['role'] ?? 0) === 1 && $teacherId > 0) {
             $data['total_classrooms'] = Classroom::where('teacher_id', $teacherId)->count();
             $data['total_batches'] = Batch::where('teacher_id', $teacherId)->count();
-            $data['total_classrooms_details'] = Classroom::with('batches')->where('teacher_id', $teacherId)->get();
+            $classrooms = Classroom::with('batches')->where('teacher_id', $teacherId)->get();
+            if ($classrooms->isNotEmpty()) {
+                $classroomIds = $classrooms->pluck('id')->all();
+                $studentCounts = DB::table('student_classroom_map as scm')
+                    ->join('batches as b', function ($join) {
+                        $join->on('b.id', '=', 'scm.batch_id')
+                            ->on('b.teacher_id', '=', 'scm.teacher_id');
+                    })
+                    ->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')
+                    ->where('scm.teacher_id', $teacherId)
+                    ->whereNull('pu.deleted_at')
+                    ->where('pu.role', 2)
+                    ->whereIn('b.classroom_id', $classroomIds)
+                    ->whereNotNull('scm.batch_id')
+                    ->selectRaw('b.classroom_id as classroom_id, COUNT(DISTINCT scm.student_id) as cnt')
+                    ->groupBy('b.classroom_id')
+                    ->pluck('cnt', 'classroom_id');
+                $classrooms->each(function (Classroom $c) use ($studentCounts) {
+                    $cid = (int) $c->id;
+                    $c->setAttribute('enrolled_student_count', (int) ($studentCounts[$cid] ?? $studentCounts[(string) $cid] ?? 0));
+                });
+            }
+            $data['total_classrooms_details'] = $classrooms;
             $data['total_students'] = (int) DB::table('student_teacher_map as stm')
                 ->join('portal_user as pu', 'pu.id', '=', 'stm.student_id')
                 ->where('stm.teacher_id', $teacherId)
@@ -104,13 +126,6 @@ class UserDashboardController extends Controller
         $data['title'] = 'My Profile';
         $data['active_tab'] = 'profile';
         $data['details'] = $details;
-        $data['teacher_setting'] = null;
-        if ((int) ($portalUser['role'] ?? 0) === 1) {
-            $data['teacher_setting'] = TeacherSetting::firstOrNew(
-                ['teacher_id' => $details->id],
-                ['count_setting' => null]
-            );
-        }
         if ((int) ($portalUser['role'] ?? 0) === 2) {
             $teacherId = (int) (session('selected_teacher_id') ?? 0);
             $data['teacher'] = $teacherId > 0
@@ -121,6 +136,31 @@ class UserDashboardController extends Controller
         }
 
         return view('web.user.profile', $data);
+    }
+
+    public function teacherProfileSettings()
+    {
+        if (! session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 1) {
+            return redirect('user/profile');
+        }
+        $details = PortalUser::find($portalUser['id'] ?? 0);
+        if (! $details) {
+            return redirect('login');
+        }
+        $data = [];
+        $data['title'] = 'Settings';
+        $data['active_tab'] = 'teacher_settings';
+        $data['details'] = $details;
+        $data['teacher_setting'] = TeacherSetting::firstOrNew(
+            ['teacher_id' => $details->id],
+            ['count_setting' => null]
+        );
+
+        return view('web.user.profile_settings', $data);
     }
 
     public function security()

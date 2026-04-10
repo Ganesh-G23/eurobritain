@@ -2,6 +2,7 @@
 @section('content')
 	<div class="container-xxl flex-grow-1 container-p-y pt-2 pb-2">
 		<div class="row g-6">
+		
 			<div class="col-12">
 				<div class="card">
 					<div class="card-header d-flex justify-content-between align-items-center">
@@ -67,9 +68,21 @@
 									@forelse($students as $index => $student)
 									@php
 										$mapsForRow = $student->studentClassroomMaps;
-										$firstMap = $mapsForRow->first();
-										$crDisplay = $firstMap->classroom->name ?? ($student->classroom->name ?? '—');
-										$batchDisplay = $firstMap->batch->name ?? ($student->batch->name ?? '—');
+										if ($mapsForRow->isNotEmpty()) {
+											$crParts = [];
+											$batchParts = [];
+											foreach ($mapsForRow as $m) {
+												$cn = trim((string) ($m->classroom->name ?? ''));
+												$bn = trim((string) ($m->batch->name ?? ''));
+												$crParts[] = $cn !== '' ? $cn : '—';
+												$batchParts[] = $bn !== '' ? $bn : '—';
+											}
+											$crDisplay = implode(', ', $crParts);
+											$batchDisplay = implode(', ', $batchParts);
+										} else {
+											$crDisplay = $student->classroom->name ?? '—';
+											$batchDisplay = $student->batch->name ?? '—';
+										}
 										$mapsJson = $mapsForRow->map(static function ($m) {
 											return ['classroom_id' => (int) $m->classroom_id, 'batch_id' => (int) $m->batch_id];
 										})->values()->toJson();
