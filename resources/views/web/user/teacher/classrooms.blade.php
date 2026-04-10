@@ -18,7 +18,7 @@
                 <div class="d-flex align-items-start justify-content-between">
                     <div>
                         <h6 class="mb-1">{{ $classroom->name }}</h6>
-                        <small class="text-body-secondary d-block">Created {{ optional($classroom->created_at)->setTimezone(config('app.timezone'))->format('Y-m-d h:i A') }}</small>
+                        <small class="text-body-secondary d-block">Created {{ optional($classroom->created_at)->format('d M y') }}</small>
                     </div>
                     <div class="d-flex gap-1">
                         <button type="button" class="btn btn-sm btn-icon btn-label-primary edit-classroom" 
@@ -35,7 +35,7 @@
                 @php
                     $batches = \App\Models\Batch::where('classroom_id', $classroom->id)->orderBy('name')->get();
                     $batchCount = $batches->count();
-                    $studentCount = \App\Models\PortalUser::where('role', 2)->where('classroom_id', $classroom->id)->count();
+                    $studentCount = (int) ($classroom->enrolled_student_count ?? 0);
                 @endphp
                 <div class="mt-3">
                     <div class="d-flex align-items-center gap-3 mb-2">

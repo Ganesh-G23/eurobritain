@@ -231,6 +231,14 @@
                                     Profile</span>
                             </a>
                         </li>
+                        @if ($portalRole === 1)
+                            <li>
+                                <a class="dropdown-item" href="{{ url('user/profile/settings') }}">
+                                    <i class="icon-base ti tabler-settings me-3 icon-md"></i><span
+                                        class="align-middle">Settings</span>
+                                </a>
+                            </li>
+                        @endif
 
                         <li>
                             <div class="d-grid px-2 pt-2 pb-1">
@@ -287,7 +295,7 @@
                     </a>
                 </li>
 
-                <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
+                <li class="menu-item {{ in_array($active_tab, ['profile', 'security', 'teacher_settings']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
                         <div data-i18n="Accounts">Accounts</div>
@@ -303,6 +311,12 @@
                             <a href="{{ url('user/security') }}" class="menu-link">
                                 <i class="menu-icon icon-base ti tabler-lock"></i>
                                 <div data-i18n="Change Password">Change Password</div>
+                            </a>
+                        </li>
+                        <li class="menu-item {{ $active_tab === 'teacher_settings' ? 'active' : '' }}">
+                            <a href="{{ url('user/profile/settings') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-settings"></i>
+                                <div data-i18n="Settings">Settings</div>
                             </a>
                         </li>
                     </ul>

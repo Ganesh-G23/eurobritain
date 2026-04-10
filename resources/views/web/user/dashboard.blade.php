@@ -99,7 +99,7 @@
                                                 </span>
                                             </div>
                                             <div>
-                                                <h5 class="mb-0">{{ (int) ($classroom->students->count() ?? 0) }}</h5>
+                                                <h5 class="mb-0">{{ (int) ($classroom->enrolled_student_count ?? 0) }}</h5>
                                                 <small class="text-body-secondary">Students</small>
                                             </div>
                                         </div>

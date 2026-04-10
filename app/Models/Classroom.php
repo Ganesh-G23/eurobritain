@@ -28,4 +28,9 @@ class Classroom extends Model
     {
         return $this->hasMany(PortalUser::class, 'classroom_id');
     }
+
+    public function studentClassroomMaps()
+    {
+        return $this->hasMany(StudentClassroomMap::class, 'classroom_id');
+    }
 }
