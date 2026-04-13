@@ -71,7 +71,7 @@
                 <div class="row g-4">
                     @forelse (($student_classrooms ?? collect()) as $classroom)
                         <div class="col-md-6 col-xl-4">
-                            <div class="card  h-100 position-relative">
+                            <div class="card h-100 position-relative">
                                 <div class="card-body">
                                     <div class="d-flex align-items-start mb-3">
                                         <div class="avatar me-3 flex-shrink-0">
@@ -137,4 +137,5 @@
                 </div>
             </div>
         </div>
-        @endsection
+    </div>
+@endsection

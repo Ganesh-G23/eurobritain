@@ -13,6 +13,7 @@ use App\Models\PortalUser;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
+use App\Notifications\MarksUpdatedNotification;
 use App\Support\StudentEnrollmentSync;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,9 +31,23 @@ class UserTeacherController extends Controller
         $userId = (int) ($portal['id'] ?? 0);
         $role = (int) ($portal['role'] ?? 0);
         if (!$userId || $role !== 1) {
-            return [null, redirect('user/dashboard')];
+            return [null, redirect('login')];
         }
         return [$userId, null];
+    }
+
+    protected function requireTeacherOrStudent()
+    {
+        $portal = session('portal_user');
+
+        $userId = (int) ($portal['id'] ?? 0);
+        $role = (int) ($portal['role'] ?? 0);
+
+        if (!$userId || !in_array($role, [1, 2])) {
+            return [null, null, redirect('login')]; // ✅ FIXED
+        }
+
+        return [$userId, $role, null];
     }
 
     public function index()
@@ -1443,9 +1458,11 @@ class UserTeacherController extends Controller
 
         $importedRows = 0;
         $absentSettingForImport = $this->absentDisplaySettingForBatchTeacher($batch);
+        $marksNotifyQueue = [];
+        $marksStateCache = [];
 
         try {
-            DB::transaction(function () use ($handle, $exams, $batch, $allowedStudentIdSet, $firstMarkColIndex, $expectedCols, $compactTemplate, $legacyTemplate, $studentsByEmail, $studentsByLowerName, $absentSettingForImport, &$importedRows, &$lineNum) {
+            DB::transaction(function () use ($handle, $exams, $batch, $allowedStudentIdSet, $firstMarkColIndex, $expectedCols, $compactTemplate, $legacyTemplate, $studentsByEmail, $studentsByLowerName, $absentSettingForImport, &$importedRows, &$lineNum, &$marksNotifyQueue, &$marksStateCache) {
                 while (($row = fgetcsv($handle)) !== false) {
                     $lineNum++;
                     if ($row === [null] || $row === []) {
@@ -1499,12 +1516,20 @@ class UserTeacherController extends Controller
                             throw new \RuntimeException('Row ' . $lineNum . ': marks for "' . $exam->exam_name . '" cannot exceed ' . $exam->max_marks . '.');
                         }
 
+                        $stateCacheKey = (int) $exam->id . ':' . $studentId;
+                        if (!array_key_exists($stateCacheKey, $marksStateCache)) {
+                            $marksStateCache[$stateCacheKey] = $this->readMarksNotificationStateForExamStudent((int) $exam->id, $studentId);
+                        }
+                        $oldState = $marksStateCache[$stateCacheKey];
+
                         if ($raw === '') {
                             Mark::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                             if ($absencesReady) {
                                 MarkAbsence::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                             }
+                            $marksStateCache[$stateCacheKey] = '';
                         } elseif (self::isAbsentMarkInput($raw)) {
+                            $newState = 'absent';
                             Mark::query()->updateOrCreate(
                                 [
                                     'exam_id' => $exam->id,
@@ -1524,10 +1549,23 @@ class UserTeacherController extends Controller
                                     $absencesValueCol ? ['value' => (string) $absentSettingForImport] : [],
                                 );
                             }
+                            if ($this->shouldQueueMarksNotification($oldState, $newState)) {
+                                $marksNotifyQueue[] = [
+                                    'student_id' => $studentId,
+                                    'exam_name' => (string) $exam->exam_name,
+                                    'marks_label' => 'Absent',
+                                    'is_new_entry' => $oldState === '',
+                                    'classroom_id' => (int) $batch->classroom_id,
+                                    'batch_id' => (int) $batch->id,
+                                    'exam_id' => (int) $exam->id,
+                                ];
+                            }
+                            $marksStateCache[$stateCacheKey] = $newState;
                         } else {
                             if ($absencesReady) {
                                 MarkAbsence::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                             }
+                            $newState = 'n:' . $raw;
                             Mark::query()->updateOrCreate(
                                 [
                                     'exam_id' => $exam->id,
@@ -1538,6 +1576,18 @@ class UserTeacherController extends Controller
                                     'batch_id' => $batch->id,
                                 ],
                             );
+                            if ($this->shouldQueueMarksNotification($oldState, $newState)) {
+                                $marksNotifyQueue[] = [
+                                    'student_id' => $studentId,
+                                    'exam_name' => (string) $exam->exam_name,
+                                    'marks_label' => $raw,
+                                    'is_new_entry' => $oldState === '',
+                                    'classroom_id' => (int) $batch->classroom_id,
+                                    'batch_id' => (int) $batch->id,
+                                    'exam_id' => (int) $exam->id,
+                                ];
+                            }
+                            $marksStateCache[$stateCacheKey] = $newState;
                         }
                     }
 
@@ -1552,6 +1602,9 @@ class UserTeacherController extends Controller
 
         fclose($handle);
 
+        $teacherName = (string) (optional(PortalUser::find($teacherId))->name ?? '');
+        $this->deliverMarksUpdatedNotifications($marksNotifyQueue, $teacherName !== '' ? $teacherName : null);
+
         return redirect()
             ->back()
             ->with('import_marks_success', 'Import finished. ' . $importedRows . ' student row(s) processed for batch: ' . $batch->name . '.');
@@ -1559,7 +1612,7 @@ class UserTeacherController extends Controller
 
     public function saveExam(Request $request)
     {
-        [$teacherId, $redirect] = $this->requireTeacher();
+        [$teacherId, $role, $redirect] = $this->requireTeacherOrStudent();
         if ($redirect) {
             return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
         }
@@ -1597,7 +1650,8 @@ class UserTeacherController extends Controller
 
     public function saveExamMarksColumn(Request $request)
     {
-        [$teacherId, $redirect] = $this->requireTeacher();
+        [$teacherId, $role, $redirect] = $this->requireTeacherOrStudent();
+        // dd($teacherId, $redirect);
         if ($redirect) {
             return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
         }
@@ -1639,6 +1693,14 @@ class UserTeacherController extends Controller
         $absentSetting = $this->absentDisplaySettingForBatchTeacher($batch);
 
         $marksInput = $request->input('marks', []);
+        $marksNotifyQueue = [];
+        $teacherName = (string) (optional(PortalUser::find($teacherId))->name ?? '');
+
+        $studentIdsInPayload = [];
+        foreach (array_keys($marksInput) as $sid) {
+            $studentIdsInPayload[] = (int) $sid;
+        }
+        $previousStatesByStudent = $this->readMarksNotificationStatesForExamStudents((int) $exam->id, $studentIdsInPayload);
 
         foreach ($marksInput as $studentId => $raw) {
             $studentId = (int) $studentId;
@@ -1647,17 +1709,20 @@ class UserTeacherController extends Controller
             }
 
             $value = $raw === null ? '' : trim((string) $raw);
+            $oldState = $previousStatesByStudent[$studentId] ?? '';
 
             if ($value === '') {
                 Mark::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                 if ($absencesReady) {
                     MarkAbsence::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                 }
+                $previousStatesByStudent[$studentId] = '';
 
                 continue;
             }
 
             if (self::isAbsentMarkInput($value)) {
+                $newState = 'absent';
                 Mark::query()->updateOrCreate(
                     [
                         'exam_id' => $exam->id,
@@ -1677,6 +1742,18 @@ class UserTeacherController extends Controller
                         $absencesValueCol ? ['value' => (string) $absentSetting] : [],
                     );
                 }
+                if ($this->shouldQueueMarksNotification($oldState, $newState)) {
+                    $marksNotifyQueue[] = [
+                        'student_id' => $studentId,
+                        'exam_name' => (string) $exam->exam_name,
+                        'marks_label' => 'Absent',
+                        'is_new_entry' => $oldState === '',
+                        'classroom_id' => (int) $batch->classroom_id,
+                        'batch_id' => (int) $batch->id,
+                        'exam_id' => (int) $exam->id,
+                    ];
+                }
+                $previousStatesByStudent[$studentId] = $newState;
 
                 continue;
             }
@@ -1692,6 +1769,7 @@ class UserTeacherController extends Controller
                 ]);
             }
 
+            $newState = 'n:' . $value;
             Mark::query()->updateOrCreate(
                 [
                     'exam_id' => $exam->id,
@@ -1702,7 +1780,21 @@ class UserTeacherController extends Controller
                     'batch_id' => $batch->id,
                 ],
             );
+            if ($this->shouldQueueMarksNotification($oldState, $newState)) {
+                $marksNotifyQueue[] = [
+                    'student_id' => $studentId,
+                    'exam_name' => (string) $exam->exam_name,
+                    'marks_label' => $value,
+                    'is_new_entry' => $oldState === '',
+                    'classroom_id' => (int) $batch->classroom_id,
+                    'batch_id' => (int) $batch->id,
+                    'exam_id' => (int) $exam->id,
+                ];
+            }
+            $previousStatesByStudent[$studentId] = $newState;
         }
+
+        $this->deliverMarksUpdatedNotifications($marksNotifyQueue, $teacherName !== '' ? $teacherName : null);
 
         return response()->json(['status' => 1, 'msg' => 'Marks saved']);
     }
@@ -1801,5 +1893,285 @@ class UserTeacherController extends Controller
                 $student->setAttribute('parent_phone', null);
             }
         }
+    }
+
+    /**
+     * Canonical state for comparing before/after marks (exam + student).
+     * '' = no mark, 'absent' = absence row, 'n:VALUE' = numeric/text mark stored.
+     */
+    protected function readMarksNotificationStateForExamStudent(int $examId, int $studentId): string
+    {
+        $mark = Mark::query()
+            ->where('exam_id', $examId)
+            ->where('student_id', $studentId)
+            ->first(['marks']);
+        if (!$mark) {
+            return '';
+        }
+        if (Schema::hasTable('mark_absences')) {
+            $hasAbsence = MarkAbsence::query()->where('exam_id', $examId)->where('student_id', $studentId)->exists();
+            if ($hasAbsence) {
+                return 'absent';
+            }
+        }
+
+        return 'n:' . trim((string) ($mark->marks ?? ''));
+    }
+
+    /**
+     * @param  array<int, int>  $studentIds
+     * @return array<int, string>
+     */
+    protected function readMarksNotificationStatesForExamStudents(int $examId, array $studentIds): array
+    {
+        $studentIds = array_values(array_unique(array_filter(array_map('intval', $studentIds))));
+        if ($studentIds === []) {
+            return [];
+        }
+        $marks = Mark::query()
+            ->where('exam_id', $examId)
+            ->whereIn('student_id', $studentIds)
+            ->get(['student_id', 'marks']);
+        $byStudent = $marks->keyBy('student_id');
+        $absentStudentIds = [];
+        if (Schema::hasTable('mark_absences')) {
+            foreach (MarkAbsence::query()->where('exam_id', $examId)->whereIn('student_id', $studentIds)->pluck('student_id') as $sid) {
+                $absentStudentIds[(int) $sid] = true;
+            }
+        }
+        $out = [];
+        foreach ($studentIds as $sid) {
+            if (!$byStudent->has($sid)) {
+                $out[$sid] = '';
+
+                continue;
+            }
+            if (!empty($absentStudentIds[$sid])) {
+                $out[$sid] = 'absent';
+            } else {
+                $out[$sid] = 'n:' . trim((string) ($byStudent->get($sid)->marks ?? ''));
+            }
+        }
+
+        return $out;
+    }
+
+    protected function shouldQueueMarksNotification(string $oldState, string $newState): bool
+    {
+        if ($newState === '') {
+            return false;
+        }
+
+        return $oldState !== $newState;
+    }
+
+    /**
+     * @param  array<int, array{student_id: int, exam_name: string, marks_label: string, is_new_entry?: bool, classroom_id?: int, batch_id?: int}>  $items
+     */
+    // protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
+    // {
+    //     if (!Schema::hasTable('notifications') || $items === []) {
+    //         return;
+    //     }
+
+    //     // One import/save can enqueue the same student+exam more than once; keep a single notify payload.
+    //     $items = collect($items)
+    //         ->unique(fn (array $item) => (int) ($item['student_id'] ?? 0).':'.(int) ($item['exam_id'] ?? 0))
+    //         ->values()
+    //         ->all();
+
+    //     foreach ($items as $item) {
+    //         $studentId = (int) ($item['student_id'] ?? 0);
+    //         $examName = trim((string) ($item['exam_name'] ?? ''));
+    //         $marksLabel = trim((string) ($item['marks_label'] ?? ''));
+    //         $isNewEntry = (bool) ($item['is_new_entry'] ?? false);
+
+    //         // ✅ REQUIRED IDs
+    //         $classroomId = (int) ($item['classroom_id'] ?? 0);
+    //         $batchId = (int) ($item['batch_id'] ?? 0);
+    //         $examId = (int) ($item['exam_id'] ?? 0);
+
+    //         if ($studentId <= 0 || $examName === '' || $marksLabel === '') {
+    //             continue;
+    //         }
+
+    //         $student = PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
+
+    //         if (!$student) {
+    //             continue;
+    //         }
+
+    //         $tn = $teacherName !== null && $teacherName !== '' ? $teacherName : null;
+    //         $cid = $classroomId > 0 ? $classroomId : null;
+    //         $bid = $batchId > 0 ? $batchId : null;
+    //         $eid = $examId > 0 ? $examId : null;
+
+    //         // ✅ STUDENT NOTIFICATION (FIXED ORDER)
+    //         $student->notify(
+    //             new MarksUpdatedNotification(
+    //                 $examName,
+    //                 $marksLabel,
+    //                 $tn,
+    //                 false,
+    //                 null,
+    //                 $isNewEntry,
+    //                 $bid, // ✅ batch_id
+    //                 $eid, // ✅ exam_id
+    //                 $cid, // ✅ classroom_id
+    //                 null,
+    //             ),
+    //         );
+
+    //         $studentLabel = trim((string) ($student->name ?? ''));
+
+    //         foreach ($this->parentPortalUserIdsForStudent($studentId) as $parentId) {
+    //             $parent = PortalUser::query()->whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
+
+    //             if (!$parent) {
+    //                 continue;
+    //             }
+
+    //             // ✅ PARENT NOTIFICATION (FIXED ORDER)
+    //             $parent->notify(
+    //                 new MarksUpdatedNotification(
+    //                     $examName,
+    //                     $marksLabel,
+    //                     $tn,
+    //                     true,
+    //                     $studentLabel !== '' ? $studentLabel : null,
+    //                     $isNewEntry,
+    //                     $bid, // ✅ batch_id
+    //                     $eid, // ✅ exam_id
+    //                     $cid, // ✅ classroom_id
+    //                     $studentId,
+    //                 ),
+    //             );
+    //         }
+    //     }
+    // }
+
+    protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
+{
+    if (!Schema::hasTable('notifications') || $items === []) {
+        return;
+    }
+
+    $items = collect($items)
+        ->unique(fn ($item) => (int)$item['student_id'] . ':' . (int)$item['exam_id'])
+        ->values()
+        ->all();
+
+    foreach ($items as $item) {
+
+        $studentId = (int) ($item['student_id'] ?? 0);
+        $examName = trim((string) ($item['exam_name'] ?? ''));
+        $marksLabel = trim((string) ($item['marks_label'] ?? ''));
+        $isNewEntry = (bool) ($item['is_new_entry'] ?? false);
+
+        $cid = (int) ($item['classroom_id'] ?? 0) ?: null;
+        $bid = (int) ($item['batch_id'] ?? 0) ?: null;
+        $eid = (int) ($item['exam_id'] ?? 0) ?: null;
+
+        if ($studentId <= 0 || !$eid) continue;
+
+        $student = PortalUser::whereKey($studentId)
+            ->where('role', 2)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$student) continue;
+
+        $tn = $teacherName ?: null;
+
+        // =========================
+        // ✅ STUDENT (UPSERT LOGIC)
+        // =========================
+
+        $existing = DB::table('notifications')
+            ->where('notifiable_id', $student->id)
+            ->where('notifiable_type', $student->getMorphClass())
+            ->whereRaw(
+                'JSON_UNQUOTE(JSON_EXTRACT(data, \'$.exam_id\')) = ?'
+                . ' AND (JSON_EXTRACT(data, \'$.batch_id\') <=> ?)'
+                . ' AND (JSON_EXTRACT(data, \'$.classroom_id\') <=> ?)',
+                [(string) $eid, $bid, $cid]
+            )
+            ->first();
+
+        $notificationData = (new MarksUpdatedNotification(
+            $examName,
+            $marksLabel,
+            $tn,
+            false,
+            null,
+            $isNewEntry,
+            $bid,
+            $eid,
+            $cid,
+            null
+        ))->toDatabase($student);
+
+        if ($existing) {
+            DB::table('notifications')
+                ->where('id', $existing->id)
+                ->update([
+                    'data' => json_encode($notificationData),
+                    'updated_at' => now(),
+                    'deleted_at' => null // restore if dismissed
+                ]);
+        } else {
+            $student->notify(new MarksUpdatedNotification(
+                $examName,
+                $marksLabel,
+                $tn,
+                false,
+                null,
+                $isNewEntry,
+                $bid,
+                $eid,
+                $cid,
+                null
+            ));
+        }
+
+    }
+    }
+
+
+    /**
+     * @return array<int, int>
+     */
+    protected function parentPortalUserIdsForStudent(int $studentId): array
+    {
+        $ids = [];
+        $student = PortalUser::query()
+            ->whereKey($studentId)
+            ->where('role', 2)
+            ->whereNull('deleted_at')
+            ->first(['id', 'parent_id']);
+        if (!$student) {
+            return [];
+        }
+        $legacyParentId = (int) ($student->parent_id ?? 0);
+        if ($legacyParentId > 0) {
+            $ids[] = $legacyParentId;
+        }
+        if (Schema::hasTable('parent_student_map')) {
+            foreach (DB::table('parent_student_map')->where('student_id', $studentId)->pluck('parent_id') as $pid) {
+                $pid = (int) $pid;
+                if ($pid > 0) {
+                    $ids[] = $pid;
+                }
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        $valid = [];
+        foreach ($ids as $pid) {
+            if (PortalUser::query()->whereKey($pid)->where('role', 3)->whereNull('deleted_at')->exists()) {
+                $valid[] = $pid;
+            }
+        }
+
+        return $valid;
     }
 }

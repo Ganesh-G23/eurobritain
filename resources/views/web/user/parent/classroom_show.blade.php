@@ -1,10 +1,18 @@
-@extends('web.user.student.layouts.app')
+@extends('web.user.layouts.app')
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
+        <div class="mb-3">
+            <a href="{{ url('user/parent/classrooms') }}" class="btn btn-sm btn-label-secondary">
+                <i class="icon-base ti tabler-arrow-left me-1"></i>
+                Back to classrooms
+            </a>
+        </div>
         @if (($classroom->batches ?? collect())->isEmpty())
             <div class="alert alert-info mb-0">
                 No batches in this classroom yet.
-                <a href="{{ url('user/teacher/batches') }}" class="alert-link">Manage batches</a>
+                @if ($show_teacher_batch_manage_link ?? true)
+                    <a href="{{ url('user/teacher/batches') }}" class="alert-link">Manage batches</a>
+                @endif
             </div>
         @else
             @if (session('import_marks_success'))
@@ -60,7 +68,6 @@
                                 <div class="tab-pane fade show active" id="horizontal-home">
 
                                     @foreach ($classroom->batches as $batch)
-                                        {{-- Show only active batch --}}
                                         <div class="batch-tests @if ($batch->id != $default_batch_id) d-none @endif"
                                             id="batch-tests-{{ $batch->id }}">
 
@@ -73,22 +80,20 @@
                                                     @foreach ($batch->exams as $exam)
                                                         @php
                                                             $obtained = $exam->student_marks_obtained;
-                                                            $isAbsent = ! empty($exam->student_is_absent);
+                                                            $isAbsent = !empty($exam->student_is_absent);
                                                             $absentDisplay = $exam->student_absent_display ?? null;
                                                             $hasMark =
-                                                                ! $isAbsent && $obtained !== null && $obtained !== '';
+                                                                !$isAbsent && $obtained !== null && $obtained !== '';
                                                             $highlight = $highlight_exam_id == $exam->id;
                                                         @endphp
 
                                                         <div class="col-lg-4 col-md-6" id="exam-{{ $exam->id }}">
 
                                                             <div
-                                                                class="card h-100 shadow-sm 
-                            {{ $highlight ? 'border border-primary' : '' }}">
+                                                                class="card h-100 shadow-sm {{ $highlight ? 'border border-primary' : '' }}">
 
                                                                 <div class="card-body">
 
-                                                                    {{-- Header --}}
                                                                     <div
                                                                         class="d-flex justify-content-between align-items-center mb-2">
                                                                         <h5 class="mb-0 text-truncate">
@@ -109,7 +114,6 @@
                                                                         </span>
                                                                     </div>
 
-                                                                    {{-- Details --}}
                                                                     <ul class="list-unstyled mb-2 small">
                                                                         <li>
                                                                             <strong>Teacher:</strong>
@@ -136,7 +140,6 @@
                                                                         </li>
                                                                     </ul>
 
-                                                                    {{-- Date --}}
                                                                     @if ($exam->exam_date)
                                                                         <div class="text-muted small border-top pt-2">
                                                                             <i class="ti tabler-calendar me-1"></i>
@@ -153,9 +156,7 @@
                                             @endif
                                         </div>
                                     @endforeach
-
                                 </div>
-
                             </div>
                         </div>
                     </div>
@@ -166,47 +167,46 @@
 @endsection
 
 @section('scripts')
-<script>
-document.addEventListener("DOMContentLoaded", function () {
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
 
-    const defaultBatch = "{{ $default_batch_id }}";
+            const defaultBatch = "{{ $default_batch_id }}";
 
-    function showBatch(batchId) {
-        document.querySelectorAll('.batch-tests').forEach(el => {
-            el.classList.add('d-none');
-        });
+            function showBatch(batchId) {
+                document.querySelectorAll('.batch-tests').forEach(el => {
+                    el.classList.add('d-none');
+                });
 
-        let active = document.getElementById('batch-tests-' + batchId);
-        if (active) {
-            active.classList.remove('d-none');
-        }
-    }
-
-    // Load default batch
-    if (defaultBatch) {
-        showBatch(defaultBatch);
-    }
-
-    // On tab click
-    document.querySelectorAll('[id^="batch-tab-"]').forEach(btn => {
-        btn.addEventListener('click', function () {
-            let batchId = this.id.replace('batch-tab-', '');
-            showBatch(batchId);
-        });
-    });
-
-    // Scroll to highlighted exam
-    let highlightExam = "{{ $highlight_exam_id }}";
-    if (highlightExam) {
-        setTimeout(() => {
-            let el = document.getElementById('exam-' + highlightExam);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                let active = document.getElementById('batch-tests-' + batchId);
+                if (active) {
+                    active.classList.remove('d-none');
+                }
             }
-        }, 400);
-    }
 
-});
-</script>
+            if (defaultBatch) {
+                showBatch(defaultBatch);
+            }
 
+            document.querySelectorAll('[id^="batch-tab-"]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    let batchId = this.id.replace('batch-tab-', '');
+                    showBatch(batchId);
+                });
+            });
+
+            let highlightExam = "{{ $highlight_exam_id }}";
+            if (highlightExam) {
+                setTimeout(() => {
+                    let el = document.getElementById('exam-' + highlightExam);
+                    if (el) {
+                        el.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                }, 400);
+            }
+
+        });
+    </script>
 @endsection

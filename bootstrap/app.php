@@ -4,6 +4,7 @@ use App\Http\Middleware\AdminAll;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\PortalRememberFromCookie;
 use App\Http\Middleware\PreventBackHistory;
+use App\Http\Middleware\SyncPortalSessionUser;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             PortalRememberFromCookie::class,
+            SyncPortalSessionUser::class,
         ]);
         $middleware->alias([
             'prevent-back' => PreventBackHistory::class,

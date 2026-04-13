@@ -17,14 +17,13 @@
         }
     }
     $teacherNavCurrentClassroom =
-        $teacherCurrentClassroomId > 0
-            ? $teacherNavClassrooms->firstWhere('id', $teacherCurrentClassroomId)
-            : null;
+        $teacherCurrentClassroomId > 0 ? $teacherNavClassrooms->firstWhere('id', $teacherCurrentClassroomId) : null;
 @endphp
 <nav class="layout-navbar navbar navbar-expand-xl align-items-center" id="layout-navbar">
     <div class="container-xxl">
         <div class="navbar-brand app-brand demo d-none d-xl-flex py-0 me-4 ms-0">
-            <a href="{{ url('user/dashboard') }}" class="app-brand-link">
+            <a href="{{ $portalRole === 1 ? url('user/dashboard') : ($portalRole === 2 && $selectedTeacherId > 0 ? url('user/student/dashboard') : ($portalRole === 2 ? url('user/select-teacher') : ($portalRole === 3 ? url('user/parent/dashboard') : url('user/dashboard')))) }}"
+                class="app-brand-link">
                 <span class="app-brand-logo demo">
                     <img src="{{ url('public/admin_theme/assets/img/logo.png') }}" alt="EliteGrade Logo" class="img-fluid"
                         style="max-height: 40px;">
@@ -76,14 +75,18 @@
                     @endphp
 
                     <li class="nav-item dropdown ms-2">
-                        <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3"
-                            id="nav-student" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="icon-base ti tabler-users icon-22px text-heading me-2"></i>
+                        <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3 gap-1"
+                            id="nav-student" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Switch student">
+                            <i class="icon-base ti tabler-users icon-22px text-heading"></i>
                             <span class="d-none d-sm-inline">
                                 {{ $currentStudent ? $currentStudent->name ?? 'Student' : 'Select Student' }}
                             </span>
+                            <i class="icon-base ti tabler-chevron-down icon-18px text-heading dropdown-chevron"
+                                aria-hidden="true"></i>
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-student" style="min-width: 280px;">
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-student"
+                            style="min-width: 280px;">
                             @if (($children ?? collect())->count() > 0)
                                 <li class="px-3 py-2 text-muted small">Switch student</li>
                                 @foreach ($children as $child)
@@ -93,7 +96,8 @@
                                             <div class="d-flex align-items-start justify-content-between">
                                                 <div>
                                                     <div>{{ $child->student_name }}</div>
-                                                    <div class="text-body-secondary small">{{ $child->student_email }}</div>
+                                                    <div class="text-body-secondary small">{{ $child->student_email }}
+                                                    </div>
                                                 </div>
                                                 @if ($currentStudent && (int) ($currentStudent->id ?? 0) === (int) $child->student_id)
                                                     <i class="icon-base ti tabler-check text-success ms-2"></i>
@@ -113,20 +117,147 @@
                             </li>
                         </ul>
                     </li>
+
+                    @php
+                        $parentNavNotifications = $layoutParentNotifications ?? collect();
+                        $parentNavUnreadCount = (int) ($layoutParentUnreadNotificationCount ?? 0);
+                    @endphp
+                    <li class="nav-item dropdown-notifications navbar-dropdown dropdown me-3 me-xl-2">
+                        <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
+                            href="javascript:void(0);" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false">
+                            <span class="position-relative">
+                                <i class="icon-base ti tabler-bell icon-22px text-heading"></i>
+                                <span
+                                    class="badge rounded-pill bg-danger badge-dot badge-notifications border @if ($parentNavUnreadCount < 1) d-none @endif"></span>
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end p-0">
+                            <li class="dropdown-menu-header border-bottom">
+                                <div class="dropdown-header d-flex align-items-center py-3">
+                                    <h6 class="mb-0 me-auto">Notification</h6>
+                                    <div class="d-flex align-items-center h6 mb-0">
+                                        <span class="badge bg-label-primary me-2">{{ $parentNavUnreadCount }} New</span>
+                                        <a href="javascript:void(0)" class="dropdown-notifications-all p-2 btn btn-icon"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Mark all as read"><i
+                                                class="icon-base ti tabler-mail-opened text-heading"></i></a>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="dropdown-notifications-list scrollable-container">
+                                <ul class="list-group list-group-flush">
+                                    @forelse ($parentNavNotifications as $navNotification)
+                                        @php
+                                            $navData = is_array($navNotification->data)
+                                                ? $navNotification->data
+                                                : json_decode($navNotification->data, true) ?? [];
+                                            $navTitle = $navData['title'] ?? 'Notification';
+                                            $navMessage = $navData['message'] ?? '';
+                                            $navRead = $navNotification->read_at !== null;
+
+                                            $batchId = $navData['batch_id'] ?? null;
+                                            $examId = $navData['exam_id'] ?? null;
+                                            $classroomId = $navData['classroom_id'] ?? null;
+                                            $notifyStudentId = isset($navData['student_id'])
+                                                ? (int) $navData['student_id']
+                                                : 0;
+
+                                            $marksUrl =
+                                                $batchId && $examId && $classroomId
+                                                    ? url(
+                                                        'user/parent/classroom/' .
+                                                            $classroomId .
+                                                            '?batch=' .
+                                                            $batchId .
+                                                            '&exam=' .
+                                                            $examId .
+                                                            ($notifyStudentId > 0
+                                                                ? '&student=' . $notifyStudentId
+                                                                : ''),
+                                                    )
+                                                    : 'javascript:void(0)';
+                                        @endphp
+                                        <li
+                                            class="list-group-item list-group-item-action dropdown-notifications-item @if ($navRead) marked-as-read @endif">
+                                            <div class="d-flex align-items-start w-100">
+                                                <a href="{{ $marksUrl }}"
+                                                    class="d-flex flex-grow-1 min-w-0 text-reset text-decoration-none py-2 ps-3 pe-2">
+                                                    <div class="flex-shrink-0 me-3">
+                                                        <div class="avatar">
+                                                            <span
+                                                                class="avatar-initial rounded-circle bg-label-success"><i
+                                                                    class="icon-base ti tabler-clipboard-check"></i></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex-grow-1 min-w-0">
+                                                        <h6 class="mb-1 small">{{ $navTitle }}</h6>
+                                                        @if (!empty($navData['student_name']))
+                                                            <small
+                                                                class="d-block text-body-secondary mb-1">{{ $navData['student_name'] }}</small>
+                                                        @endif
+                                                        <small
+                                                            class="mb-1 d-block text-body">{{ $navMessage }}</small>
+                                                        <small
+                                                            class="text-body-secondary">{{ $navNotification->created_at?->diffForHumans() }}</small>
+                                                    </div>
+                                                </a>
+                                                <div class="flex-shrink-0 dropdown-notifications-actions pt-2 pe-2">
+                                                    <a href="javascript:void(0)"
+                                                        class="dropdown-notifications-read"><span
+                                                            class="badge badge-dot"></span></a>
+                                                    <a href="javascript:void(0)" class="dropdown-notifications-archive"
+                                                        data-id="{{ $navNotification->id }}">
+                                                        <span class="icon-base ti tabler-x"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    @empty
+                                        <li class="list-group-item list-group-item-action dropdown-notifications-item">
+                                            <div class="d-flex">
+                                                <div class="flex-shrink-0 me-3">
+                                                    <div class="avatar">
+                                                        <span
+                                                            class="avatar-initial rounded-circle bg-label-secondary"><i
+                                                                class="icon-base ti tabler-bell-off"></i></span>
+                                                    </div>
+                                                </div>
+                                                <div class="flex-grow-1">
+                                                    <h6 class="mb-1 small">No notifications</h6>
+                                                    <small class="mb-1 d-block text-body">When a teacher updates your
+                                                        child&apos;s marks, you will see alerts here.</small>
+                                                    <small class="text-body-secondary">—</small>
+                                                </div>
+                                                <div class="flex-shrink-0 dropdown-notifications-actions">
+                                                    <a href="javascript:void(0)"
+                                                        class="dropdown-notifications-read"><span
+                                                            class="badge badge-dot"></span></a>
+                                                    <a href="javascript:void(0)"
+                                                        class="dropdown-notifications-archive"><span
+                                                            class="icon-base ti tabler-x"></span></a>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    @endforelse
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
                 @endif
 
                 @if ($portalRole === 1)
                     <li class="nav-item dropdown ms-2">
                         <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3 gap-1"
-                            id="nav-classroom" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Switch classroom">
+                            id="nav-classroom" href="javascript:void(0);" data-bs-toggle="dropdown"
+                            aria-expanded="false" title="Switch classroom">
                             <i class="icon-base ti tabler-school icon-22px text-heading"></i>
                             <span class="d-none d-sm-inline">
                                 {{ $teacherNavCurrentClassroom ? $teacherNavCurrentClassroom->name : 'Classrooms' }}
                             </span>
                             <i class="icon-base ti tabler-chevron-down icon-18px text-heading" aria-hidden="true"></i>
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-classroom" style="min-width: 280px;">
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-classroom"
+                            style="min-width: 280px;">
                             @if ($teacherNavClassrooms->isNotEmpty())
                                 <li class="px-3 py-2 text-muted small">Switch classroom</li>
                                 @foreach ($teacherNavClassrooms as $cr)
@@ -144,7 +275,8 @@
                                                     @endif
                                                 </div>
                                                 @if ($teacherCurrentClassroomId === (int) $cr->id)
-                                                    <i class="icon-base ti tabler-check text-success ms-2 flex-shrink-0"></i>
+                                                    <i
+                                                        class="icon-base ti tabler-check text-success ms-2 flex-shrink-0"></i>
                                                 @endif
                                             </div>
                                         </a>
@@ -176,19 +308,20 @@
                         <li>
                             <button type="button" class="dropdown-item align-items-center active"
                                 data-bs-theme-value="light" aria-pressed="false">
-                                <span><i class="icon-base ti tabler-sun icon-22px me-3" data-icon="sun"></i>Light</span>
+                                <span><i class="icon-base ti tabler-sun icon-22px me-3"
+                                        data-icon="sun"></i>Light</span>
                             </button>
                         </li>
                         <li>
-                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="dark"
-                                aria-pressed="true">
+                            <button type="button" class="dropdown-item align-items-center"
+                                data-bs-theme-value="dark" aria-pressed="true">
                                 <span><i class="icon-base ti tabler-moon-stars icon-22px me-3"
                                         data-icon="moon-stars"></i>Dark</span>
                             </button>
                         </li>
                         <li>
-                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="system"
-                                aria-pressed="false">
+                            <button type="button" class="dropdown-item align-items-center"
+                                data-bs-theme-value="system" aria-pressed="false">
                                 <span><i class="icon-base ti tabler-device-desktop-analytics icon-22px me-3"
                                         data-icon="device-desktop-analytics"></i>System</span>
                             </button>
@@ -202,7 +335,8 @@
                     <a class="nav-link dropdown-toggle hide-arrow p-0" href="javascript:void(0);"
                         data-bs-toggle="dropdown">
                         <div class="avatar avatar-online">
-                            <span class="avatar-initial rounded-circle bg-label-primary">{{ $portalUserInitial }}</span>
+                            <span
+                                class="avatar-initial rounded-circle bg-label-primary">{{ $portalUserInitial }}</span>
                         </div>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
@@ -242,8 +376,7 @@
 
                         <li>
                             <div class="d-grid px-2 pt-2 pb-1">
-                                <a class="btn btn-sm btn-danger d-flex"
-                                    href="{{ url('user/logout') }}">
+                                <a class="btn btn-sm btn-danger d-flex" href="{{ url('user/logout') }}">
                                     <small class="align-middle">Logout</small>
                                     <i class="icon-base ti tabler-logout ms-2 icon-14px"></i>
                                 </a>
@@ -265,8 +398,7 @@
             @if ($portalRole === 1)
                 <!-- Teacher Panel Menus -->
                 <li class="menu-item {{ in_array($active_tab, ['dashboard', 'student_dashboard']) ? 'active' : '' }}">
-                    <a href="{{ $portalRole === 2 && $selectedTeacherId > 0 ? url('user/student/dashboard') : url('user/dashboard') }}"
-                        class="menu-link">
+                    <a href="{{ url('user/dashboard') }}" class="menu-link">
                         <i class="menu-icon icon-base ti tabler-smart-home"></i>
                         <div data-i18n="Dashboards">Dashboards</div>
                     </a>
@@ -295,7 +427,8 @@
                     </a>
                 </li>
 
-                <li class="menu-item {{ in_array($active_tab, ['profile', 'security', 'teacher_settings']) ? 'active open' : '' }}">
+                <li
+                    class="menu-item {{ in_array($active_tab, ['profile', 'security', 'teacher_settings']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
                         <div data-i18n="Accounts">Accounts</div>
@@ -324,27 +457,19 @@
             @else
                 <!-- Student/Parent -->
                 <li class="menu-item {{ $active_tab === 'dashboard' ? 'active' : '' }}">
-                    <a href="{{ url('user/dashboard') }}" class="menu-link">
+                    <a href="{{ $portalRole === 2 ? ($selectedTeacherId > 0 ? url('user/student/dashboard') : url('user/select-teacher')) : ($portalRole === 3 ? url('user/parent/dashboard') : url('user/dashboard')) }}"
+                        class="menu-link">
                         <i class="menu-icon icon-base ti tabler-smart-home"></i>
-                        <div data-i18n="Dashboards">Dashboards</div>
+                        <div data-i18n="Dashboard">Dashboard</div>
                     </a>
                 </li>
-
-                @if ($portalRole === 2 && $selectedTeacherId > 0)
-                    <li class="menu-item {{ $active_tab === 'student_attendance' ? 'active' : '' }}">
-                        <a href="{{ url('user/student/attendance') }}" class="menu-link">
-                            <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
-                            <div data-i18n="Attendance">Attendance</div>
-                        </a>
-                    </li>
-                    <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
-                        <a href="{{ url('user/student/report') }}" class="menu-link">
-                            <i class="menu-icon icon-base ti tabler-report-analytics"></i>
-                            <div data-i18n="Report">Report</div>
-                        </a>
-                    </li>
-                @endif
-
+                <li class="menu-item {{ $active_tab === 'classrooms' ? 'active' : '' }}">
+                    <a href="{{ $portalRole === 2 ? ($selectedTeacherId > 0 ? url('user/student/classrooms') : url('user/select-teacher')) : ($portalRole === 3 ? ((int) (session('selected_student_id') ?? 0) > 0 ? url('user/parent/classrooms') : url('user/select-student')) : url('user/dashboard')) }}"
+                        class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-school"></i>
+                        <div data-i18n="Classrooms">Classrooms</div>
+                    </a>
+                </li>
                 <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
@@ -370,3 +495,38 @@
     </div>
 </aside>
 <!-- / Menu -->
+
+@push('portal_notification_scripts')
+<script>
+(function () {
+    if (window.__portalNotificationDeleteInit) {
+        return;
+    }
+    window.__portalNotificationDeleteInit = true;
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('a.dropdown-notifications-archive');
+        if (!btn || !btn.getAttribute('data-id')) {
+            return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        var id = btn.getAttribute('data-id');
+        var $btn = $(btn);
+        $.ajax({
+            url: @json(route('notification.delete')),
+            type: 'POST',
+            data: {
+                _token: @json(csrf_token()),
+                id: id,
+            },
+            success: function (res) {
+                if (res.status === 1) {
+                    $btn.closest('li').remove();
+                }
+            },
+        });
+    }, true);
+})();
+</script>
+@endpush
+

@@ -3,6 +3,7 @@
 	data-bs-theme="light" data-assets-path="{{ url('public/admin_theme/assets/') }}" data-template="horizontal-menu-template">
 <head>
 	<meta charset="utf-8" />
+	<meta name="csrf-token" content="{{ csrf_token() }}" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum=1.0" />
 	<meta name="robots" content="noindex, nofollow" />
 	<title>@yield('title', 'Student Panel') - EliteGrade</title>
@@ -51,6 +52,7 @@
 	<div class="drag-target"></div>
 
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
+	@stack('portal_notification_scripts')
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/popper/popper.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/js/bootstrap.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/node-waves/node-waves.js') }}"></script>

@@ -621,7 +621,7 @@
                     var btn = $('#addExamSubmit');
                     btn.prop('disabled', true).text('Saving...');
                     var payload = form.serializeArray();
-                    $.post("{{ url('user/teacher/exams/save') }}", payload, function(res) {
+                    $.post(@json(portal_same_origin_path('user/teacher/exams/save')), payload, function(res) {
                         btn.prop('disabled', false).text('Save test');
                         if (res.status == 1) {
                             window.location.href = res.redirect_url || window.location.href;
@@ -647,7 +647,7 @@
         </script>
         <script>
             (function() {
-                var marksSaveUrl = "{{ url('user/teacher/exams/marks/save') }}";
+                var marksSaveUrl = @json(portal_same_origin_path('user/teacher/exams/marks/save'));
                 var csrf = "{{ csrf_token() }}";
                 var activeColumn = null;
 
