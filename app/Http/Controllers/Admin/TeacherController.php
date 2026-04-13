@@ -9,6 +9,7 @@ use App\Models\Classroom;
 use App\Models\Batch;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
+use App\Support\PortalSession;
 use App\Support\StudentEnrollmentSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -1159,7 +1160,7 @@ class TeacherController extends Controller
             } else {
                 session()->forget('teacher');
             }
-            session()->put('portal_user', $user->toArray());
+            PortalSession::putRoleUser((int) ($user->role ?? 0), $user->toArray());
             session()->forget('show_teacher_password_popup');
 
             $this->response['status'] = 1;
@@ -1192,8 +1193,7 @@ class TeacherController extends Controller
         }
 
         // Do NOT clear admin session to allow returning to admin panel
-        Session::put('portal_user', $user->toArray());
-        Session::put('teacher', $user->toArray());
+        PortalSession::putRoleUser(1, $user->toArray());
 
         if ((int)($user->is_password_changed ?? 0) === 0) {
             Session::put('show_teacher_password_popup', true);
@@ -1201,6 +1201,6 @@ class TeacherController extends Controller
             Session::forget('show_teacher_password_popup');
         }
 
-        return redirect('user');
+        return redirect(url('user/dashboard'));
     }
 }

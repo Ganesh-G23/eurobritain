@@ -1,11 +1,10 @@
 @extends('web.user.layouts.app')
-
 @section('title', 'Welcome to EliteGrade')
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y pt-2 pb-2">
         <div class="row g-6">
             <div class="col-lg-3 col-sm-6">
-                <div class="card card-border-shadow-primary h-100">
+                <div class="card h-100">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-2">
                             <div class="avatar me-4">
@@ -13,14 +12,15 @@
                                     <i class="icon-base ti tabler-school icon-28px"></i>
                                 </span>
                             </div>
-                            <h4 class="mb-0"><a href="{{ url('user/teacher/classrooms') }}">{{ $total_classrooms }}</a></h4>
+                            <h4 class="mb-0"><a href="{{ url('user/teacher/classrooms') }}">{{ $total_classrooms }}</a>
+                            </h4>
                         </div>
                         <p class="mb-1"><a href="{{ url('user/teacher/classrooms') }}">Classrooms</a></p>
                     </div>
                 </div>
             </div>
             <div class="col-lg-3 col-sm-6">
-                <div class="card card-border-shadow-primary h-100">
+                <div class="card h-100">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-2">
                             <div class="avatar me-4">
@@ -35,7 +35,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-sm-6">
-                <div class="card card-border-shadow-primary h-100">
+                <div class="card h-100">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-2">
                             <div class="avatar me-4">
@@ -56,14 +56,14 @@
                     <h5 class="mb-1">Classrooms</h5>
                     <p class="mb-0 text-body-secondary small">Open a classroom to view batches and students</p>
                 </div>
-                
+
             </div>
 
             <div class="row g-4">
                 @forelse ($total_classrooms_details as $classroom)
                     <div class="col-md-6 col-xl-4">
                         <a href="{{ url('user/teacher/classrooms/details/' . $classroom->id) }}"
-                            class="card card-border-shadow-primary h-100 text-reset text-decoration-none">
+                            class="card h-100 text-reset text-decoration-none">
                             <div class="card-body">
                                 <div class="d-flex align-items-start mb-3">
                                     <div class="avatar me-3 flex-shrink-0">
@@ -99,7 +99,8 @@
                                                 </span>
                                             </div>
                                             <div>
-                                                <h5 class="mb-0">{{ (int) ($classroom->enrolled_student_count ?? 0) }}</h5>
+                                                <h5 class="mb-0">{{ (int) ($classroom->enrolled_student_count ?? 0) }}
+                                                </h5>
                                                 <small class="text-body-secondary">Students</small>
                                             </div>
                                         </div>
@@ -128,6 +129,6 @@
                     </div>
                 @endforelse
             </div>
-        
-    </div>
-@endsection
+
+        </div>
+    @endsection

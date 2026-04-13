@@ -154,6 +154,7 @@
     <!-- build:js assets/vendor/js/theme.js  -->
 
     <script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
+    @stack('portal_notification_scripts')
 
     <script src="{{ url('public/admin_theme/assets/vendor/libs/popper/popper.js') }}"></script>
     <script src="{{ url('public/admin_theme/assets/vendor/js/bootstrap.js') }}"></script>

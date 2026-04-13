@@ -5,7 +5,6 @@ use App\Models\PostCategory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\Category;
-use App\Models\ContactUs;
 use App\Models\WhatsappNotification;
 
 function formatErrors($errors = [])
@@ -158,8 +157,46 @@ function pagination($total, $per_page = 10, $page = 1, $url = '?')
 
 
 
-function contactus()
-{
-    $contact = ContactUs::find(1);
-    return $contact;
+// function contactus()
+// {
+//     $contact = ContactUs::find(1);
+//     return $contact;
+// }
+
+if (!function_exists('portal_same_origin_path')) {
+    /**
+     * URL path (leading slash) for same-origin AJAX, including subdirectory prefix from the current request.
+     * Avoids posting to /user/... when the app is under /elitegrade (wrong route, no session cookie → 401).
+     */
+    function portal_same_origin_path(string $path): string
+    {
+        $path = '/' . ltrim($path, '/');
+        $req = parse_url(request()->getRequestUri(), PHP_URL_PATH);
+        $req = is_string($req) && $req !== '' ? $req : '/';
+
+        $markers = [
+            '/user/teacher/',
+            '/user/student/',
+            '/user/parent/',
+            '/user/select-teacher',
+            '/user/select-student',
+            '/user/profile',
+            '/user/security',
+            '/user/dashboard',
+            '/user/logout',
+            '/user/',
+        ];
+        foreach ($markers as $m) {
+            $p = strpos($req, $m);
+            if ($p !== false) {
+                $prefix = substr($req, 0, $p);
+
+                return ($prefix === '' ? '' : rtrim($prefix, '/')) . $path;
+            }
+        }
+
+        $fromUrl = parse_url(url(ltrim($path, '/')), PHP_URL_PATH);
+
+        return is_string($fromUrl) && $fromUrl !== '' ? $fromUrl : $path;
+    }
 }

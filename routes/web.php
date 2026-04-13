@@ -42,6 +42,7 @@ Route::prefix('user')->group(function () {
     Route::post('/update_password_popup', [UserDashboardController::class, 'updatePasswordPopup']);
     Route::post('/skip_password_popup', [UserDashboardController::class, 'skipPasswordPopup']);
     Route::get('/logout', [UserDashboardController::class, 'logout']);
+    Route::post('/notification/delete', [UserDashboardController::class, 'delete'])->name('notification.delete');
 
     // Student: Select teacher (header/footer-less view) and access teacher panel
     Route::get('/select-teacher', [UserDashboardController::class, 'selectTeacher']);
@@ -49,6 +50,7 @@ Route::prefix('user')->group(function () {
     Route::get('/select-teacher/access/{teacherId}', [UserDashboardController::class, 'accessTeacher']); // legacy
     // Student module pages under selected teacher context
     Route::get('/student/dashboard', [UserDashboardController::class, 'studentDashboard']);
+    Route::get('/student/classrooms', [UserDashboardController::class, 'studentClassrooms']);
     Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
     Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
     Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
@@ -58,6 +60,8 @@ Route::prefix('user')->group(function () {
     Route::post('/select-student/access', [UserDashboardController::class, 'accessStudent']);
     Route::get('/select-student/access/{studentId}', [UserDashboardController::class, 'accessStudent']);
     Route::get('/parent/dashboard', [UserDashboardController::class, 'parentDashboard']);
+    Route::get('/parent/classrooms', [UserDashboardController::class, 'parentClassrooms']);
+    Route::get('/parent/classroom/{id}', [UserDashboardController::class, 'parentClassroomShow']);
 
     // User-side Teacher management (logged-in teacher) - original simple routes
     Route::prefix('teacher')->group(function () {
@@ -85,61 +89,63 @@ Route::prefix('user')->group(function () {
     });
 });
 
-Route::middleware('prevent-back')->prefix('admin')->group(function () {
-    Route::middleware('admin-auth')->group(function () {
-        Route::get('login', [AuthController::class, 'login'])->name('login');
-        Route::post('verify_login', [AuthController::class, 'verifyLogin']);
-    });
-
-    Route::middleware('admin-all')->group(function () {
-        Route::get('/', [DashboardController::class, 'index']);
-        Route::get('dashboard', [DashboardController::class, 'index']);
-        Route::get('profile', [ProfileController::class, 'index']);
-        Route::post('profile/save_profile', [ProfileController::class, 'save_profile']);
-        Route::get('security', [ProfileController::class, 'security']);
-        Route::post('security/save_change_password', [ProfileController::class, 'save_change_password']);
-        Route::get('logout', [DashboardController::class, 'logout']);
-
-        Route::prefix('common')->group(function () {
-            Route::post('upload_ppt', [CommonController::class, 'upload_ppt']);
-            Route::post('upload_files', [CommonController::class, 'upload_files']);
-            Route::post('upload_ckeditor_image', [CommonController::class, 'upload_ckeditor_image']);
+Route::middleware('prevent-back')
+    ->prefix('admin')
+    ->group(function () {
+        Route::middleware('admin-auth')->group(function () {
+            Route::get('login', [AuthController::class, 'login'])->name('login');
+            Route::post('verify_login', [AuthController::class, 'verifyLogin']);
         });
 
-        // teacher
-        Route::get('teacher', [TeacherController::class, 'list']);
-        Route::get('teacher/form', [TeacherController::class, 'form']);
-        Route::get('teacher/form/{id}', [TeacherController::class, 'form']);
-        Route::post('teacher/save', [TeacherController::class, 'save']);
-        Route::get('teacher/view', [TeacherController::class, 'view']);
-        Route::post('teacher/delete', [TeacherController::class, 'delete']);
-        Route::post('teacher/save_classroom', [TeacherController::class, 'saveClassroom']);
-        Route::post('teacher/delete_classroom', [TeacherController::class, 'deleteClassroom']);
-        Route::post('teacher/save_batch', [TeacherController::class, 'saveBatch']);
-        Route::post('teacher/delete_batch', [TeacherController::class, 'deleteBatch']);
-        Route::post('teacher/save_student', [TeacherController::class, 'saveStudent']);
-        Route::post('teacher/sync_student_enrollments', [TeacherController::class, 'syncStudentEnrollments']);
-        Route::post('teacher/delete_student', [TeacherController::class, 'deleteStudent']);
-        Route::get('teacher/student_view', [TeacherController::class, 'viewStudent']);
-        Route::get('teacher/get_batches_by_classroom', [TeacherController::class, 'getBatchesByClassroom']);
-        Route::get('teacher/login_as/{id}', [TeacherController::class, 'loginAs']);
+        Route::middleware('admin-all')->group(function () {
+            Route::get('/', [DashboardController::class, 'index']);
+            Route::get('dashboard', [DashboardController::class, 'index']);
+            Route::get('profile', [ProfileController::class, 'index']);
+            Route::post('profile/save_profile', [ProfileController::class, 'save_profile']);
+            Route::get('security', [ProfileController::class, 'security']);
+            Route::post('security/save_change_password', [ProfileController::class, 'save_change_password']);
+            Route::get('logout', [DashboardController::class, 'logout']);
 
-        // student
-        Route::get('student', [StudentController::class, 'list']);
-        Route::get('student/add', [StudentController::class, 'add']);
-        Route::get('student/edit', [StudentController::class, 'edit']);
-        Route::get('student/enrollment-options', [StudentController::class, 'enrollmentOptions']);
-        Route::post('student/delete', [StudentController::class, 'deleteStudent']);
-        Route::get('student/form', [StudentController::class, 'form']);
-        Route::post('student/save', [StudentController::class, 'saveStudent']);
+            Route::prefix('common')->group(function () {
+                Route::post('upload_ppt', [CommonController::class, 'upload_ppt']);
+                Route::post('upload_files', [CommonController::class, 'upload_files']);
+                Route::post('upload_ckeditor_image', [CommonController::class, 'upload_ckeditor_image']);
+            });
 
-        // Admin bulk student upload/sample
-        Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);
-        Route::post('teacher/students/bulk-upload', [TeacherController::class, 'bulkUploadStudents']);
+            // teacher
+            Route::get('teacher', [TeacherController::class, 'list']);
+            Route::get('teacher/form', [TeacherController::class, 'form']);
+            Route::get('teacher/form/{id}', [TeacherController::class, 'form']);
+            Route::post('teacher/save', [TeacherController::class, 'save']);
+            Route::get('teacher/view', [TeacherController::class, 'view']);
+            Route::post('teacher/delete', [TeacherController::class, 'delete']);
+            Route::post('teacher/save_classroom', [TeacherController::class, 'saveClassroom']);
+            Route::post('teacher/delete_classroom', [TeacherController::class, 'deleteClassroom']);
+            Route::post('teacher/save_batch', [TeacherController::class, 'saveBatch']);
+            Route::post('teacher/delete_batch', [TeacherController::class, 'deleteBatch']);
+            Route::post('teacher/save_student', [TeacherController::class, 'saveStudent']);
+            Route::post('teacher/sync_student_enrollments', [TeacherController::class, 'syncStudentEnrollments']);
+            Route::post('teacher/delete_student', [TeacherController::class, 'deleteStudent']);
+            Route::get('teacher/student_view', [TeacherController::class, 'viewStudent']);
+            Route::get('teacher/get_batches_by_classroom', [TeacherController::class, 'getBatchesByClassroom']);
+            Route::get('teacher/login_as/{id}', [TeacherController::class, 'loginAs']);
+
+            // student
+            Route::get('student', [StudentController::class, 'list']);
+            Route::get('student/add', [StudentController::class, 'add']);
+            Route::get('student/edit', [StudentController::class, 'edit']);
+            Route::get('student/enrollment-options', [StudentController::class, 'enrollmentOptions']);
+            Route::post('student/delete', [StudentController::class, 'deleteStudent']);
+            Route::get('student/form', [StudentController::class, 'form']);
+            Route::post('student/save', [StudentController::class, 'saveStudent']);
+
+            // Admin bulk student upload/sample
+            Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);
+            Route::post('teacher/students/bulk-upload', [TeacherController::class, 'bulkUploadStudents']);
+        });
+
+        Route::prefix('common')->group(function () {
+            Route::post('upload_files', [CommonController::class, 'upload_files']);
+            Route::post('upload_ckeditor_image', [CommonController::class, 'uploadCkeditorImage'])->name('upload.ckeditor.image');
+        });
     });
-
-    Route::prefix('common')->group(function () {
-        Route::post('upload_files', [CommonController::class, 'upload_files']);
-        Route::post('upload_ckeditor_image', [CommonController::class, 'uploadCkeditorImage'])->name('upload.ckeditor.image');
-    });
-});
