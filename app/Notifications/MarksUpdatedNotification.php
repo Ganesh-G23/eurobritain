@@ -79,8 +79,6 @@ class MarksUpdatedNotification extends Notification
             'exam_name' => $this->examName,
             'marks_label' => $this->marksLabel,
             'teacher_name' => $this->teacherName,
-            'student_id' => (int) ($notifiable->id ?? 0),
-            'student_name' => trim((string) ($notifiable->name ?? '')),
 
             'batch_id' => $this->batchId,
             'exam_id' => $this->examId,

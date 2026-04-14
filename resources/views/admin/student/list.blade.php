@@ -136,6 +136,11 @@
                                                         data-id="{{ base64_encode($student->id) }}" title="Delete">
                                                         <i class="icon-base ti tabler-trash"></i>
                                                     </button>
+                                                    <a href="{{ url('admin/student/view?id=' . base64_encode($student->id)) }}"
+                                                        class="btn btn-sm btn-icon btn-label-info" title="View">
+                                                        <i class="icon-base ti tabler-eye"></i>
+                                                    </a>
+
                                                 </div>
                                             </td>
                                         </tr>

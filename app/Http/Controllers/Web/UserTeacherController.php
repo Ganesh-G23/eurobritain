@@ -22,6 +22,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class UserTeacherController extends Controller
 {
@@ -2050,94 +2051,6 @@ class UserTeacherController extends Controller
     //     }
     // }
 
-    protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
-{
-    if (!Schema::hasTable('notifications') || $items === []) {
-        return;
-    }
-
-    $items = collect($items)
-        ->unique(fn ($item) => (int)$item['student_id'] . ':' . (int)$item['exam_id'])
-        ->values()
-        ->all();
-
-    foreach ($items as $item) {
-
-        $studentId = (int) ($item['student_id'] ?? 0);
-        $examName = trim((string) ($item['exam_name'] ?? ''));
-        $marksLabel = trim((string) ($item['marks_label'] ?? ''));
-        $isNewEntry = (bool) ($item['is_new_entry'] ?? false);
-
-        $cid = (int) ($item['classroom_id'] ?? 0) ?: null;
-        $bid = (int) ($item['batch_id'] ?? 0) ?: null;
-        $eid = (int) ($item['exam_id'] ?? 0) ?: null;
-
-        if ($studentId <= 0 || !$eid) continue;
-
-        $student = PortalUser::whereKey($studentId)
-            ->where('role', 2)
-            ->whereNull('deleted_at')
-            ->first();
-
-        if (!$student) continue;
-
-        $tn = $teacherName ?: null;
-
-        // =========================
-        // ✅ STUDENT (UPSERT LOGIC)
-        // =========================
-
-        $existing = DB::table('notifications')
-            ->where('notifiable_id', $student->id)
-            ->where('notifiable_type', $student->getMorphClass())
-            ->whereRaw(
-                'JSON_UNQUOTE(JSON_EXTRACT(data, \'$.exam_id\')) = ?'
-                . ' AND (JSON_EXTRACT(data, \'$.batch_id\') <=> ?)'
-                . ' AND (JSON_EXTRACT(data, \'$.classroom_id\') <=> ?)',
-                [(string) $eid, $bid, $cid]
-            )
-            ->first();
-
-        $notificationData = (new MarksUpdatedNotification(
-            $examName,
-            $marksLabel,
-            $tn,
-            false,
-            null,
-            $isNewEntry,
-            $bid,
-            $eid,
-            $cid,
-            null
-        ))->toDatabase($student);
-
-        if ($existing) {
-            DB::table('notifications')
-                ->where('id', $existing->id)
-                ->update([
-                    'data' => json_encode($notificationData),
-                    'updated_at' => now(),
-                    'deleted_at' => null // restore if dismissed
-                ]);
-        } else {
-            $student->notify(new MarksUpdatedNotification(
-                $examName,
-                $marksLabel,
-                $tn,
-                false,
-                null,
-                $isNewEntry,
-                $bid,
-                $eid,
-                $cid,
-                null
-            ));
-        }
-
-    }
-    }
-
-
     /**
      * @return array<int, int>
      */
@@ -2173,5 +2086,71 @@ class UserTeacherController extends Controller
         }
 
         return $valid;
+    }
+
+    protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
+    {
+        if (!Schema::hasTable('notifications') || $items === []) {
+            return;
+        }
+
+        $items = collect($items)->unique(fn($item) => (int) $item['student_id'] . ':' . (int) $item['exam_id'])->values()->all();
+
+        foreach ($items as $item) {
+            $studentId = (int) ($item['student_id'] ?? 0);
+            $examName = trim((string) ($item['exam_name'] ?? ''));
+            $marksLabel = trim((string) ($item['marks_label'] ?? ''));
+            $isNewEntry = (bool) ($item['is_new_entry'] ?? false);
+
+            $cid = (int) ($item['classroom_id'] ?? 0) ?: null;
+            $bid = (int) ($item['batch_id'] ?? 0) ?: null;
+            $eid = (int) ($item['exam_id'] ?? 0) ?: null;
+
+            if ($studentId <= 0 || !$eid) {
+                continue;
+            }
+
+            $student = PortalUser::whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
+
+            if (!$student) {
+                continue;
+            }
+
+            $tn = $teacherName ?: null;
+
+            // =========================
+            // ✅ STUDENT NOTIFICATION
+            // =========================
+            $student->notify(new MarksUpdatedNotification($examName, $marksLabel, $tn, false, null, $isNewEntry, $bid, $eid, $cid, null));
+
+            // =========================
+            // ✅ PARENT NOTIFICATIONS
+            // =========================
+            $parentIds = $this->parentPortalUserIdsForStudent($studentId);
+
+            foreach ($parentIds as $parentId) {
+                $parent = PortalUser::whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
+
+                if (!$parent) {
+                    continue;
+                }
+
+                $parent->notify(
+                    new MarksUpdatedNotification(
+                        $examName,
+                        $marksLabel,
+                        $tn,
+                        true, // 👈 IMPORTANT
+                        $student->name,
+                        $isNewEntry,
+                        $bid,
+                        $eid,
+                        $cid,
+                        $studentId,
+                    ),
+                );
+            }
+
+        }
     }
 }

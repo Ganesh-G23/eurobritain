@@ -23,7 +23,7 @@
                             <div class="row g-3">
                                 <div class="col-12 ajax-field">
                                     <label class="form-label">Teacher <span class="text-danger">*</span></label>
-                                    <select name="teacher_id" id="add_student_teacher_id" class="form-select" required>
+                                    <select name="teacher_id" id="add_student_teacher_id" class="form-select">
                                         <option value="">Select teacher</option>
                                         @foreach ($teachers ?? [] as $t)
                                             <option value="{{ $t->id }}"
@@ -37,17 +37,17 @@
 
                                 <div class="col-md-4 ajax-field">
                                     <label class="form-label">Student Name <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" name="name" required>
+                                    <input type="text" class="form-control" name="name">
                                     <span class="ajax-error text-danger small"></span>
                                 </div>
                                 <div class="col-md-4 ajax-field">
                                     <label class="form-label">Email <span class="text-danger">*</span></label>
-                                    <input type="email" class="form-control" name="email" required>
+                                    <input type="email" class="form-control" name="email" >
                                     <span class="ajax-error text-danger small"></span>
                                 </div>
                                 <div class="col-md-4 ajax-field">
                                     <label class="form-label">Phone <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" name="phone" required>
+                                    <input type="text" class="form-control" name="phone" >
                                     <span class="ajax-error text-danger small"></span>
                                 </div>
                                 <div class="col-md-4 ajax-field">

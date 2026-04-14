@@ -24,7 +24,6 @@ class CustomerController extends Controller
             'terms' => 'required|accepted',
         ]);
 
-        
 
         if (!$validation->fails()) {
             $roleMap = [
@@ -86,3 +85,4 @@ class CustomerController extends Controller
         return response()->json($this->response);
     }
 }
+    
