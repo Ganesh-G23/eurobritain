@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->unsignedBigInteger('teacher_id');
             $table->timestamps();
+            $table->softDeletes();
             
             $table->foreign('teacher_id')->references('id')->on('portal_user')->onDelete('cascade');
         });

@@ -138,9 +138,6 @@
                                     <h6 class="mb-0 me-auto">Notification</h6>
                                     <div class="d-flex align-items-center h6 mb-0">
                                         <span class="badge bg-label-primary me-2">{{ $parentNavUnreadCount }} New</span>
-                                        <a href="javascript:void(0)" class="dropdown-notifications-all p-2 btn btn-icon"
-                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Mark all as read"><i
-                                                class="icon-base ti tabler-mail-opened text-heading"></i></a>
                                     </div>
                                 </div>
                             </li>
@@ -198,7 +195,7 @@
                                                         <small
                                                             class="mb-1 d-block text-body">{{ $navMessage }}</small>
                                                         <small
-                                                            class="text-body-secondary">{{ $navNotification->created_at?->diffForHumans() }}</small>
+                                                            class="text-body-secondary">{{ $navNotification->created_at }}</small>
                                                     </div>
                                                 </a>
                                                 <div class="flex-shrink-0 dropdown-notifications-actions pt-2 pe-2">
@@ -497,36 +494,78 @@
 <!-- / Menu -->
 
 @push('portal_notification_scripts')
-<script>
-(function () {
-    if (window.__portalNotificationDeleteInit) {
-        return;
-    }
-    window.__portalNotificationDeleteInit = true;
-    document.addEventListener('click', function (e) {
-        var btn = e.target.closest('a.dropdown-notifications-archive');
-        if (!btn || !btn.getAttribute('data-id')) {
-            return;
-        }
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        var id = btn.getAttribute('data-id');
-        var $btn = $(btn);
-        $.ajax({
-            url: @json(route('notification.delete')),
-            type: 'POST',
-            data: {
-                _token: @json(csrf_token()),
-                id: id,
-            },
-            success: function (res) {
-                if (res.status === 1) {
-                    $btn.closest('li').remove();
+    <script>
+        (function() {
+            if (window.__portalNotificationDeleteInit) {
+                return;
+            }
+            window.__portalNotificationDeleteInit = true;
+            document.addEventListener('click', function(e) {
+                var btn = e.target.closest('a.dropdown-notifications-archive');
+                if (!btn || !btn.getAttribute('data-id')) {
+                    return;
                 }
-            },
-        });
-    }, true);
-})();
-</script>
-@endpush
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                var id = btn.getAttribute('data-id');
+                var $btn = $(btn);
+                $.ajax({
+                    url: "{{ route('notification.delete') }}",
+                    type: 'POST',
+                    data: {
+                        _token: "{{ csrf_token() }}",
+                        id: id,
+                    },
+                    success: function(res) {
+                        if (res.status === 1) {
 
+                            // remove notification row
+                            var $item = $btn.closest('li');
+                            $item.remove();
+
+                            // 🔥 UPDATE COUNT TEXT
+                            var $countBadge = $('.badge.bg-label-primary');
+                            var text = $countBadge.text(); // "2 New"
+                            var currentCount = parseInt(text) || 0;
+
+                            if (currentCount > 0) {
+                                currentCount--;
+                            }
+
+                            $countBadge.text(currentCount + ' New');
+
+                            // 🔥 HIDE RED DOT IF 0
+                            if (currentCount <= 0) {
+                                $('.badge-notifications').addClass('d-none');
+                            }
+
+                            // 🔥 IF NO NOTIFICATIONS LEFT → SHOW EMPTY UI
+                            if ($('.dropdown-notifications-list ul li').length === 0) {
+                                $('.dropdown-notifications-list ul').html(`
+                <li class="list-group-item list-group-item-action dropdown-notifications-item">
+                    <div class="d-flex">
+                        <div class="flex-shrink-0 me-3">
+                            <div class="avatar">
+                                <span class="avatar-initial rounded-circle bg-label-secondary">
+                                    <i class="icon-base ti tabler-bell-off"></i>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1 small">No notifications</h6>
+                            <small class="mb-1 d-block text-body">
+                                No new notifications.
+                            </small>
+                        </div>
+                    </div>
+                </li>
+            `);
+                            }
+                        }
+                    }
+
+                });
+            }, true);
+        })();
+    </script>
+@endpush

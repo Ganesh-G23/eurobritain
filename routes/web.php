@@ -138,6 +138,7 @@ Route::middleware('prevent-back')
             Route::post('student/delete', [StudentController::class, 'deleteStudent']);
             Route::get('student/form', [StudentController::class, 'form']);
             Route::post('student/save', [StudentController::class, 'saveStudent']);
+            Route::get('student/view', [StudentController::class, 'view']);
 
             // Admin bulk student upload/sample
             Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);

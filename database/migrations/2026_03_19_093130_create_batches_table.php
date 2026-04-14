@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('status')->default('active'); // active, pending, inactive
             $table->string('schedule')->nullable();
             $table->timestamps();
+            $table->softDeletes();
             
             $table->foreign('classroom_id')->references('id')->on('classrooms')->onDelete('cascade');
             $table->foreign('teacher_id')->references('id')->on('portal_user')->onDelete('cascade');

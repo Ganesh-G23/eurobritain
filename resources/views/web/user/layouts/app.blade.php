@@ -127,13 +127,13 @@
                                 placeholder="Enter new password">
                             <span class="ajax-error text-danger small"></span>
                         </div>
-                        <div class="mb-0 ajax-field">
+                        <div class="mb-3 ajax-field">
                             <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
                             <input type="password" name="password_confirmation" class="form-control"
                                 placeholder="Confirm new password">
                             <span class="ajax-error text-danger small"></span>
                         </div>
-                        <div class="mb-0 ajax-field">
+                        <div class="mb-3 ajax-field">
                             <label for="email" class="form-label">Recovery Email<span class="text-danger">*</span></label>
                             <input class="form-control" type="text" id="recovery_email" name="recovery_email" 
 							placeholder="john.doe@example.com" />

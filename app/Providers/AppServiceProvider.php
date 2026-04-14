@@ -7,6 +7,7 @@ use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\DB;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,19 +33,12 @@ class AppServiceProvider extends ServiceProvider
             $role = (int) ($portal['role'] ?? 0);
 
             if ($studentId > 0 && $role === 2 && Schema::hasTable('notifications')) {
-                $user = PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
-                if ($user) {
-                    $listQuery = $user->notifications()->latest()->limit(15);
-                    if (Schema::hasColumn('notifications', 'deleted_at')) {
-                        $listQuery->whereNull('notifications.deleted_at');
-                    }
-                    $layoutStudentNotifications = $listQuery->get();
+                $user = PortalUser::whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
 
-                    $unreadQuery = $user->unreadNotifications();
-                    if (Schema::hasColumn('notifications', 'deleted_at')) {
-                        $unreadQuery->whereNull('notifications.deleted_at');
-                    }
-                    $layoutStudentUnreadNotificationCount = (int) $unreadQuery->count();
+                if ($user) {
+                    $layoutStudentNotifications = DB::table('notifications')->where('notifiable_id', $studentId)->whereNull('deleted_at')->where('notifiable_type', $user->getMorphClass())->orderByDesc('created_at')->limit(15)->get();
+
+                    $layoutStudentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $studentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
                 }
             }
 
@@ -63,45 +57,12 @@ class AppServiceProvider extends ServiceProvider
             $role = (int) ($portal['role'] ?? 0);
 
             if ($parentId > 0 && $role === 3 && Schema::hasTable('notifications')) {
-                $user = PortalUser::query()->whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
+                $user = PortalUser::whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
+
                 if ($user) {
-                    $studentIds = PortalUser::query()
-                        ->where('role', 2)
-                        ->whereNull('deleted_at')
-                        ->where(function ($q) use ($parentId) {
-                            $q->where('parent_id', $parentId);
-                            if (Schema::hasTable('parent_student_map')) {
-                                $q->orWhereExists(function ($sub) use ($parentId) {
-                                    $sub->selectRaw('1')
-                                        ->from('parent_student_map')
-                                        ->whereColumn('parent_student_map.student_id', 'portal_user.id')
-                                        ->where('parent_student_map.parent_id', $parentId);
-                                });
-                            }
-                        })
-                        ->pluck('id');
+                    $layoutParentNotifications = DB::table('notifications')->where('notifiable_id', $parentId)->whereNull('deleted_at')->where('notifiable_type', $user->getMorphClass())->orderByDesc('created_at')->limit(15)->get();
 
-                    if ($studentIds->isNotEmpty()) {
-                        $morph = $user->getMorphClass();
-                        $listQuery = DatabaseNotification::query()
-                            ->where('notifiable_type', $morph)
-                            ->whereIn('notifiable_id', $studentIds)
-                            ->latest()
-                            ->limit(15);
-                        if (Schema::hasColumn('notifications', 'deleted_at')) {
-                            $listQuery->whereNull('notifications.deleted_at');
-                        }
-                        $layoutParentNotifications = $listQuery->get();
-
-                        $unreadQuery = DatabaseNotification::query()
-                            ->where('notifiable_type', $morph)
-                            ->whereIn('notifiable_id', $studentIds)
-                            ->whereNull('read_at');
-                        if (Schema::hasColumn('notifications', 'deleted_at')) {
-                            $unreadQuery->whereNull('notifications.deleted_at');
-                        }
-                        $layoutParentUnreadNotificationCount = (int) $unreadQuery->count();
-                    }
+                    $layoutParentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $parentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
                 }
             }
 

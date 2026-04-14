@@ -586,8 +586,8 @@ class UserDashboardController extends Controller
         });
 
         $data = [];
-        $data['title'] = 'Classrooms';
-        $data['active_tab'] = 'classrooms';
+        $data['title'] = 'Classroom';
+        $data['active_tab'] = 'student_classrooms';
         $data['teacher'] = $teacher;
         $data['student_classrooms'] = $classrooms;
         $data['total_classrooms'] = $classrooms->count();
@@ -1083,9 +1083,8 @@ class UserDashboardController extends Controller
 
         $portal = session('portal_user');
         $uid = (int) ($portal['id'] ?? 0);
-        $role = (int) ($portal['role'] ?? 0);
 
-        if ($uid <= 0 || !in_array($role, [2, 3], true)) {
+        if ($uid <= 0) {
             return response()->json(['status' => 0]);
         }
 
@@ -1101,48 +1100,42 @@ class UserDashboardController extends Controller
         $morph = $user->getMorphClass();
         $id = (string) $request->input('id');
 
-        if ($role === 2) {
-            $row = DB::table('notifications')
-                ->where('id', $id)
-                ->where('notifiable_type', $morph)
-                ->where('notifiable_id', $user->id)
-                ->first();
-        } else {
-            $row = DB::table('notifications')->where('id', $id)->first();
-            if (!$row || $row->notifiable_type !== $morph) {
-                return response()->json(['status' => 0]);
-            }
-            $studentId = (int) ($row->notifiable_id ?? 0);
-            if (
-                $studentId <= 0
-                || !PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->exists()
-                || !$this->parentOwnsStudent((int) $user->id, $studentId)
-            ) {
-                return response()->json(['status' => 0]);
-            }
-        }
+        // ✅ ONLY allow user to delete THEIR OWN notification
+        $row = DB::table('notifications')->where('id', $id)->where('notifiable_id', $user->id)->where('notifiable_type', $morph)->first();
 
         if (!$row) {
             return response()->json(['status' => 0]);
         }
 
+        // ✅ If dismissal table exists → soft hide per user
         if (Schema::hasTable('portal_notification_dismissals')) {
             DB::table('portal_notification_dismissals')->updateOrInsert(
-                ['notification_id' => $id, 'portal_user_id' => (int) $user->id],
-                ['updated_at' => now(), 'created_at' => now()]
+                [
+                    'notification_id' => $id,
+                    'portal_user_id' => $user->id,
+                ],
+                [
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ],
             );
 
             return response()->json(['status' => 1]);
         }
 
+        // ✅ Otherwise delete normally
         if (Schema::hasColumn('notifications', 'deleted_at')) {
-            $updated = (int) DB::table('notifications')
+            $updated = DB::table('notifications')
                 ->where('id', $id)
-                ->update(['deleted_at' => now(), 'updated_at' => now()]);
+                ->update([
+                    'deleted_at' => now(),
+                    'updated_at' => now(),
+                    'read_at' => now(),
+                ]);
         } else {
-            $updated = (int) DB::table('notifications')->where('id', $id)->delete();
+            $updated = DB::table('notifications')->where('id', $id)->delete();
         }
 
-        return response()->json(['status' => $updated > 0 ? 1 : 0]);
+        return response()->json(['status' => $updated ? 1 : 0]);
     }
 }
