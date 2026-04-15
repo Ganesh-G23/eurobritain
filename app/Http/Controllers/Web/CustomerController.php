@@ -63,8 +63,10 @@ class CustomerController extends Controller
                 
                 $user->save();
                 $user = $user->fresh();
-                
-                PortalSession::putRoleUser((int) ($user->role ?? 0), $user->toArray());
+
+                $loggedRole = (int) ($user->role ?? 0);
+                PortalSession::forgetOtherRoleBuckets($loggedRole);
+                PortalSession::putRoleUser($loggedRole, $user->toArray());
                 session()->put('show_teacher_password_popup', (int)($user->is_password_changed ?? 0) === 0 ? 1 : 0);
 
                 $this->response['status'] = 1;

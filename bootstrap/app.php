@@ -2,6 +2,10 @@
 
 use App\Http\Middleware\AdminAll;
 use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\EnsurePortalAuthenticated;
+use App\Http\Middleware\EnsurePortalParent;
+use App\Http\Middleware\EnsurePortalStudent;
+use App\Http\Middleware\EnsurePortalTeacher;
 use App\Http\Middleware\PortalRememberFromCookie;
 use App\Http\Middleware\PreventBackHistory;
 use App\Http\Middleware\SyncPortalSessionUser;
@@ -24,6 +28,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'prevent-back' => PreventBackHistory::class,
             'admin-auth' => AdminAuth::class,
             'admin-all' => AdminAll::class,
+            'portal.auth' => EnsurePortalAuthenticated::class,
+            'portal.teacher' => EnsurePortalTeacher::class,
+            'portal.student' => EnsurePortalStudent::class,
+            'portal.parent' => EnsurePortalParent::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

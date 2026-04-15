@@ -902,31 +902,38 @@ class UserDashboardController extends Controller
         return $raw === TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE ? TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE : TeacherSetting::COUNT_AS_ZERO;
     }
 
-    // Runs under teacher-session middleware (separate cookie)
+    /**
+     * Select a teacher context for the student session only (does not grant teacher portal access).
+     */
     public function loginAsTeacher($id)
     {
-        // Ensure this is initiated from a valid student mapping by checking a signed state would be ideal,
-        // but we at least ensure a student initiated the flow before.
-        $teacherId = (int) $id;
-        if ($teacherId <= 0) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
-
-        // For safety: if already a teacher session exists, allow switching
-        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
-        if (!$teacher) {
-            return redirect(url('/login'));
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return redirect('user/dashboard');
         }
 
-        // Add teacher login alongside student (does not remove student bucket)
-        PortalSession::putRoleUser(1, $teacher->toArray());
-        if ((int) ($teacher->is_password_changed ?? 0) === 0) {
-            session()->put('show_teacher_password_popup', 1);
-        } else {
-            session()->forget('show_teacher_password_popup');
+        $teacherId = (int) $id;
+        if ($teacherId <= 0) {
+            return redirect('user/select-teacher');
         }
 
-        return redirect(url('user/teacher/t/' . $teacherId));
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        $isMapped = \App\Models\StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $teacherId)->exists();
+        if (! $isMapped) {
+            return redirect('user/select-teacher');
+        }
+
+        if (! PortalUser::where('role', 1)->whereKey($teacherId)->exists()) {
+            return redirect('user/select-teacher');
+        }
+
+        session()->put('selected_teacher_id', $teacherId);
+        session()->forget('show_teacher_password_popup');
+
+        return redirect('user/student/dashboard');
     }
 
     public function selectStudent()

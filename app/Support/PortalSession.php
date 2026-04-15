@@ -227,6 +227,19 @@ final class PortalSession
         }
     }
 
+    /**
+     * Drop every portal role bucket except {@code $keepRole} (1=teacher, 2=student, 3=parent).
+     * Call before {@see putRoleUser} on login so only one portal identity exists per session.
+     */
+    public static function forgetOtherRoleBuckets(int $keepRole): void
+    {
+        foreach ([1, 2, 3] as $r) {
+            if ($r !== $keepRole) {
+                self::forgetRoleBucket($r);
+            }
+        }
+    }
+
     public static function logoutCurrentContext(): void
     {
         $portal = session('portal_user');
