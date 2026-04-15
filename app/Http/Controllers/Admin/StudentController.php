@@ -11,6 +11,7 @@ use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\ParentStudentMap;
 use Illuminate\Support\Collection;
+use App\Models\Exam;
 
 class StudentController extends Controller
 {
@@ -47,21 +48,17 @@ class StudentController extends Controller
 
         if ($classroomId > 0) {
             $studentList->where(function ($query) use ($classroomId) {
-                $query
-                    ->where('classroom_id', $classroomId)
-                    ->orWhereHas('studentClassroomMaps', function ($q) use ($classroomId) {
-                        $q->where('classroom_id', $classroomId);
-                    });
+                $query->where('classroom_id', $classroomId)->orWhereHas('studentClassroomMaps', function ($q) use ($classroomId) {
+                    $q->where('classroom_id', $classroomId);
+                });
             });
         }
 
         if ($batchId > 0) {
             $studentList->where(function ($query) use ($batchId) {
-                $query
-                    ->where('batch_id', $batchId)
-                    ->orWhereHas('studentClassroomMaps', function ($q) use ($batchId) {
-                        $q->where('batch_id', $batchId);
-                    });
+                $query->where('batch_id', $batchId)->orWhereHas('studentClassroomMaps', function ($q) use ($batchId) {
+                    $q->where('batch_id', $batchId);
+                });
             });
         }
 
@@ -239,25 +236,44 @@ class StudentController extends Controller
     function view(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
-        $portalUser = PortalUser::with([
-            'teachers',
-            'classroom',
-            'batch',
-            'studentClassroomMaps.classroom',
-            'studentClassroomMaps.batch',
-        ])->where('role', 2)->find($id);
+        $portalUser = PortalUser::with(['teachers', 'classroom', 'batch', 'studentClassroomMaps.classroom', 'studentClassroomMaps.batch'])
+            ->where('role', 2)
+            ->find($id);
 
         if (!$portalUser) {
             return redirect('admin/student');
         }
 
         [$viewClassrooms, $viewBatches] = $this->studentViewEnrollmentCollections($portalUser);
-        $viewTeachers = $portalUser->teachers()
-            ->where('portal_user.role', 1)
-            ->whereNull('portal_user.deleted_at')
-            ->orderBy('portal_user.name')
-            ->get();
+        $viewTeachers = $portalUser->teachers()->where('portal_user.role', 1)->whereNull('portal_user.deleted_at')->orderBy('portal_user.name')->get();
         $teacherCount = $viewTeachers->count();
+        
+
+        $batchIdsForTests = $viewBatches->pluck('id')
+            ->merge($portalUser->batch_id ? [(int) $portalUser->batch_id] : [])
+            ->unique()
+            ->filter()
+            ->values();
+
+        $viewTests = $batchIdsForTests->isEmpty()
+            ? collect()
+            : Exam::query()
+                ->whereIn('batch_id', $batchIdsForTests->all())
+                ->with([
+                    'batch:id,name',
+                    'marks' => static function ($q) use ($portalUser) {
+                        $q->where('student_id', $portalUser->id);
+                    },
+                    'markAbsences' => static function ($q) use ($portalUser) {
+                        $q->where('student_id', $portalUser->id);
+                    },
+                ])
+                ->orderByDesc('exam_date')
+                ->orderByDesc('id')
+                ->get();
+
+        $testCount = Exam::where('batch_id', $portalUser->batch_id)->count();
+        // dd($testCount);
 
         return view('admin.student.view', [
             'title' => 'View Student',
@@ -269,6 +285,8 @@ class StudentController extends Controller
             'total_classrooms' => $viewClassrooms->count(),
             'total_batches' => $viewBatches->count(),
             'total_teachers' => $teacherCount,
+            'view_tests' => $viewTests,
+            'test_count' => $testCount,
         ]);
     }
 
@@ -298,9 +316,8 @@ class StudentController extends Controller
             $batchesKeyed->put($student->batch->id, $student->batch);
         }
 
-        return [
-            $classroomsKeyed->values(),
-            $batchesKeyed->values(),
-        ];
+        return [$classroomsKeyed->values(), $batchesKeyed->values()];
     }
+
+    
 }

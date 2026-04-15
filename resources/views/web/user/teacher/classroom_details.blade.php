@@ -19,6 +19,18 @@
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             @endif
+            @if (session('import_attendance_success'))
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    {{ session('import_attendance_success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+            @if (session('import_attendance_error'))
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ session('import_attendance_error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
             <div class="row">
                 <div class="col-md-12">
                     <strong>
@@ -79,6 +91,11 @@
                                             href="#batch-{{ $batch->id }}-tests-pane" role="tab"
                                             aria-controls="batch-{{ $batch->id }}-tests-pane"
                                             aria-selected="false">Tests</a>
+                                        <a class="list-group-item list-group-item-action"
+                                            id="batch-{{ $batch->id }}-attendance-tab" data-bs-toggle="list"
+                                            href="#batch-{{ $batch->id }}-attendance-pane" role="tab"
+                                            aria-controls="batch-{{ $batch->id }}-attendance-pane"
+                                            aria-selected="false">Attendance</a>
                                     </div>
                                     <div class="tab-content px-0 mt-0" id="batch-sublist-content-{{ $batch->id }}">
                                         <div class="tab-pane fade show active" id="batch-{{ $batch->id }}-students-pane"
@@ -360,6 +377,156 @@
                                                     available; cells show placeholders until marks are enabled.</p>
                                             @endif
                                         </div>
+
+                                        <div class="tab-pane fade" id="batch-{{ $batch->id }}-attendance-pane"
+                                            role="tabpanel" aria-labelledby="batch-{{ $batch->id }}-attendance-tab">
+                                            @php
+                                                $attDates = collect(
+                                                    $attendance_dates_by_batch[$batch->id] ?? [],
+                                                )->values();
+                                                $attGridBatch =
+                                                    $attendance_status_by_batch_date_student[$batch->id] ?? [];
+                                                $attReady = $attendance_table_ready ?? false;
+                                                $attColCount = max(2, 2 + $attDates->count());
+                                            @endphp
+                                            <div class="attendance-save-msg mb-2" data-batch-id="{{ $batch->id }}"></div>
+                                            <div
+                                                class="d-flex flex-wrap align-items-start align-items-md-center justify-content-between gap-2 mb-3">
+                                                <div
+                                                    class="d-flex flex-wrap align-items-center justify-content-end gap-2 flex-shrink-0 ms-md-auto">
+                                                    
+                                                    @if ($attReady)
+                                                        <button type="button"
+                                                            class="btn btn-label-secondary btn-sm"
+                                                            data-bs-toggle="modal" data-bs-target="#importAttendanceModal">
+                                                            <i class="icon-base ti tabler-upload me-1"></i> Import
+                                                            attendance
+                                                        </button>
+                                                    @endif
+                                                    <button type="button"
+                                                        class="btn btn-primary btn-sm btn-open-attendance-modal"
+                                                        data-bs-toggle="modal" data-bs-target="#addAttendanceModal"
+                                                        data-batch-id="{{ $batch->id }}"
+                                                        @if (!$attReady) disabled @endif>
+                                                        <i class="icon-base ti tabler-plus me-1"></i> Add attendance
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            @if (!$attReady)
+                                                <p class="text-body-secondary small">Attendance storage is not available
+                                                    yet.</p>
+                                            @else
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label"
+                                                            for="attendance-filter-{{ $batch->id }}">Search</label>
+                                                        <input type="text" id="attendance-filter-{{ $batch->id }}"
+                                                            class="form-control js-attendance-student-filter"
+                                                            placeholder="Student name" autocomplete="off"
+                                                            data-attendance-table="#attendance-table-{{ $batch->id }}">
+                                                    </div>
+                                                </div>
+                                                <div class="table-responsive">
+                                                    <table
+                                                        class="table table-bordered table-striped align-middle text-nowrap"
+                                                        id="attendance-table-{{ $batch->id }}"
+                                                        data-batch-id="{{ $batch->id }}">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>#</th>
+                                                                <th>Student Name</th>
+                                                                @foreach ($attDates as $d)
+                                                                    <th class="text-center small align-top attendance-date-head"
+                                                                        data-attendance-date="{{ $d }}"
+                                                                        data-batch-id="{{ $batch->id }}">
+                                                                        <div class="fw-semibold">
+                                                                            {{ \Illuminate\Support\Carbon::parse($d)->format('d M Y') }}
+                                                                        </div>
+                                                                        <div
+                                                                            class="d-flex align-items-center justify-content-center gap-1 mt-1 flex-wrap">
+                                                                            <button type="button"
+                                                                                class="btn btn-sm btn-icon btn-label-secondary js-edit-attendance-col"
+                                                                                title="Edit attendance"
+                                                                                data-attendance-date="{{ $d }}"
+                                                                                data-batch-id="{{ $batch->id }}">
+                                                                                <i class="icon-base ti tabler-edit"></i>
+                                                                            </button>
+                                                                            <div
+                                                                                class="js-attendance-col-actions d-none align-items-center gap-1 flex-wrap justify-content-center">
+                                                                                <button type="button"
+                                                                                    class="btn btn-sm btn-primary js-save-attendance-col">Save</button>
+                                                                                <button type="button"
+                                                                                    class="btn btn-sm btn-label-secondary js-cancel-attendance-col">Cancel</button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </th>
+                                                                @endforeach
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @forelse ($list as $index => $student)
+                                                                @php
+                                                                    $studentSearchHaystack = Str::lower(
+                                                                        trim(
+                                                                            ($student->name ?? '') .
+                                                                                ' ' .
+                                                                                ($student->email ?? '') .
+                                                                                ' ' .
+                                                                                ($student->phone ?? '') .
+                                                                                ' ' .
+                                                                                ($student->parent_name ?? '') .
+                                                                                ' ' .
+                                                                                ($student->parent_email ?? '') .
+                                                                                ' ' .
+                                                                                ($student->parent_phone ?? ''),
+                                                                        ),
+                                                                    );
+                                                                    $sid = (int) $student->id;
+                                                                @endphp
+                                                                <tr class="attendance-student-row"
+                                                                    data-student-id="{{ $student->id }}"
+                                                                    data-student-name="{{ Str::lower($student->name) }}"
+                                                                    data-student-search="{{ $studentSearchHaystack }}">
+                                                                    <td>{{ $index + 1 }}</td>
+                                                                    <td class="fw-medium">{{ $student->name }}</td>
+                                                                    @foreach ($attDates as $d)
+                                                                        @php
+                                                                            $attCell = ($attGridBatch[$d] ?? [])[$sid] ?? '';
+                                                                            $attCellDisplay = $attCell !== '' ? $attCell : '—';
+                                                                        @endphp
+                                                                        <td class="text-center attendance-date-cell p-1 align-middle"
+                                                                            data-attendance-date="{{ $d }}"
+                                                                            data-batch-id="{{ $batch->id }}"
+                                                                            data-student-id="{{ $student->id }}">
+                                                                            <span
+                                                                                class="attendance-cell-display d-inline-block py-1">{{ $attCellDisplay }}</span>
+                                                                            <input type="text"
+                                                                                class="form-control form-control-sm text-center attendance-cell-input d-none mx-auto text-uppercase"
+                                                                                maxlength="1" inputmode="text"
+                                                                                autocomplete="off"
+                                                                                aria-label="Attendance P, A, or L"
+                                                                                placeholder="P/A/L"
+                                                                                style="max-width: 3.25rem;"
+                                                                                value="{{ $attCell === 'P' || $attCell === 'A' || $attCell === 'L' ? $attCell : '' }}">
+                                                                        </td>
+                                                                    @endforeach
+                                                                </tr>
+                                                            @empty
+                                                                <tr>
+                                                                    <td colspan="{{ $attColCount }}"
+                                                                        class="text-center text-body-secondary py-4">No
+                                                                        students in this batch yet.</td>
+                                                                </tr>
+                                                            @endforelse
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                @if ($attDates->isEmpty() && $list->isNotEmpty())
+                                                    <p class="text-body-secondary small mt-2 mb-0">No attendance dates yet.
+                                                        Use <strong>Add attendance</strong> to add the first day.</p>
+                                                @endif
+                                            @endif
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -389,7 +556,8 @@
                                         marks in each test column. The first two rows are test info; do not delete them.
                                         <strong>Total max</strong> and <strong>Total marks</strong> columns (if present) are
                                         ignored on import. Student names must match this batch (duplicate names are not
-                                        supported for this template).</p>
+                                        supported for this template).
+                                    </p>
                                     <div class="mb-3">
                                         <label class="form-label" for="import_marks_test_select">Test</label>
                                         <select class="form-select form-select-sm" id="import_marks_test_select" required>
@@ -446,6 +614,66 @@
                 </div>
             @endif
 
+            @if ($attendance_table_ready ?? false)
+                <div class="modal fade" id="importAttendanceModal" tabindex="-1" aria-hidden="true"
+                    data-export-attendance-base="{{ url('user/teacher/classrooms/details/' . $classroom->id . '/export-attendance') }}">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Import attendance (CSV)</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
+                            </div>
+                            <form method="post"
+                                action="{{ url('user/teacher/classrooms/details/' . $classroom->id . '/import-attendance') }}"
+                                enctype="multipart/form-data" id="importAttendanceForm">
+                                @csrf
+                                <div class="modal-body">
+                                    <p class="small text-body-secondary mb-3">Choose the <strong>batch</strong> and
+                                        <strong>attendance date</strong> first, then download the template. The sheet lists
+                                        every student in that batch (same idea as marks import). Enter <strong>P</strong>,
+                                        <strong>A</strong>, or <strong>L</strong> in the Status column (leave blank to
+                                        clear). Do not change the first three rows or the date in row 1.</p>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="import_attendance_batch_select">Batch</label>
+                                        <select class="form-select form-select-sm" name="batch_id"
+                                            id="import_attendance_batch_select" required>
+                                            @foreach ($classroom->batches as $b)
+                                                <option value="{{ $b->id }}">{{ $b->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="import_attendance_date">Attendance date <span
+                                                class="text-danger">*</span></label>
+                                        <input type="date" class="form-control form-control-sm" name="attendance_date"
+                                            id="import_attendance_date" value="{{ date('Y-m-d') }}" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                            id="import_attendance_download_tpl">
+                                            <i class="icon-base ti tabler-download me-1"></i> Download template CSV
+                                        </button>
+                                        <span class="text-body-secondary small ms-2">Uses the batch and date above.</span>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label" for="import_attendance_file">CSV file</label>
+                                        <input type="file" class="form-control form-control-sm" name="csv_file"
+                                            id="import_attendance_file" accept=".csv,.txt,text/csv,text/plain" required>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-label-secondary"
+                                        data-bs-dismiss="modal">Close</button>
+                                    <button type="submit" class="btn btn-primary" id="import_attendance_submit">Save
+                                        attendance</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="modal fade" id="addExamModal" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
@@ -489,6 +717,64 @@
                     </div>
                 </div>
             </div>
+
+            <div class="modal fade" id="addAttendanceModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Add attendance</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                        </div>
+                        <form id="addAttendanceForm" method="POST"
+                            action="{{ portal_same_origin_path('user/teacher/attendance/save-day') }}">
+                            @csrf
+                            <input type="hidden" name="batch_id" id="attendance_modal_batch_id" value="">
+                            <input type="hidden" name="return_classroom_id" value="{{ $classroom->id }}">
+                            <div class="modal-body">
+                                <div class="col-12 ajax-msg mb-3"></div>
+                                <div class="mb-3 ajax-field">
+                                    <label class="form-label" for="attendance_modal_date">Date <span
+                                            class="text-danger">*</span></label>
+                                    <input type="date" class="form-control" id="attendance_modal_date"
+                                        name="attendance_date">
+                                    <span class="ajax-error" style="color: red;"></span>
+                                </div>
+                                <div class="mb-3 ajax-field">
+                                    <label class="form-label" for="attendance_modal_student_id">Student <span
+                                            class="text-danger">*</span></label>
+                                    <select class="form-select" name="student_id" id="attendance_modal_student_id">
+                                        <option value="">Select student</option>
+                                    </select>
+                                    <span class="ajax-error" style="color: red;"></span>
+                                </div>
+                                <div class="mb-0 ajax-field">
+                                    <label class="form-label" for="attendance_modal_status">Attendance <span
+                                            class="text-danger">*</span></label>
+                                    <select class="form-select" name="attendance_status" id="attendance_modal_status">
+                                        <option value="P">P — Present</option>
+                                        <option value="A">A — Absent</option>
+                                        <option value="L">L — Leave</option>
+                                    </select>
+                                    <span class="ajax-error" style="color: red;"></span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-label-secondary"
+                                    data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary submit-button">Save attendance</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <script type="application/json" id="attendanceStudentsByBatchJson">
+                {!! json_encode($attendance_modal_students_by_batch ?? []) !!}
+            </script>
+            <script type="application/json" id="attendanceStatusGridJson">
+                {!! json_encode($attendance_status_by_batch_date_student ?? []) !!}
+            </script>
         @endif
     </div>
 @endsection
@@ -571,6 +857,52 @@
                     }
                 }
 
+                var importAttModal = document.getElementById('importAttendanceModal');
+                if (importAttModal) {
+                    importAttModal.addEventListener('show.bs.modal', function() {
+                        var sel = document.getElementById('import_attendance_batch_select');
+                        if (!sel || sel.options.length === 0) {
+                            return;
+                        }
+                        var active = document.querySelector(
+                            '#classroomBatchTabs button.nav-link.active[data-bs-target]');
+                        var batchId = '';
+                        if (active) {
+                            var target = active.getAttribute('data-bs-target') || '';
+                            var m = target.match(/batch-pane-(\d+)/);
+                            if (m) {
+                                batchId = m[1];
+                            }
+                        }
+                        if (batchId) {
+                            for (var j = 0; j < sel.options.length; j++) {
+                                if (sel.options[j].value === batchId) {
+                                    sel.selectedIndex = j;
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                    var attDl = document.getElementById('import_attendance_download_tpl');
+                    if (attDl) {
+                        attDl.addEventListener('click', function() {
+                            var base = importAttModal.getAttribute('data-export-attendance-base');
+                            var bid = document.getElementById('import_attendance_batch_select');
+                            var dEl = document.getElementById('import_attendance_date');
+                            var bidVal = bid ? bid.value : '';
+                            var dVal = dEl ? dEl.value : '';
+                            if (!base || !bidVal || !dVal) {
+                                window.alert('Select a batch and attendance date first.');
+                                return;
+                            }
+                            var q = new URLSearchParams();
+                            q.set('batch_id', bidVal);
+                            q.set('attendance_date', dVal);
+                            window.location.href = base + '?' + q.toString();
+                        });
+                    }
+                }
+
                 document.querySelectorAll('.btn-add-exam').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = btn.getAttribute('data-batch-id');
@@ -621,7 +953,8 @@
                     var btn = $('#addExamSubmit');
                     btn.prop('disabled', true).text('Saving...');
                     var payload = form.serializeArray();
-                    $.post("{{ portal_same_origin_path('user/teacher/exams/save') }}", payload, function(res) {
+                    $.post("{{ portal_same_origin_path('user/teacher/exams/save') }}", payload, function(
+                        res) {
                         btn.prop('disabled', false).text('Save test');
                         if (res.status == 1) {
                             window.location.href = res.redirect_url || window.location.href;
@@ -946,7 +1279,443 @@
                         tr.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
                     });
                 });
+
+                document.addEventListener('input', function(e) {
+                    if (!e.target.classList.contains('js-attendance-student-filter')) {
+                        return;
+                    }
+                    var sel = e.target.getAttribute('data-attendance-table');
+                    var table = sel ? document.querySelector(sel) : null;
+                    if (!table) {
+                        return;
+                    }
+                    var q = (e.target.value || '').trim().toLowerCase();
+                    table.querySelectorAll('tbody tr.attendance-student-row').forEach(function(tr) {
+                        var hay = tr.getAttribute('data-student-search') || tr.getAttribute(
+                            'data-student-name') || '';
+                        tr.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+                    });
+                });
             })();
+        </script>
+        <script>
+            (function() {
+                var attendanceColSaveUrl =
+                    "{{ portal_same_origin_path('user/teacher/attendance/save-column') }}";
+                var csrfAtt = "{{ csrf_token() }}";
+                var activeAttendanceColumn = null;
+
+                function attClearMsg(pane) {
+                    var box = pane.querySelector('.attendance-save-msg');
+                    if (box) {
+                        box.innerHTML = '';
+                    }
+                }
+
+                function attShowMsg(pane, html, isError) {
+                    var box = pane.querySelector('.attendance-save-msg');
+                    if (!box) {
+                        return;
+                    }
+                    var cls = isError ? 'alert alert-danger py-2 mb-0' : 'alert alert-success py-2 mb-0';
+                    box.innerHTML = '<div class="' + cls + '">' + html + '</div>';
+                }
+
+                function attendanceCellDisplay(val) {
+                    var v = (val || '').trim();
+                    return v === '' ? '—' : v;
+                }
+
+                /** Returns '', 'P','A','L', or null if invalid (non-empty garbage). */
+                function normalizeAttendanceInput(raw) {
+                    var s = (raw || '').trim();
+                    if (s === '' || s === '—') {
+                        return '';
+                    }
+                    s = s.charAt(0).toUpperCase();
+                    if (s === 'P' || s === 'A' || s === 'L') {
+                        return s;
+                    }
+                    return null;
+                }
+
+                document.addEventListener('input', function(e) {
+                    var inp = e.target.closest('.attendance-cell-input');
+                    if (!inp) {
+                        return;
+                    }
+                    var v = inp.value.replace(/[^pPaAlL]/g, '');
+                    if (v.length > 1) {
+                        v = v.slice(0, 1);
+                    }
+                    if (v) {
+                        v = v.toUpperCase();
+                    }
+                    if (inp.value !== v) {
+                        inp.value = v;
+                    }
+                });
+
+                function exitEditAttendance(pane, batchId, dateStr) {
+                    if (!pane || !batchId || !dateStr) {
+                        return;
+                    }
+                    pane.querySelectorAll('th.attendance-date-head[data-batch-id="' + batchId +
+                        '"][data-attendance-date="' + dateStr + '"]').forEach(function(th) {
+                        var eb = th.querySelector('.js-edit-attendance-col');
+                        var act = th.querySelector('.js-attendance-col-actions');
+                        if (eb) {
+                            eb.classList.remove('d-none');
+                        }
+                        if (act) {
+                            act.classList.add('d-none');
+                            act.classList.remove('d-flex');
+                        }
+                    });
+                    pane.querySelectorAll('td.attendance-date-cell[data-batch-id="' + batchId +
+                        '"][data-attendance-date="' + dateStr + '"]').forEach(function(td) {
+                        var span = td.querySelector('.attendance-cell-display');
+                        var inp = td.querySelector('.attendance-cell-input');
+                        if (span) {
+                            span.classList.remove('d-none');
+                        }
+                        if (inp) {
+                            inp.classList.add('d-none');
+                        }
+                    });
+                }
+
+                function enterEditAttendance(pane, batchId, dateStr) {
+                    pane.querySelectorAll('th.attendance-date-head[data-batch-id="' + batchId +
+                        '"][data-attendance-date="' + dateStr + '"]').forEach(function(th) {
+                        var eb = th.querySelector('.js-edit-attendance-col');
+                        var act = th.querySelector('.js-attendance-col-actions');
+                        if (eb) {
+                            eb.classList.add('d-none');
+                        }
+                        if (act) {
+                            act.classList.remove('d-none');
+                            act.classList.add('d-flex');
+                        }
+                    });
+                    pane.querySelectorAll('td.attendance-date-cell[data-batch-id="' + batchId +
+                        '"][data-attendance-date="' + dateStr + '"]').forEach(function(td) {
+                        var span = td.querySelector('.attendance-cell-display');
+                        var inp = td.querySelector('.attendance-cell-input');
+                        if (!inp) {
+                            return;
+                        }
+                        if (span) {
+                            span.classList.add('d-none');
+                        }
+                        inp.classList.remove('d-none');
+                        var t = (span && span.textContent) ? span.textContent.trim() : '';
+                        if (t === '—') {
+                            t = '';
+                        }
+                        var letter = (t === 'P' || t === 'A' || t === 'L') ? t : '';
+                        inp.value = letter;
+                        inp.dataset.attendanceOriginal = letter;
+                    });
+                }
+
+                function cancelAttendanceValues(pane, batchId, dateStr) {
+                    pane.querySelectorAll('td.attendance-date-cell[data-batch-id="' + batchId +
+                        '"][data-attendance-date="' + dateStr + '"]').forEach(function(td) {
+                        var inp = td.querySelector('.attendance-cell-input');
+                        if (inp && inp.dataset.attendanceOriginal !== undefined) {
+                            inp.value = inp.dataset.attendanceOriginal;
+                        }
+                    });
+                }
+
+                document.addEventListener('click', function(e) {
+                    var editBtn = e.target.closest('.js-edit-attendance-col');
+                    if (editBtn) {
+                        e.preventDefault();
+                        var dateStr = editBtn.getAttribute('data-attendance-date');
+                        var batchId = editBtn.getAttribute('data-batch-id');
+                        var pane = document.getElementById('batch-' + batchId + '-attendance-pane');
+                        if (!pane || !dateStr) {
+                            return;
+                        }
+                        attClearMsg(pane);
+                        if (activeAttendanceColumn) {
+                            if (activeAttendanceColumn.pane !== pane || activeAttendanceColumn.dateStr !==
+                                dateStr || activeAttendanceColumn.batchId !== batchId) {
+                                cancelAttendanceValues(activeAttendanceColumn.pane, activeAttendanceColumn
+                                    .batchId, activeAttendanceColumn.dateStr);
+                                exitEditAttendance(activeAttendanceColumn.pane, activeAttendanceColumn
+                                    .batchId, activeAttendanceColumn.dateStr);
+                            }
+                        }
+                        enterEditAttendance(pane, batchId, dateStr);
+                        activeAttendanceColumn = {
+                            dateStr: dateStr,
+                            batchId: batchId,
+                            pane: pane
+                        };
+                        return;
+                    }
+
+                    var cancelBtn = e.target.closest('.js-cancel-attendance-col');
+                    if (cancelBtn) {
+                        e.preventDefault();
+                        var th = cancelBtn.closest('th.attendance-date-head');
+                        if (!th) {
+                            return;
+                        }
+                        var dateStr = th.getAttribute('data-attendance-date');
+                        var batchId = th.getAttribute('data-batch-id');
+                        var pane = document.getElementById('batch-' + batchId + '-attendance-pane');
+                        if (!pane) {
+                            return;
+                        }
+                        cancelAttendanceValues(pane, batchId, dateStr);
+                        exitEditAttendance(pane, batchId, dateStr);
+                        attClearMsg(pane);
+                        activeAttendanceColumn = null;
+                        return;
+                    }
+
+                    var saveBtn = e.target.closest('.js-save-attendance-col');
+                    if (saveBtn) {
+                        e.preventDefault();
+                        var th = saveBtn.closest('th.attendance-date-head');
+                        if (!th) {
+                            return;
+                        }
+                        var dateStr = th.getAttribute('data-attendance-date');
+                        var batchId = th.getAttribute('data-batch-id');
+                        var pane = document.getElementById('batch-' + batchId + '-attendance-pane');
+                        if (!pane || !dateStr) {
+                            return;
+                        }
+                        attClearMsg(pane);
+                        var payload = {
+                            _token: csrfAtt,
+                            batch_id: batchId,
+                            attendance_date: dateStr
+                        };
+                        var cells = pane.querySelectorAll('td.attendance-date-cell[data-batch-id="' + batchId +
+                            '"][data-attendance-date="' + dateStr + '"]');
+                        var invalid = false;
+                        for (var ci = 0; ci < cells.length; ci++) {
+                            var td = cells[ci];
+                            var sid = td.getAttribute('data-student-id');
+                            var inp = td.querySelector('.attendance-cell-input');
+                            if (!sid || !inp) {
+                                continue;
+                            }
+                            var norm = normalizeAttendanceInput(inp.value);
+                            if (norm === null) {
+                                invalid = true;
+                                break;
+                            }
+                            inp.value = norm;
+                            payload['statuses[' + sid + ']'] = norm;
+                        }
+                        if (invalid) {
+                            attShowMsg(pane, 'Each cell must be P, A, or L (or leave blank to clear).', true);
+                            return;
+                        }
+                        var btn = saveBtn;
+                        btn.disabled = true;
+                        $.post(attendanceColSaveUrl, payload, function(res) {
+                            btn.disabled = false;
+                            if (res.status == 1) {
+                                pane.querySelectorAll('td.attendance-date-cell[data-batch-id="' +
+                                    batchId + '"][data-attendance-date="' + dateStr + '"]').forEach(function(
+                                    td) {
+                                    var inp = td.querySelector('.attendance-cell-input');
+                                    var span = td.querySelector('.attendance-cell-display');
+                                    if (!inp || !span) {
+                                        return;
+                                    }
+                                    span.textContent = attendanceCellDisplay(inp.value);
+                                    inp.dataset.attendanceOriginal = inp.value;
+                                });
+                                exitEditAttendance(pane, batchId, dateStr);
+                                activeAttendanceColumn = null;
+                                attShowMsg(pane, res.msg || 'Attendance saved', false);
+                            } else if (res.error) {
+                                attShowMsg(pane, res.error, true);
+                            } else if (res.error_array) {
+                                attShowMsg(pane, 'Validation failed', true);
+                            }
+                        }, 'json').fail(function() {
+                            btn.disabled = false;
+                            attShowMsg(pane, 'Request failed', true);
+                        });
+                    }
+                });
+            })();
+        </script>
+        <script>
+            $(function() {
+                var elS = document.getElementById('attendanceStudentsByBatchJson');
+                var elG = document.getElementById('attendanceStatusGridJson');
+                if (!elS) {
+                    return;
+                }
+                var attendanceStudentsByBatch = {};
+                var attendanceStatusGrid = {};
+                try {
+                    attendanceStudentsByBatch = JSON.parse(elS.textContent.trim() || '{}');
+                } catch (err) {
+                    attendanceStudentsByBatch = {};
+                }
+                if (elG) {
+                    try {
+                        attendanceStatusGrid = JSON.parse(elG.textContent.trim() || '{}');
+                    } catch (err2) {
+                        attendanceStatusGrid = {};
+                    }
+                }
+
+                function escapeHtml(s) {
+                    var d = document.createElement('div');
+                    d.textContent = s == null ? '' : String(s);
+                    return d.innerHTML;
+                }
+
+                function studentsForBatch(batchId) {
+                    var b = String(batchId);
+                    return attendanceStudentsByBatch[batchId] || attendanceStudentsByBatch[b] || [];
+                }
+
+                function fillAttendanceStudentSelect(batchId) {
+                    var sel = document.getElementById('attendance_modal_student_id');
+                    if (!sel || !batchId) {
+                        return;
+                    }
+                    var students = studentsForBatch(batchId);
+                    sel.innerHTML = '<option value="">Select student</option>';
+                    students.forEach(function(s) {
+                        var opt = document.createElement('option');
+                        opt.value = String(s.id);
+                        opt.textContent = s.name;
+                        sel.appendChild(opt);
+                    });
+                }
+
+                function syncAttendanceStatusFromGrid() {
+                    var batchId = parseInt(document.getElementById('attendance_modal_batch_id').value, 10);
+                    var dateInput = document.getElementById('attendance_modal_date');
+                    var studentSel = document.getElementById('attendance_modal_student_id');
+                    var statusSel = document.getElementById('attendance_modal_status');
+                    if (!dateInput || !studentSel || !statusSel || !batchId) {
+                        return;
+                    }
+                    var dateStr = dateInput.value || '';
+                    var sid = parseInt(studentSel.value, 10);
+                    if (!dateStr || !sid) {
+                        return;
+                    }
+                    var gridB = attendanceStatusGrid[batchId] || attendanceStatusGrid[String(batchId)] || {};
+                    var gridD = gridB[dateStr] || {};
+                    var saved = gridD[String(sid)] || gridD[sid];
+                    if (saved === 'P' || saved === 'A' || saved === 'L') {
+                        statusSel.value = saved;
+                    } else {
+                        statusSel.value = 'P';
+                    }
+                }
+
+                document.querySelectorAll('.btn-open-attendance-modal').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var bid = parseInt(btn.getAttribute('data-batch-id'), 10);
+                        document.getElementById('attendance_modal_batch_id').value = bid;
+                        var dateInput = document.getElementById('attendance_modal_date');
+                        if (dateInput && !dateInput.value) {
+                            dateInput.value = new Date().toISOString().slice(0, 10);
+                        }
+                        fillAttendanceStudentSelect(bid);
+                        var statusSel = document.getElementById('attendance_modal_status');
+                        if (statusSel) {
+                            statusSel.value = 'P';
+                        }
+                        var modal = document.getElementById('addAttendanceModal');
+                        if (modal) {
+                            if (typeof clearAjaxErrors === 'function') {
+                                clearAjaxErrors('#addAttendanceModal');
+                            } else {
+                                modal.querySelectorAll('.ajax-error').forEach(function(el) {
+                                    el.textContent = '';
+                                });
+                                var msgEl = modal.querySelector('.ajax-msg');
+                                if (msgEl) {
+                                    msgEl.innerHTML = '';
+                                }
+                            }
+                        }
+                        syncAttendanceStatusFromGrid();
+                    });
+                });
+
+                var attDateInput = document.getElementById('attendance_modal_date');
+                if (attDateInput) {
+                    attDateInput.addEventListener('change', syncAttendanceStatusFromGrid);
+                }
+                var attStudentSel = document.getElementById('attendance_modal_student_id');
+                if (attStudentSel) {
+                    attStudentSel.addEventListener('change', syncAttendanceStatusFromGrid);
+                }
+
+                var attModal = document.getElementById('addAttendanceModal');
+                if (attModal) {
+                    attModal.addEventListener('hidden.bs.modal', function() {
+                        var f = document.getElementById('addAttendanceForm');
+                        if (f) {
+                            f.reset();
+                        }
+                        var h = document.getElementById('attendance_modal_batch_id');
+                        if (h) {
+                            h.value = '';
+                        }
+                        var sel = document.getElementById('attendance_modal_student_id');
+                        if (sel) {
+                            sel.innerHTML = '<option value="">Select student</option>';
+                        }
+                        if (typeof clearAjaxErrors === 'function') {
+                            clearAjaxErrors('#addAttendanceModal');
+                        } else {
+                            attModal.querySelectorAll('.ajax-error').forEach(function(el) {
+                                el.textContent = '';
+                            });
+                            var msg = attModal.querySelector('.ajax-msg');
+                            if (msg) {
+                                msg.innerHTML = '';
+                            }
+                        }
+                    });
+                }
+
+            });
+        </script>
+        <script>
+            $(document).on('submit', '#addAttendanceForm', function(e) {
+                e.preventDefault();
+                clearAjaxErrors('#addAttendanceModal');
+
+                const _this = $(this);
+                _this.find('.submit-button').attr('disabled', 'disabled');
+                _this.find('.submit-button').text('Saving...');
+
+                const url = _this.attr('action');
+                const data = _this.serializeArray();
+
+                $.post(url, data, function(res) {
+                    _this.find('.submit-button').removeAttr('disabled');
+                    _this.find('.submit-button').text('Save attendance');
+                    processAjaxResponse(res, 1000, '#addAttendanceModal', 'no');
+                }, 'json').fail(function() {
+                    _this.find('.submit-button').removeAttr('disabled');
+                    _this.find('.submit-button').text('Save attendance');
+                    $('#addAttendanceModal').find('.ajax-msg').html(
+                        '<div class="alert alert-danger mb-0">Request failed</div>');
+                });
+            });
         </script>
     @endif
 @endsection

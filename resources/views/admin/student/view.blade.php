@@ -90,6 +90,12 @@
                                     <i class="icon-base ti tabler-users-group me-1"></i> Batches
                                 </button>
                             </li>
+                            <li class="nav-item">
+                                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tests"
+                                    role="tab" aria-selected="false">
+                                    <i class="icon-base ti tabler-users-group me-1"></i> Tests
+                                </button>
+                            </li>
                         </ul>
                     </div>
                     <div class="tab-content flex-grow-1">
@@ -137,6 +143,23 @@
                                                     <div>
                                                         <h5 class="mb-1">Total Batches</h5>
                                                         <h3 class="mb-0">{{ $total_batches ?? 0 }}</h3>
+                                                    </div>
+                                                    <div class="avatar avatar-lg">
+                                                        <span class="avatar-initial rounded-circle bg-success">
+                                                            <i class="icon-base ti tabler-users-group"></i>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card bg-label-success">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <h5 class="mb-1">Total Tests</h5>
+                                                        <h3 class="mb-0">{{ $test_count ?? 0 }}</h3>
                                                     </div>
                                                     <div class="avatar avatar-lg">
                                                         <span class="avatar-initial rounded-circle bg-success">
@@ -283,6 +306,69 @@
                                                     </div>
                                                     <h6 class="mb-2">No batches found</h6>
                                                     <p class="text-muted small mb-0">No batches assigned to this student.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="tests" role="tabpanel">
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    @if(count($view_tests) > 0)
+                                        @foreach($view_tests as $test)
+                                            <div class="col-auto">
+                                                <div class="card batch-card">
+                                                    <div class="card-body p-3">
+                                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                                            <h6 class="card-title mb-0 small"><strong>{{ $test->batch->name }}</strong></h6>
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <div class="mb-1">
+                                                                <strong>Test Name:</strong>
+                                                                {{ $test->exam_name ?? '-' }}
+                                                            </div>
+                                                            @php
+                                                                $markRow = $test->marks->first();
+                                                                $absRow = $test->markAbsences->first();
+                                                                $maxM = $test->max_marks ?? '—';
+                                                                if ($absRow) {
+                                                                    $mode = (int) ($absRow->value !== null && $absRow->value !== ''
+                                                                        ? $absRow->value
+                                                                        : \App\Models\TeacherSetting::COUNT_AS_ZERO);
+                                                                    $marksLabel =
+                                                                        $mode === \App\Models\TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE
+                                                                            ? 'A'
+                                                                            : 'A(0)';
+                                                                } elseif ($markRow && $markRow->marks !== null && $markRow->marks !== '') {
+                                                                    $marksLabel = $markRow->marks;
+                                                                } else {
+                                                                    $marksLabel = '—';
+                                                                }
+                                                            @endphp
+                                                            <small class="text-muted d-block mb-1">
+                                                                <strong>Marks:</strong>
+                                                                <span class="badge bg-label-active badge-sm">
+                                                                    {{ $marksLabel }}/{{ $maxM }}
+                                                                </span>
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    @else
+                                        <div class="col-12">
+                                            <div class="card h-100 border-dashed">
+                                                <div class="card-body d-flex flex-column align-items-center justify-content-center text-center"
+                                                    style="min-height: 220px;">
+                                                    <div class="mb-3">
+                                                        <i class="icon-base ti tabler-users-group text-muted" style="font-size: 3rem;"></i>
+                                                    </div>
+                                                    <h6 class="mb-2">No tests found</h6>
+                                                    <p class="text-muted small mb-0">No tests and marks assigned to this student.</p>
                                                 </div>
                                             </div>
                                         </div>

@@ -38,4 +38,9 @@ class Batch extends Model
     {
         return $this->hasMany(Exam::class, 'batch_id');
     }
+
+    public function attendances()
+    {
+        return $this->hasMany(StudentAttendance::class, 'batch_id');
+    }
 }

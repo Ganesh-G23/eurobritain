@@ -27,13 +27,18 @@ class Exam extends Model
         ];
     }
 
-    public function batch(): BelongsTo
+    public function batch()
     {
         return $this->belongsTo(Batch::class, 'batch_id');
     }
 
-    public function marks(): HasMany
+    public function marks()
     {
         return $this->hasMany(Mark::class, 'exam_id');
+    }
+
+    public function markAbsences()
+    {
+        return $this->hasMany(MarkAbsence::class, 'exam_id');
     }
 }

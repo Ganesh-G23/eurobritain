@@ -10,6 +10,7 @@ use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\ParentStudentMap;
 use App\Models\PortalUser;
+use App\Models\StudentAttendance;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
@@ -1084,7 +1085,499 @@ class UserTeacherController extends Controller
         $data['teacher_mark_display_setting'] = $teacherMarkDisplaySetting;
         $data['marks_table_ready'] = Schema::hasTable('marks');
 
+        $attendanceDatesByBatch = [];
+        $attendanceStatusByBatchDateStudent = [];
+        $attendanceModalStudentsByBatch = [];
+        $data['attendance_table_ready'] = Schema::hasTable('student_attendances');
+
+        foreach ($classroom->batches as $batch) {
+            $bid = (int) $batch->id;
+            $list = $studentsByBatch[$bid] ?? collect();
+            $attendanceModalStudentsByBatch[$bid] = $list->map(static fn(PortalUser $s) => [
+                'id' => (int) $s->id,
+                'name' => (string) $s->name,
+            ])->values()->all();
+        }
+
+        if ($data['attendance_table_ready'] && $batchIds->isNotEmpty()) {
+            $attRows = StudentAttendance::query()
+                ->whereIn('batch_id', $batchIds)
+                ->get(['batch_id', 'student_id', 'date', 'attendance_status']);
+
+            $dateKeysByBatch = [];
+            foreach ($attRows as $row) {
+                $bid = (int) $row->batch_id;
+                $d = $row->date->format('Y-m-d');
+                $dateKeysByBatch[$bid][$d] = true;
+                $sid = (int) $row->student_id;
+                $attendanceStatusByBatchDateStudent[$bid][$d][$sid] = (string) $row->attendance_status;
+            }
+            foreach ($classroom->batches as $batch) {
+                $bid = (int) $batch->id;
+                $keys = array_keys($dateKeysByBatch[$bid] ?? []);
+                sort($keys, SORT_STRING);
+                $attendanceDatesByBatch[$bid] = $keys;
+            }
+        }
+
+        $data['attendance_dates_by_batch'] = $attendanceDatesByBatch;
+        $data['attendance_status_by_batch_date_student'] = $attendanceStatusByBatchDateStudent;
+        $data['attendance_modal_students_by_batch'] = $attendanceModalStudentsByBatch;
+
         return view('web.user.teacher.classroom_details', $data);
+    }
+
+    public function saveBatchAttendanceDay(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            $this->response['error'] = 'Unauthorized request';
+        } elseif (!Schema::hasTable('student_attendances')) {
+            $this->response['error'] = 'Attendance is not available.';
+        } else {
+            $validation = Validator::make($request->all(), [
+                'batch_id' => 'required|integer',
+                'date' => 'required|date',
+                'student_id' => 'required|integer',
+                'attendance_status' => ['required', Rule::in(['P', 'A', 'L'])],
+                'return_classroom_id' => 'nullable|integer',
+            ]);
+
+            if (!$validation->fails()) {
+                $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
+
+                if (!$batch) {
+                    $this->response['error_array'] = formatErrors([
+                        'batch_id' => ['Batch not found.'],
+                    ]);
+                } else {
+                    $classroomId = (int) $request->input('return_classroom_id', 0);
+                    if ($classroomId > 0 && (int) $batch->classroom_id !== $classroomId) {
+                        $this->response['error_array'] = formatErrors([
+                            'batch_id' => ['This batch does not belong to that classroom.'],
+                        ]);
+                    } else {
+                        $allowedStudentIds = StudentClassroomMap::query()
+                            ->where('teacher_id', $teacherId)
+                            ->where('batch_id', $batch->id)
+                            ->pluck('student_id')
+                            ->unique()
+                            ->filter()
+                            ->map(static fn($id) => (int) $id)
+                            ->all();
+
+                        $allowedSet = array_fill_keys($allowedStudentIds, true);
+                        $date = \Carbon\Carbon::parse($request->attendance_date)->format('Y-m-d');
+                        $sid = (int) $request->student_id;
+                        $status = (string) $request->attendance_status;
+
+                        if (!isset($allowedSet[$sid])) {
+                            $this->response['error_array'] = formatErrors([
+                                'student_id' => ['This student is not in the selected batch.'],
+                            ]);
+                        } else {
+                            DB::transaction(function () use ($batch, $date, $sid, $status) {
+                                StudentAttendance::query()->updateOrCreate(
+                                    [
+                                        'batch_id' => $batch->id,
+                                        'student_id' => $sid,
+                                        'date' => $date,
+                                    ],
+                                    [
+                                        'attendance_status' => $status,
+                                    ],
+                                );
+                            });
+
+                            $this->response['status'] = 1;
+                            $this->response['msg'] = 'Attendance saved.';
+                            $this->response['redirect_url'] = url('user/teacher/classrooms/details/' . $batch->classroom_id);
+                        }
+                    }
+                }
+            } else {
+                $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+            }
+        }
+
+        echo json_encode($this->response);
+    }
+
+    /**
+     * Save one date column for all students in a batch (same idea as saveExamMarksColumn).
+     */
+    public function saveAttendanceColumn(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+
+        if (!Schema::hasTable('student_attendances')) {
+            return response()->json(['status' => 0, 'error' => 'Attendance is not available']);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'batch_id' => 'required|integer',
+            'attendance_date' => 'required|date',
+            'statuses' => 'required|array',
+            'statuses.*' => 'nullable|in:P,A,L',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => 0, 'error_array' => $validator->errors()->toArray()]);
+        }
+
+        $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
+
+        if (!$batch) {
+            return response()->json(['status' => 0, 'error' => 'Batch not found']);
+        }
+
+        $allowedStudentIds = StudentClassroomMap::query()
+            ->where('teacher_id', $teacherId)
+            ->where('batch_id', $batch->id)
+            ->pluck('student_id')
+            ->unique()
+            ->filter()
+            ->map(static fn($id) => (int) $id)
+            ->all();
+
+        $allowedSet = array_fill_keys($allowedStudentIds, true);
+        $date = \Carbon\Carbon::parse($request->attendance_date)->format('Y-m-d');
+        $statuses = $request->input('statuses', []);
+
+        DB::transaction(function () use ($batch, $date, $statuses, $allowedSet) {
+            foreach ($statuses as $studentId => $raw) {
+                $sid = (int) $studentId;
+                if (!isset($allowedSet[$sid])) {
+                    continue;
+                }
+                $v = $raw === null ? '' : trim((string) $raw);
+                if ($v === '') {
+                    StudentAttendance::query()
+                        ->where('batch_id', $batch->id)
+                        ->where('student_id', $sid)
+                        ->whereDate('date', $date)
+                        ->delete();
+
+                    continue;
+                }
+
+                StudentAttendance::query()->updateOrCreate(
+                    [
+                        'batch_id' => $batch->id,
+                        'student_id' => $sid,
+                        'date' => $date,
+                    ],
+                    [
+                        'attendance_status' => $v,
+                    ],
+                );
+            }
+        });
+
+        return response()->json([
+            'status' => 1,
+            'msg' => 'Attendance saved for this date.',
+        ]);
+    }
+
+    /**
+     * CSV template for one batch + date: student names (like marks export) and a Status column (P / A / L).
+     */
+    public function exportClassroomAttendance(Request $request, $id)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return $redirect;
+        }
+
+        if (!Schema::hasTable('student_attendances')) {
+            abort(404, 'Attendance is not available.');
+        }
+
+        $classroom = Classroom::with(['batches' => fn($q) => $q->orderBy('name')])->find($id);
+
+        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+            abort(404);
+        }
+
+        $batchId = (int) $request->query('batch_id', 0);
+        $dateRaw = $request->query('attendance_date', '');
+        if ($batchId <= 0 || trim((string) $dateRaw) === '') {
+            abort(422, 'batch_id and attendance_date are required.');
+        }
+
+        try {
+            $dateYmd = \Carbon\Carbon::parse($dateRaw)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            abort(422, 'Invalid attendance_date.');
+        }
+
+        $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey($batchId)->first();
+
+        if (!$batch) {
+            abort(404, 'Batch not found.');
+        }
+
+        $mapRows = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('classroom_id', $classroom->id)->where('batch_id', $batch->id)->get();
+
+        $studentIds = $mapRows->pluck('student_id')->unique()->filter()->values();
+        $studentsById = $studentIds->isEmpty() ? collect() : PortalUser::query()->whereIn('id', $studentIds)->where('role', 2)->whereNull('deleted_at')->get()->keyBy('id');
+
+        $seen = [];
+        $students = collect();
+        foreach ($mapRows as $map) {
+            $student = $studentsById->get($map->student_id);
+            if (!$student || isset($seen[$student->id])) {
+                continue;
+            }
+            $seen[$student->id] = true;
+            $students->push($student);
+        }
+        $students = $students->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        $statusBySid = StudentAttendance::query()
+            ->where('batch_id', $batch->id)
+            ->whereDate('date', $dateYmd)
+            ->get()
+            ->keyBy('student_id');
+
+        $slugClass = Str::slug($classroom->name, '-') ?: 'classroom';
+        $slugBatch = Str::slug($batch->name, '-') ?: 'batch';
+        $filename = $slugClass . '-' . $slugBatch . '-attendance-' . $dateYmd . '.csv';
+
+        return response()->streamDownload(
+            function () use ($classroom, $batch, $students, $dateYmd, $statusBySid) {
+                $out = fopen('php://output', 'w');
+                fwrite($out, "\xEF\xBB\xBF");
+
+                fputcsv($out, ['', '', '', '', 'Attendance date: ' . $dateYmd]);
+                fputcsv($out, ['', '', '', '', 'Fill Status with P, A, or L (leave blank to clear).']);
+                fputcsv($out, ['#', 'Student name', 'Classroom', 'Batch', 'Status']);
+
+                $rowNum = 0;
+                foreach ($students as $student) {
+                    $rowNum++;
+                    $sid = (int) $student->id;
+                    $st = $statusBySid->get($sid);
+                    $cell = $st ? (string) $st->attendance_status : '';
+                    fputcsv($out, [$rowNum, $student->name, $classroom->name, $batch->name, $cell]);
+                }
+
+                fclose($out);
+            },
+            $filename,
+            [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ],
+        );
+    }
+
+    public function importAttendanceFromCsv(Request $request, $id)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return $redirect;
+        }
+
+        if (!Schema::hasTable('student_attendances')) {
+            return redirect()->back()->with('import_attendance_error', 'Attendance storage is not available.');
+        }
+
+        $validated = $request->validate([
+            'batch_id' => 'required|integer',
+            'attendance_date' => 'required|date',
+            'csv_file' => 'required|file|max:5120',
+        ]);
+
+        $classroom = Classroom::query()->find($id);
+
+        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+            return redirect()->back()->with('import_attendance_error', 'Classroom not found.');
+        }
+
+        $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey((int) $validated['batch_id'])->first();
+
+        if (!$batch) {
+            return redirect()->back()->with('import_attendance_error', 'Batch not found.');
+        }
+
+        $file = $request->file('csv_file');
+        if (!$file || !$file->isValid()) {
+            return redirect()->back()->with('import_attendance_error', 'Invalid upload file.');
+        }
+
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            return redirect()->back()->with('import_attendance_error', 'File must be a .csv or .txt file.');
+        }
+
+        $dateYmd = \Carbon\Carbon::parse($validated['attendance_date'])->format('Y-m-d');
+
+        $path = $file->getRealPath();
+        if (!$path || !is_readable($path)) {
+            return redirect()->back()->with('import_attendance_error', 'Could not read the uploaded file.');
+        }
+
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return redirect()->back()->with('import_attendance_error', 'Could not open the uploaded file.');
+        }
+
+        $bom = fread($handle, 3);
+        if ($bom !== "\xEF\xBB\xBF") {
+            rewind($handle);
+        }
+
+        $line1 = fgetcsv($handle);
+        if ($line1 === false || $line1 === [null] || $line1 === []) {
+            fclose($handle);
+
+            return redirect()->back()->with('import_attendance_error', 'The CSV file is empty.');
+        }
+
+        $line2 = fgetcsv($handle);
+        $header = fgetcsv($handle);
+        if ($header === false || $header === [null] || $header === []) {
+            fclose($handle);
+
+            return redirect()->back()->with('import_attendance_error', 'The CSV file is missing the header row.');
+        }
+
+        $meta = trim((string) ($line1[4] ?? ''));
+        if (!preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $meta, $m) || $m[1] !== $dateYmd) {
+            fclose($handle);
+
+            return redirect()->back()->with('import_attendance_error', 'This file does not match the selected date. Choose the same date you used for Download template, or download the template again.');
+        }
+
+        $h1 = strtolower(trim((string) ($header[1] ?? '')));
+        $h4 = strtolower(trim((string) ($header[4] ?? '')));
+        if ($h1 !== 'student name' || $h4 !== 'status') {
+            fclose($handle);
+
+            return redirect()->back()->with('import_attendance_error', 'Unexpected header row. Download the template again and keep the first three rows unchanged.');
+        }
+
+        $allowedStudentIdSet = array_fill_keys(
+            StudentClassroomMap::query()
+                ->where('teacher_id', $teacherId)
+                ->where('classroom_id', $classroom->id)
+                ->where('batch_id', $batch->id)
+                ->pluck('student_id')
+                ->map(static fn($sid) => (int) $sid)
+                ->unique()
+                ->values()
+                ->all(),
+            true,
+        );
+
+        $studentsByLowerName = [];
+        $allowedIds = array_keys($allowedStudentIdSet);
+        foreach (
+            PortalUser::query()
+                ->whereIn('id', $allowedIds)
+                ->where('role', 2)
+                ->whereNull('deleted_at')
+                ->get(['id', 'name']) as $pu
+        ) {
+            $nk = strtolower(trim((string) ($pu->name ?? '')));
+            if ($nk === '') {
+                continue;
+            }
+            if (!isset($studentsByLowerName[$nk])) {
+                $studentsByLowerName[$nk] = [];
+            }
+            $studentsByLowerName[$nk][] = (int) $pu->id;
+        }
+
+        $importedRows = 0;
+        $lineNum = 3;
+
+        try {
+            DB::transaction(function () use ($handle, $batch, $dateYmd, $studentsByLowerName, $allowedStudentIdSet, &$importedRows, &$lineNum) {
+                while (($row = fgetcsv($handle)) !== false) {
+                    $lineNum++;
+                    if ($row === [null] || $row === []) {
+                        continue;
+                    }
+                    $row = array_pad($row, 5, '');
+                    $studentName = trim((string) ($row[1] ?? ''));
+                    if ($studentName === '') {
+                        continue;
+                    }
+
+                    $nameKey = strtolower($studentName);
+                    $matches = $studentsByLowerName[$nameKey] ?? [];
+                    if ($matches === []) {
+                        throw new \RuntimeException('Row ' . $lineNum . ': no student named "' . $studentName . '" in this batch.');
+                    }
+                    if (count($matches) > 1) {
+                        throw new \RuntimeException('Row ' . $lineNum . ': more than one student named "' . $studentName . '" in this batch; names must be unique for this import format.');
+                    }
+                    $studentId = (int) $matches[0];
+                    if (!isset($allowedStudentIdSet[$studentId])) {
+                        throw new \RuntimeException('Row ' . $lineNum . ': student is not in this batch.');
+                    }
+
+                    $raw = trim((string) ($row[4] ?? ''));
+                    $normalized = $this->normalizeAttendanceImportStatus($raw);
+                    if ($normalized === false) {
+                        throw new \RuntimeException('Row ' . $lineNum . ': Status must be P, A, or L (or leave blank to clear).');
+                    }
+
+                    if ($normalized === '') {
+                        StudentAttendance::query()
+                            ->where('batch_id', $batch->id)
+                            ->where('student_id', $studentId)
+                            ->whereDate('date', $dateYmd)
+                            ->delete();
+                    } else {
+                        StudentAttendance::query()->updateOrCreate(
+                            [
+                                'batch_id' => $batch->id,
+                                'student_id' => $studentId,
+                                'date' => $dateYmd,
+                            ],
+                            [
+                                'attendance_status' => $normalized,
+                            ],
+                        );
+                    }
+
+                    $importedRows++;
+                }
+            });
+        } catch (\RuntimeException $e) {
+            fclose($handle);
+
+            return redirect()->back()->with('import_attendance_error', $e->getMessage());
+        }
+
+        fclose($handle);
+
+        return redirect()
+            ->back()
+            ->with('import_attendance_success', 'Attendance import finished. ' . $importedRows . ' student row(s) saved for ' . $dateYmd . ' (' . $batch->name . ').');
+    }
+
+    /**
+     * @return string Normalized P/A/L, '' to clear, false if invalid non-empty
+     */
+    protected function normalizeAttendanceImportStatus(string $raw): string|false
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        $u = strtoupper($raw);
+        if ($u === 'P' || $u === 'A' || $u === 'L') {
+            return $u;
+        }
+
+        return false;
     }
 
     public function exportClassroomMarks(Request $request, $id)
