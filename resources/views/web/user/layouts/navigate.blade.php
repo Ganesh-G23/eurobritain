@@ -152,11 +152,13 @@
                                             $navMessage = $navData['message'] ?? '';
                                             $navRead = $navNotification->read_at !== null;
 
-                                            $batchId = $navData['batch_id'] ?? null;
-                                            $examId = $navData['exam_id'] ?? null;
-                                            $classroomId = $navData['classroom_id'] ?? null;
-                                            $notifyStudentId = isset($navData['student_id'])
-                                                ? (int) $navData['student_id']
+                                            $meta = $navData['meta'] ?? [];
+
+                                            $batchId = $meta['batch_id'] ?? null;
+                                            $examId = $meta['exam_id'] ?? null;
+                                            $classroomId = $meta['classroom_id'] ?? null;
+                                            $notifyStudentId = isset($meta['student_id'])
+                                                ? (int) $meta['student_id']
                                                 : 0;
 
                                             $marksUrl =

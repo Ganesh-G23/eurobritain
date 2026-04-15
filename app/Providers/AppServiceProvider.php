@@ -26,7 +26,7 @@ class AppServiceProvider extends ServiceProvider
     {
         View::composer('web.user.student.layouts.navigate', function ($view) {
             $layoutStudentNotifications = collect();
-            $layoutStudentUnreadNotificationCount = 0;
+            $StudentUnreadNotificationCount = 0;
 
             $portal = session('portal_user');
             $studentId = (int) ($portal['id'] ?? 0);
@@ -38,13 +38,13 @@ class AppServiceProvider extends ServiceProvider
                 if ($user) {
                     $layoutStudentNotifications = DB::table('notifications')->where('notifiable_id', $studentId)->whereNull('deleted_at')->where('notifiable_type', $user->getMorphClass())->orderByDesc('created_at')->limit(15)->get();
 
-                    $layoutStudentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $studentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
+                    $StudentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $studentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
                 }
             }
 
             $view->with([
                 'layoutStudentNotifications' => $layoutStudentNotifications,
-                'layoutStudentUnreadNotificationCount' => $layoutStudentUnreadNotificationCount,
+                'StudentUnreadNotificationCount' => $StudentUnreadNotificationCount,
             ]);
         });
 

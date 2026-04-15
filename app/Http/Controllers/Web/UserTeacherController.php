@@ -14,6 +14,7 @@ use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
 use App\Notifications\MarksUpdatedNotification;
+use App\Notifications\PortalNotification;
 use App\Support\StudentEnrollmentSync;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -1967,91 +1968,6 @@ class UserTeacherController extends Controller
     }
 
     /**
-     * @param  array<int, array{student_id: int, exam_name: string, marks_label: string, is_new_entry?: bool, classroom_id?: int, batch_id?: int}>  $items
-     */
-    // protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
-    // {
-    //     if (!Schema::hasTable('notifications') || $items === []) {
-    //         return;
-    //     }
-
-    //     // One import/save can enqueue the same student+exam more than once; keep a single notify payload.
-    //     $items = collect($items)
-    //         ->unique(fn (array $item) => (int) ($item['student_id'] ?? 0).':'.(int) ($item['exam_id'] ?? 0))
-    //         ->values()
-    //         ->all();
-
-    //     foreach ($items as $item) {
-    //         $studentId = (int) ($item['student_id'] ?? 0);
-    //         $examName = trim((string) ($item['exam_name'] ?? ''));
-    //         $marksLabel = trim((string) ($item['marks_label'] ?? ''));
-    //         $isNewEntry = (bool) ($item['is_new_entry'] ?? false);
-
-    //         // ✅ REQUIRED IDs
-    //         $classroomId = (int) ($item['classroom_id'] ?? 0);
-    //         $batchId = (int) ($item['batch_id'] ?? 0);
-    //         $examId = (int) ($item['exam_id'] ?? 0);
-
-    //         if ($studentId <= 0 || $examName === '' || $marksLabel === '') {
-    //             continue;
-    //         }
-
-    //         $student = PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
-
-    //         if (!$student) {
-    //             continue;
-    //         }
-
-    //         $tn = $teacherName !== null && $teacherName !== '' ? $teacherName : null;
-    //         $cid = $classroomId > 0 ? $classroomId : null;
-    //         $bid = $batchId > 0 ? $batchId : null;
-    //         $eid = $examId > 0 ? $examId : null;
-
-    //         // ✅ STUDENT NOTIFICATION (FIXED ORDER)
-    //         $student->notify(
-    //             new MarksUpdatedNotification(
-    //                 $examName,
-    //                 $marksLabel,
-    //                 $tn,
-    //                 false,
-    //                 null,
-    //                 $isNewEntry,
-    //                 $bid, // ✅ batch_id
-    //                 $eid, // ✅ exam_id
-    //                 $cid, // ✅ classroom_id
-    //                 null,
-    //             ),
-    //         );
-
-    //         $studentLabel = trim((string) ($student->name ?? ''));
-
-    //         foreach ($this->parentPortalUserIdsForStudent($studentId) as $parentId) {
-    //             $parent = PortalUser::query()->whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
-
-    //             if (!$parent) {
-    //                 continue;
-    //             }
-
-    //             // ✅ PARENT NOTIFICATION (FIXED ORDER)
-    //             $parent->notify(
-    //                 new MarksUpdatedNotification(
-    //                     $examName,
-    //                     $marksLabel,
-    //                     $tn,
-    //                     true,
-    //                     $studentLabel !== '' ? $studentLabel : null,
-    //                     $isNewEntry,
-    //                     $bid, // ✅ batch_id
-    //                     $eid, // ✅ exam_id
-    //                     $cid, // ✅ classroom_id
-    //                     $studentId,
-    //                 ),
-    //             );
-    //         }
-    //     }
-    // }
-
-    /**
      * @return array<int, int>
      */
     protected function parentPortalUserIdsForStudent(int $studentId): array
@@ -2116,12 +2032,27 @@ class UserTeacherController extends Controller
                 continue;
             }
 
-            $tn = $teacherName ?: null;
+            $tn = $teacherName ?: 'Your teacher';
 
             // =========================
             // ✅ STUDENT NOTIFICATION
             // =========================
-            $student->notify(new MarksUpdatedNotification($examName, $marksLabel, $tn, false, null, $isNewEntry, $bid, $eid, $cid, null));
+            $title = $isNewEntry ? 'New marks posted' : 'Marks updated';
+
+            $message = $tn . ' ' . ($isNewEntry ? 'posted' : 'updated') . ' your marks for "' . $examName . '": ' . $marksLabel . '.';
+
+            $student->notify(
+                new PortalNotification(
+                    $title,
+                    $message,
+                    'marks', // 👈 type
+                    [
+                        'exam_id' => $eid,
+                        'classroom_id' => $cid,
+                        'batch_id' => $bid,
+                    ],
+                ),
+            );
 
             // =========================
             // ✅ PARENT NOTIFICATIONS
@@ -2135,22 +2066,21 @@ class UserTeacherController extends Controller
                     continue;
                 }
 
+                $childName = $student->name ?? 'Your child';
+
+                $title = $isNewEntry ? 'New marks for your child' : 'Marks updated for your child';
+
+                $message = $tn . ' ' . ($isNewEntry ? 'posted' : 'updated') . ' ' . $childName . '\'s marks for "' . $examName . '": ' . $marksLabel . '.';
+
                 $parent->notify(
-                    new MarksUpdatedNotification(
-                        $examName,
-                        $marksLabel,
-                        $tn,
-                        true, // 👈 IMPORTANT
-                        $student->name,
-                        $isNewEntry,
-                        $bid,
-                        $eid,
-                        $cid,
-                        $studentId,
-                    ),
+                    new PortalNotification($title, $message, 'marks', [
+                        'student_id' => $studentId,
+                        'exam_id' => $eid,
+                        'classroom_id' => $cid,
+                        'batch_id' => $bid,
+                    ]),
                 );
             }
-
         }
     }
 }

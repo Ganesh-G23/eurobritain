@@ -27,7 +27,6 @@ class HomeController extends Controller
         return view('web.index');
     }
 
-
     public function login()
     {
         return view('web.login');

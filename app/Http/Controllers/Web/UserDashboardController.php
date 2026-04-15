@@ -746,7 +746,7 @@ class UserDashboardController extends Controller
         }
 
         $data = $payload;
-        $data['active_tab'] = 'classrooms';
+        $data['active_tab'] = 'student_classrooms';
 
         return view('web.user.student.classroom_show', $data);
     }

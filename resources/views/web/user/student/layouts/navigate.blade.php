@@ -109,7 +109,7 @@
 
                 @php
                     $studentNavNotifications = $layoutStudentNotifications ?? collect();
-                    $studentNavUnreadCount = (int) ($layoutStudentUnreadNotificationCount ?? 0);
+                    $studentNavUnreadCount = (int) ($StudentUnreadNotificationCount ?? 0);
                 @endphp
                 <li class="nav-item dropdown-notifications navbar-dropdown dropdown me-3 me-xl-2">
                     <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
@@ -141,12 +141,12 @@
 
                                         $navTitle = $navData['title'] ?? 'Notification';
                                         $navMessage = $navData['message'] ?? '';
-                                        $navRead = $navNotification->read_at !== null;
 
                                         // ✅ GET IDs
-                                        $batchId = $navData['batch_id'] ?? null;
-                                        $examId = $navData['exam_id'] ?? null;
-                                        $classroomId = $navData['classroom_id'] ?? null;
+                                        $meta = $navData['meta'] ?? [];
+                                        $batchId = $meta['batch_id'] ?? null;
+                                        $examId = $meta['exam_id'] ?? null;
+                                        $classroomId = $meta['classroom_id'] ?? null;
 
                                         // ✅ BUILD URL
                                         $url =
@@ -162,8 +162,7 @@
                                                 : 'javascript:void(0)';
                                     @endphp
 
-                                    <li
-                                        class="list-group-item list-group-item-action dropdown-notifications-item {{ $navRead ? 'marked-as-read' : '' }}">
+                                    <li class="list-group-item list-group-item-action dropdown-notifications-item">
                                         <div class="d-flex align-items-start w-100">
                                             <a href="{{ $url }}"
                                                 class="d-flex flex-grow-1 min-w-0 text-reset text-decoration-none py-2 ps-3 pe-2">
@@ -351,18 +350,6 @@
                     </li>
                 </ul>
             </li>
-            <!-- <li class="menu-item {{ $active_tab === 'student_attendance' ? 'active' : '' }}">
-        <a href="{{ url('user/student/attendance') }}" class="menu-link">
-         <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
-         <div>Attendance</div>
-        </a>
-       </li>
-       <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
-        <a href="{{ url('user/student/report') }}" class="menu-link">
-         <i class="menu-icon icon-base ti tabler-report-analytics"></i>
-         <div>Report</div>
-        </a>
-       </li> -->
         </ul>
     </div>
 </aside>
