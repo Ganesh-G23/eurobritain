@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\PortalRememberFromCookie;
 use App\Models\PortalUser;
+use App\Support\PortalSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
@@ -23,7 +24,6 @@ class CustomerController extends Controller
             'terms' => 'required|accepted',
         ]);
 
-        
 
         if (!$validation->fails()) {
             $roleMap = [
@@ -64,18 +64,17 @@ class CustomerController extends Controller
                 $user->save();
                 $user = $user->fresh();
                 
-                session()->forget('admin');
-                session()->put('portal_user', $user->toArray());
-                if ((int)($user->role ?? 0) === 1) {
-                    session()->put('teacher', $user->toArray());
-                } else {
-                    session()->forget('teacher');
-                }
+                PortalSession::putRoleUser((int) ($user->role ?? 0), $user->toArray());
                 session()->put('show_teacher_password_popup', (int)($user->is_password_changed ?? 0) === 0 ? 1 : 0);
 
                 $this->response['status'] = 1;
                 $this->response['msg'] = "Login successful...";
-                $this->response['redirect_url'] = url('user');
+                $this->response['redirect_url'] = match ((int) ($user->role ?? 0)) {
+                    1 => url('user/dashboard'),
+                    2 => url('user/student/dashboard'),
+                    3 => url('user/parent/dashboard'),
+                    default => url('user'),
+                };
             } else {
                 $this->response['error'] = "Invalid credentials!";
             }
@@ -86,3 +85,4 @@ class CustomerController extends Controller
         return response()->json($this->response);
     }
 }
+    

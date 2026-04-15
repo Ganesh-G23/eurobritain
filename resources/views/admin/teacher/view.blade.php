@@ -176,11 +176,9 @@
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <h6 class="mb-0">Students</h6>
                                     <div class="d-flex gap-2">
-                                        <a href="{{ url('admin/teacher/students/bulk-sample?teacher_id=' . $teacher->id) }}" class="btn btn-sm btn-label-secondary">
-                                            <i class="icon-base ti tabler-download me-1"></i> Download Sample
-                                        </a>
-                                        <button type="button" class="btn btn-sm btn-label-primary" data-bs-toggle="modal" data-bs-target="#adminBulkStudentModal">
-                                            <i class="icon-base ti tabler-upload me-1"></i> Bulk Upload
+                                        <button type="button" class="btn btn-sm btn-label-primary" data-bs-toggle="modal"
+                                            data-bs-target="#teacherImportStudentsModal">
+                                            <i class="icon-base ti tabler-upload me-1"></i> Import students
                                         </button>
                                     </div>
                                 </div>
@@ -216,13 +214,26 @@
                                                                         $parentRow = \App\Models\PortalUser::find($student->parent_id);
                                                                     }
                                                                 @endphp
+                                                                @php
+                                                                    $mapsForRow = $student->studentClassroomMaps->map(static function ($m) {
+                                                                        return [
+                                                                            'classroom_id' => (int) $m->classroom_id,
+                                                                            'batch_id' => (int) $m->batch_id,
+                                                                        ];
+                                                                    })->values();
+                                                                @endphp
+                                                                <button type="button"
+                                                                        class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments"
+                                                                        data-student-id="{{ base64_encode($student->id) }}"
+                                                                        data-maps="{{ $mapsForRow->toJson() }}"
+                                                                        title="Classrooms &amp; batches">
+                                                                    <i class="icon-base ti tabler-school"></i>
+                                                                </button>
                                                                 <button class="btn btn-sm btn-icon btn-label-primary edit-student" 
                                                                         data-id="{{ base64_encode($student->id) }}"
                                                                         data-name="{{ $student->name }}"
                                                                         data-email="{{ $student->email }}"
                                                                         data-phone="{{ $student->phone }}"
-                                                                        data-classroom-id="{{ $student->classroom_id ?? optional($student->batch)->classroom_id ?? '' }}"
-                                                                        data-batch-id="{{ $student->batch_id }}"
                                                                         data-parent_name="{{ $parentRow->name ?? '' }}"
                                                                         data-parent_email="{{ $parentRow->email ?? '' }}"
                                                                         data-parent_phone="{{ $parentRow->phone ?? '' }}"
@@ -231,6 +242,7 @@
                                                                 </button>
                                                                 <button class="btn btn-sm btn-icon btn-label-danger delete-student" 
                                                                         data-id="{{ base64_encode($student->id) }}"
+                                                                        data-teacher-id="{{ base64_encode($teacher->id) }}"
                                                                         title="Delete">
                                                                     <i class="icon-base ti tabler-trash"></i>
                                                                 </button>
@@ -271,7 +283,6 @@
                                                                 <button class="btn btn-sm btn-icon btn-label-primary edit-classroom" 
                                                                         data-id="{{ base64_encode($classroom->id) }}"
                                                                         data-name="{{ $classroom->name }}"
-                                                                        data-teacher-id="{{ $classroom->teacher_id }}"
                                                                         title="Edit"
                                                                         style="color: #696cff;">
                                                                     <i class="icon-base ti tabler-edit"></i>
@@ -409,18 +420,10 @@
                 <div class="modal-body">
                     <form id="editClassroomForm">
                         <input type="hidden" name="id" id="edit_classroom_id">
+                        <input type="hidden" name="teacher_id" value="{{ $teacher->id }}">
                         <div class="mb-3 ajax-field">
                             <label class="form-label">Classroom Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" name="name" id="edit_classroom_name" required>
-                            <span class="ajax-error text-danger small"></span>
-                        </div>
-                        <div class="mb-3 ajax-field">
-                            <label class="form-label">Teacher <span class="text-danger">*</span></label>
-                            <select class="form-select" name="teacher_id" id="edit_classroom_teacher_id" required>
-                                @foreach($teachers as $teacherOption)
-                                    <option value="{{ $teacherOption->id }}">{{ $teacherOption->name }}</option>
-                                @endforeach
-                            </select>
                             <span class="ajax-error text-danger small"></span>
                         </div>
                     </form>
@@ -510,6 +513,12 @@
                             </select>
                             <span class="ajax-error text-danger small"></span>
                         </div>
+                        
+                        <div class="mb-3 ajax-field">
+                            <label class="form-label">Schedule</label>
+                            <input type="text" class="form-control" name="schedule" id="edit_batch_schedule" placeholder="e.g., Mon-Fri 9:00 AM - 5:00 PM">
+                            <span class="ajax-error text-danger small"></span>
+                        </div>
                         <div class="mb-3 ajax-field">
                             <label class="form-label">Status <span class="text-danger">*</span></label>
                             <select class="form-select" name="status" id="edit_batch_status" required>
@@ -517,11 +526,6 @@
                                 <option value="pending">Pending</option>
                                 <option value="inactive">Inactive</option>
                             </select>
-                            <span class="ajax-error text-danger small"></span>
-                        </div>
-                        <div class="mb-3 ajax-field">
-                            <label class="form-label">Schedule</label>
-                            <input type="text" class="form-control" name="schedule" id="edit_batch_schedule" placeholder="e.g., Mon-Fri 9:00 AM - 5:00 PM">
                             <span class="ajax-error text-danger small"></span>
                         </div>
                     </form>
@@ -544,6 +548,8 @@
                 </div>
                 <div class="modal-body">
                     <form id="addStudentForm">
+                        <input type="hidden" name="teacher_id" value="{{ $teacher->id }}">
+                        <p class="text-body-secondary small mb-3 mb-md-0">Classrooms and batches are set using the school icon in the student list after saving.</p>
                         <div class="row g-3">
                             <div class="col-md-4 ajax-field">
                                 <label class="form-label">Student Name <span class="text-danger">*</span></label>
@@ -560,26 +566,6 @@
                                 <input type="text" class="form-control" name="phone" required>
                                 <span class="ajax-error text-danger small"></span>
                             </div>
-
-                            <div class="col-md-4 ajax-field">
-                                <label class="form-label">Select Classroom <span class="text-danger">*</span></label>
-                                <select class="form-select" name="classroom_id" id="add_student_classroom_id" required>
-                                    <option value="">Choose Classroom</option>
-                                    @foreach($classrooms as $classroom)
-                                        <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
-                                    @endforeach
-                                </select>
-                                <span class="ajax-error text-danger small"></span>
-                            </div>
-                            <div class="col-md-4 ajax-field">
-                                <label class="form-label">Select Batch <span class="text-danger">*</span></label>
-                                <select class="form-select" name="batch_id" id="add_student_batch_id" required disabled>
-                                    <option value="">First select a classroom</option>
-                                </select>
-                                <span class="ajax-error text-danger small"></span>
-                            </div>
-
-                            <div class="col-md-4"></div>
 
                             <div class="col-md-4 ajax-field">
                                 <label class="form-label">Parent Name</label>
@@ -618,6 +604,8 @@
                 <div class="modal-body">
                     <form id="editStudentForm">
                         <input type="hidden" name="id" id="edit_student_id">
+                        <input type="hidden" name="teacher_id" value="{{ $teacher->id }}">
+                        <p class="text-body-secondary small mb-3 mb-md-0">Classrooms and batches are managed with the school icon in the student list.</p>
                         <div class="row g-3">
                             <div class="col-md-4 ajax-field">
                                 <label class="form-label">Student Name <span class="text-danger">*</span></label>
@@ -634,26 +622,6 @@
                                 <input type="text" class="form-control" name="phone" id="edit_student_phone" required>
                                 <span class="ajax-error text-danger small"></span>
                             </div>
-
-                            <div class="col-md-4 ajax-field">
-                                <label class="form-label">Select Classroom <span class="text-danger">*</span></label>
-                                <select class="form-select" name="classroom_id" id="edit_student_classroom_id" required>
-                                    <option value="">Choose Classroom</option>
-                                    @foreach($classrooms as $classroom)
-                                        <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
-                                    @endforeach
-                                </select>
-                                <span class="ajax-error text-danger small"></span>
-                            </div>
-                            <div class="col-md-4 ajax-field">
-                                <label class="form-label">Select Batch <span class="text-danger">*</span></label>
-                                <select class="form-select" name="batch_id" id="edit_student_batch_id" required>
-                                    <option value="">Choose Batch</option>
-                                </select>
-                                <span class="ajax-error text-danger small"></span>
-                            </div>
-
-                            <div class="col-md-4"></div>
 
                             <div class="col-md-4 ajax-field">
                                 <label class="form-label">Parent Name</label>
@@ -681,31 +649,98 @@
         </div>
     </div>
 
-    <!-- Admin Bulk Upload Students Modal -->
-    <div class="modal fade" id="adminBulkStudentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+    <!-- Student enrollments (classrooms & batches) -->
+    <div class="modal fade" id="studentEnrollmentsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Bulk Upload Students (CSV)</h5>
+                    <h5 class="modal-title">Classrooms &amp; batches</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-info py-2 mb-3">
-                        Step 1: Download sample. Step 2: Fill data. Step 3: Upload.<br>
-                        Required columns: <strong>name,email,phone,classroom,batch</strong><br>
-                        Optional columns: <strong>parent_name,parent_email,parent_phone</strong><br>
-                        Use exact classroom and batch names as created for this teacher.
+                    <form id="studentEnrollmentsForm">
+                        <input type="hidden" name="student_id" id="enr_student_id" value="">
+                        <input type="hidden" name="teacher_id" value="{{ $teacher->id }}">
+                        <p class="text-body-secondary small">Add one row per classroom and batch. The first row sets the student&apos;s primary classroom and batch for display.</p>
+                        <div id="student-enrollment-rows" class="mb-3"></div>
+                        <button type="button" class="btn btn-sm btn-label-primary" id="add-enrollment-row">
+                            <i class="icon-base ti tabler-plus me-1"></i> Add row
+                        </button>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveStudentEnrollmentsBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <template id="enrollment-row-template">
+        <div class="row g-2 align-items-end enrollment-row mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <label class="form-label small mb-1">Classroom</label>
+                <select class="form-select enr-classroom" name="map_classroom_id[]">
+                    <option value="">Choose classroom</option>
+                    @foreach($classrooms as $classroom)
+                        <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small mb-1">Batch</label>
+                <select class="form-select enr-batch" name="map_batch_id[]" disabled>
+                    <option value="">Choose classroom first</option>
+                </select>
+            </div>
+            <div class="col-md-2 text-md-end">
+                <button type="button" class="btn btn-sm btn-label-danger remove-enr-row" title="Remove row">
+                    <i class="icon-base ti tabler-trash"></i>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Import students (CSV) — same flow as admin student list -->
+    <div class="modal fade" id="teacherImportStudentsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import students (CSV)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 mb-3 small">
+                        <strong>1.</strong> Students are imported for <strong>{{ $teacher->name }}</strong> (this teacher).<br>
+                        <strong>2.</strong> Download the sample and fill rows using this teacher’s classroom and batch names (or numeric IDs).<br>
+                        <strong>3.</strong> Required columns:
+                        <strong>name, email, phone, classroom, batch</strong> (first pair = primary display).<br>
+                        <strong>Optional extra enrollments</strong> (same teacher only):
+                        <strong>classroom_2, batch_2</strong> and <strong>classroom_3, batch_3</strong> — leave blank if not used.<br>
+                        For each import row, all pairs you fill <strong>replace</strong> that student’s classroom/batch mappings for this teacher.<br>
+                        Optional parent columns: <strong>parent_name, parent_email, parent_phone</strong>.
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Upload CSV File</label>
-                        <input type="file" class="form-control" id="admin_bulk_student_file" accept=".csv,text/csv">
-                        <small class="text-body-secondary">Max file size: 5MB</small>
+                        <label class="form-label">Teacher</label>
+                        <input type="text" class="form-control" value="{{ $teacher->name }}" readonly>
                     </div>
-                    <div class="mb-0" id="admin-bulk-student-msg"></div>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-label-primary" id="btn-teacher-import-download-sample">
+                            <i class="icon-base ti tabler-download me-1"></i> Download sample CSV
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CSV file</label>
+                        <input type="file" class="form-control" id="teacher_import_student_csv_file" accept=".csv,text/csv">
+                        <small class="text-body-secondary">Max 5 MB</small>
+                    </div>
+                    <div id="teacher-import-student-msg" class="mb-0"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="admin-upload-bulk-students-btn">Upload</button>
+                    <button type="button" class="btn btn-primary" id="btn-teacher-import-students-upload">
+                        <i class="icon-base ti tabler-upload me-1"></i> Upload
+                    </button>
                 </div>
             </div>
         </div>
@@ -734,6 +769,9 @@
         $('#editStudentModal').on('show.bs.modal', function() {
             clearAjaxErrors('#editStudentModal');
         });
+        $('#studentEnrollmentsModal').on('show.bs.modal', function() {
+            clearAjaxErrors('#studentEnrollmentsModal');
+        });
 
         // Add Classroom
         $('#saveClassroomBtn').on('click', function() {
@@ -758,12 +796,10 @@
         $(document).on('click', '.edit-classroom', function() {
             const id = $(this).data('id');
             const name = $(this).data('name');
-            const teacherId = $(this).data('teacher-id');
 
             clearAjaxErrors('#editClassroomModal');
             $('#edit_classroom_id').val(id);
             $('#edit_classroom_name').val(name);
-            $('#edit_classroom_teacher_id').val(teacherId);
             $('#editClassroomModal').modal('show');
         });
 
@@ -800,32 +836,6 @@
                         alert(res.error || 'Failed to delete classroom');
                     }
                 }, 'json');
-            }
-        });
-
-        // Change Teacher for Classroom
-        $(document).on('change', '.teacher-select', function() {
-            const classroomId = $(this).data('classroom-id');
-            const classroomName = $(this).data('classroom-name');
-            const teacherId = $(this).val();
-            const originalValue = $(this).data('original-value') || $(this).find('option[selected]').val() || $(this).find('option').first().val();
-            
-            if (confirm('Are you sure you want to change the teacher for this classroom?')) {
-                $.post('{{ url("admin/teacher/save_classroom") }}', {
-                    _token: '{{ csrf_token() }}',
-                    id: classroomId,
-                    name: classroomName,
-                    teacher_id: teacherId
-                }, function(res) {
-                    if (res.status == 1) {
-                        processAjaxResponse(res, 500);
-                    } else {
-                        alert(res.error || 'Failed to update classroom');
-                        location.reload();
-                    }
-                }, 'json');
-            } else {
-                $(this).val(originalValue);
             }
         });
 
@@ -937,31 +947,6 @@
             }
         });
 
-        // Load batches by classroom (for Add Student)
-        $(document).on('change', '#add_student_classroom_id', function() {
-            const classroomId = $(this).val();
-            const batchSelect = $('#add_student_batch_id');
-            
-            batchSelect.html('<option value="">Loading...</option>').prop('disabled', true);
-            
-            if (!classroomId) {
-                batchSelect.html('<option value="">First select a classroom</option>').prop('disabled', true);
-                return;
-            }
-            
-            $.get('{{ url("admin/teacher/get_batches_by_classroom") }}', {classroom_id: classroomId}, function(res) {
-                if (res.status == 1 && res.data) {
-                    batchSelect.html('<option value="">Choose Batch</option>');
-                    $.each(res.data, function(index, batch) {
-                        batchSelect.append('<option value="' + batch.id + '">' + batch.name + '</option>');
-                    });
-                    batchSelect.prop('disabled', false);
-                } else {
-                    batchSelect.html('<option value="">No batches found</option>').prop('disabled', true);
-                }
-            }, 'json');
-        });
-
         // Add Student
         $(document).on('click', '#saveStudentBtn', function() {
             const form = $('#addStudentForm');
@@ -973,7 +958,7 @@
                 if (res.status == 1) {
                     $('#addStudentModal').modal('hide');
                     form[0].reset();
-                    $('#add_student_batch_id').html('<option value="">First select a classroom</option>').prop('disabled', true);
+                    $('input[name="teacher_id"]', '#addStudentForm').val('{{ $teacher->id }}');
                     clearAjaxErrors('#addStudentModal');
                     processAjaxResponse(res, 500);
                 } else {
@@ -982,34 +967,96 @@
             }, 'json');
         });
 
-        // Load batches by classroom (for Edit Student)
-        function loadBatchesForEdit(classroomId, selectedBatchId) {
-            const batchSelect = $('#edit_student_batch_id');
-            
+        function loadBatchesIntoSelect($batchSelect, classroomId, selectedBatchId, done) {
+            selectedBatchId = selectedBatchId || '';
             if (!classroomId) {
-                batchSelect.html('<option value="">Choose Batch</option>').prop('disabled', true);
+                $batchSelect.html('<option value="">Choose classroom first</option>').prop('disabled', true);
+                if (typeof done === 'function') done();
                 return;
             }
-            
-            batchSelect.html('<option value="">Loading...</option>').prop('disabled', true);
-            
-            $.get('{{ url("admin/teacher/get_batches_by_classroom") }}', {classroom_id: classroomId}, function(res) {
-                if (res.status == 1 && res.data) {
-                    batchSelect.html('<option value="">Choose Batch</option>');
+            $batchSelect.html('<option value="">Loading...</option>').prop('disabled', true);
+            $.get('{{ url("admin/teacher/get_batches_by_classroom") }}', { classroom_id: classroomId }, function(res) {
+                if (res.status == 1 && res.data && res.data.length) {
+                    $batchSelect.html('<option value="">Choose batch</option>');
                     $.each(res.data, function(index, batch) {
-                        const selected = (batch.id == selectedBatchId) ? 'selected' : '';
-                        batchSelect.append('<option value="' + batch.id + '" ' + selected + '>' + batch.name + '</option>');
+                        const selected = String(batch.id) === String(selectedBatchId) ? ' selected' : '';
+                        $batchSelect.append('<option value="' + batch.id + '"' + selected + '>' + batch.name + '</option>');
                     });
-                    batchSelect.prop('disabled', false);
+                    $batchSelect.prop('disabled', false);
                 } else {
-                    batchSelect.html('<option value="">No batches found</option>').prop('disabled', true);
+                    $batchSelect.html('<option value="">No batches found</option>').prop('disabled', true);
                 }
+                if (typeof done === 'function') done();
             }, 'json');
         }
 
-        $(document).on('change', '#edit_student_classroom_id', function() {
-            const classroomId = $(this).val();
-            loadBatchesForEdit(classroomId, '');
+        function appendEnrollmentRow(classroomId, batchId) {
+            const tpl = document.getElementById('enrollment-row-template');
+            const frag = tpl.content.cloneNode(true);
+            const el = frag.querySelector('.enrollment-row');
+            $('#student-enrollment-rows').append(el);
+            const $row = $(el);
+            const $c = $row.find('.enr-classroom');
+            const $b = $row.find('.enr-batch');
+            if (classroomId) {
+                $c.val(String(classroomId));
+            }
+            loadBatchesIntoSelect($b, $c.val(), batchId);
+        }
+
+        $(document).on('change', '#studentEnrollmentsModal .enr-classroom', function() {
+            const $row = $(this).closest('.enrollment-row');
+            loadBatchesIntoSelect($row.find('.enr-batch'), $(this).val(), '');
+        });
+
+        $(document).on('click', '#add-enrollment-row', function() {
+            appendEnrollmentRow('', '');
+        });
+
+        $(document).on('click', '.remove-enr-row', function() {
+            const $rows = $('#student-enrollment-rows .enrollment-row');
+            if ($rows.length <= 1) {
+                $(this).closest('.enrollment-row').find('.enr-classroom').val('');
+                $(this).closest('.enrollment-row').find('.enr-batch').html('<option value="">Choose classroom first</option>').prop('disabled', true);
+                return;
+            }
+            $(this).closest('.enrollment-row').remove();
+        });
+
+        $(document).on('click', '.open-student-enrollments', function() {
+            const studentId = $(this).data('student-id');
+            let maps = $(this).attr('data-maps');
+            let parsed = [];
+            try {
+                parsed = maps ? JSON.parse(maps) : [];
+            } catch (e) {
+                parsed = [];
+            }
+            $('#enr_student_id').val(studentId);
+            $('#student-enrollment-rows').empty();
+            if (parsed && parsed.length) {
+                parsed.forEach(function(m) {
+                    appendEnrollmentRow(m.classroom_id, m.batch_id);
+                });
+            } else {
+                appendEnrollmentRow('', '');
+            }
+            $('#studentEnrollmentsModal').modal('show');
+        });
+
+        $(document).on('click', '#saveStudentEnrollmentsBtn', function() {
+            clearAjaxErrors('#studentEnrollmentsModal');
+            const form = $('#studentEnrollmentsForm');
+            const formData = form.serializeArray();
+            formData.push({ name: '_token', value: '{{ csrf_token() }}' });
+            $.post('{{ url("admin/teacher/sync_student_enrollments") }}', formData, function(res) {
+                if (res.status == 1) {
+                    $('#studentEnrollmentsModal').modal('hide');
+                    processAjaxResponse(res, 500);
+                } else {
+                    processAjaxResponse(res, 0, '#studentEnrollmentsModal');
+                }
+            }, 'json');
         });
 
         // Edit Student
@@ -1018,8 +1065,6 @@
             const studentName = $(this).data('name');
             const studentEmail = $(this).data('email');
             const studentPhone = $(this).data('phone');
-            const classroomId = $(this).data('classroom-id');
-            const batchId = $(this).data('batch-id');
             const parentName = $(this).data('parent_name') || '';
             const parentEmail = $(this).data('parent_email') || '';
             const parentPhone = $(this).data('parent_phone') || '';
@@ -1029,13 +1074,9 @@
             $('#edit_student_name').val(studentName);
             $('#edit_student_email').val(studentEmail);
             $('#edit_student_phone').val(studentPhone);
-            $('#edit_student_classroom_id').val(classroomId);
             $('#edit_parent_name').val(parentName);
             $('#edit_parent_email').val(parentEmail);
             $('#edit_parent_phone').val(parentPhone);
-            
-            // Load batches for the selected classroom
-            loadBatchesForEdit(classroomId, batchId);
 
             $('#editStudentModal').modal('show');
         });
@@ -1065,7 +1106,8 @@
                 const studentId = $(this).data('id');
                 $.post('{{ url("admin/teacher/delete_student") }}', {
                     _token: '{{ csrf_token() }}',
-                    id: studentId
+                    id: studentId,
+                    teacher_id: '{{ base64_encode($teacher->id) }}'
                 }, function(res) {
                     if (res.status == 1) {
                         processAjaxResponse(res, 500);
@@ -1076,68 +1118,110 @@
             }
         });
 
-        // Admin bulk upload students
-        $(document).on('click', '#admin-upload-bulk-students-btn', function() {
-            const fileInput = document.getElementById('admin_bulk_student_file');
+        const teacherBulkSampleUrl = '{{ url("admin/teacher/students/bulk-sample") }}';
+        const teacherBulkUploadUrl = '{{ url("admin/teacher/students/bulk-upload") }}';
+        const teacherImportTeacherId = '{{ $teacher->id }}';
+
+        $('#teacherImportStudentsModal').on('hidden.bs.modal', function() {
+            $('#teacher_import_student_csv_file').val('');
+            $('#teacher-import-student-msg').html('');
+        });
+
+        $('#btn-teacher-import-download-sample').on('click', function() {
+            window.location.href = teacherBulkSampleUrl + (teacherBulkSampleUrl.indexOf('?') >= 0 ? '&' : '?') +
+                'teacher_id=' + encodeURIComponent(teacherImportTeacherId);
+        });
+
+        $('#btn-teacher-import-students-upload').on('click', function() {
+            const fileInput = document.getElementById('teacher_import_student_csv_file');
             const file = fileInput.files[0];
             const $btn = $(this);
-            const $msg = $('#admin-bulk-student-msg');
+            const $msg = $('#teacher-import-student-msg');
             $msg.html('');
 
             if (!file) {
-                $msg.html('<div class="alert alert-danger mb-0">Please select a CSV file.</div>');
+                $msg.html('<div class="alert alert-danger mb-0">Choose a CSV file.</div>');
                 return;
             }
 
             const data = new FormData();
             data.append('_token', '{{ csrf_token() }}');
-            data.append('teacher_id', '{{ $teacher->id }}');
+            data.append('teacher_id', teacherImportTeacherId);
             data.append('file', file);
 
-            $btn.attr('disabled', 'disabled').text('Uploading...');
+            $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Uploading...');
             $.ajax({
-                url: '{{ url("admin/teacher/students/bulk-upload") }}',
+                url: teacherBulkUploadUrl,
                 type: 'POST',
                 data: data,
                 processData: false,
                 contentType: false,
                 dataType: 'json',
                 success: function(res) {
-                    $btn.removeAttr('disabled').text('Upload');
+                    $btn.prop('disabled', false).html(
+                        '<i class="icon-base ti tabler-upload me-1"></i> Upload');
                     if (res.status == 1) {
                         let html = '<div class="alert alert-success mb-2">' + escapeHtml(res.msg || 'Upload completed') + '</div>';
                         if (res.errors && res.errors.length) {
                             const items = res.errors.slice(0, 15).map(function(err) {
                                 return '<li>' + escapeHtml(err) + '</li>';
                             }).join('');
-                            html += '<div class="alert alert-warning mb-0"><strong>Row Issues:</strong><ul class="mb-0 mt-2">' + items + '</ul></div>';
+                            html +=
+                                '<div class="alert alert-warning mb-0"><strong>Row notes:</strong><ul class="mb-0 mt-2 small">' +
+                                items + '</ul></div>';
                         }
                         $msg.html(html);
-                        if (res.summary && Number(res.summary.created || 0) > 0) {
-                            setTimeout(function(){ location.reload(); }, 1500);
+                        const created = Number(res.summary && res.summary.created ? res.summary.created : 0);
+                        const updated = Number(res.summary && res.summary.updated ? res.summary.updated : 0);
+                        if (created > 0 || updated > 0) {
+                            setTimeout(function() { location.reload(); }, 1500);
                         }
                     } else if (res.error_array) {
                         const firstKey = Object.keys(res.error_array)[0];
-                        const firstErr = firstKey ? res.error_array[firstKey][0] : 'Validation failed';
+                        const firstErr = res.error_array[firstKey] ? res.error_array[firstKey][0] : 'Validation failed';
                         $msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(firstErr) + '</div>');
                     } else {
                         let html = '<div class="alert alert-danger mb-2">' + escapeHtml(res.error || 'Upload failed') + '</div>';
                         if (res.errors && res.errors.length) {
-                            const items = res.errors.slice(0, 20).map(function(err) {
+                            const items = res.errors.slice(0, 15).map(function(err) {
                                 return '<li>' + escapeHtml(err) + '</li>';
                             }).join('');
-                            html += '<div class="alert alert-warning mb-0"><strong>Row Issues:</strong><ul class="mb-0 mt-2">' + items + '</ul></div>';
+                            html += '<div class="alert alert-warning mb-0"><ul class="mb-0 small">' + items + '</ul></div>';
                         }
                         $msg.html(html);
                     }
                 },
                 error: function(xhr) {
-                    $btn.removeAttr('disabled').text('Upload');
-                    const serverMsg = xhr && xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : '';
-                    $msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(serverMsg || 'Upload failed. Please try again.') + '</div>');
+                    $btn.prop('disabled', false).html(
+                        '<i class="icon-base ti tabler-upload me-1"></i> Upload');
+                    let serverMsg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : xhr.statusText;
+                    $msg.html('<div class="alert alert-danger mb-0">' + escapeHtml(serverMsg || 'Upload failed.') + '</div>');
                 }
             });
         });
+
+        // From admin/student list: ?edit_student=BASE64 opens Students tab and the edit modal
+        (function adminStudentListEditDeepLink() {
+            var params = new URLSearchParams(window.location.search);
+            var es = params.get('edit_student');
+            if (!es) return;
+            var $btn = $('.edit-student').filter(function() {
+                return String($(this).data('id')) === String(es);
+            });
+            if (!$btn.length) return;
+            var studentsTabEl = document.querySelector('[data-bs-target="#students"]');
+            if (studentsTabEl && window.bootstrap && window.bootstrap.Tab) {
+                window.bootstrap.Tab.getOrCreateInstance(studentsTabEl).show();
+            }
+            setTimeout(function() {
+                $btn.first().trigger('click');
+                try {
+                    var clean = new URL(window.location.href);
+                    clean.searchParams.delete('edit_student');
+                    window.history.replaceState({}, '', clean.pathname + clean.search + clean.hash);
+                } catch (e) { /* ignore */ }
+            }, 300);
+        })();
 
         // Escape helper used above
         function escapeHtml(text) {

@@ -31,8 +31,16 @@
                     $studentId = (int) (session('portal_user.id') ?? (session('portal_user')['id'] ?? 0));
                     $studentTeachers = \Illuminate\Support\Facades\DB::table('portal_user as t')
                         ->join('student_teacher_map as stm', 'stm.teacher_id', '=', 't.id')
-                        ->leftJoin('classrooms as c', 'c.id', '=', 'stm.classroom_id')
-                        ->leftJoin('batches as b', 'b.id', '=', 'stm.batch_id')
+                        ->leftJoin('student_classroom_map as scm', function ($join) {
+                            $join
+                                ->on('scm.student_id', '=', 'stm.student_id')
+                                ->on('scm.teacher_id', '=', 'stm.teacher_id')
+                                ->whereRaw(
+                                    'scm.id = (SELECT MIN(scm2.id) FROM student_classroom_map scm2 WHERE scm2.student_id = stm.student_id AND scm2.teacher_id = stm.teacher_id)',
+                                );
+                        })
+                        ->leftJoin('classrooms as c', 'c.id', '=', 'scm.classroom_id')
+                        ->leftJoin('batches as b', 'b.id', '=', 'scm.batch_id')
                         ->where('t.role', 1)
                         ->where('stm.student_id', $studentId)
                         ->whereNull('t.deleted_at')
@@ -48,12 +56,15 @@
                 @endphp
 
                 <li class="nav-item dropdown me-2">
-                    <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3"
-                        id="nav-teacher" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="icon-base ti tabler-user-star icon-22px text-heading me-2"></i>
+                    <a class="nav-link dropdown-toggle hide-arrow btn btn-text-secondary rounded-pill d-flex align-items-center px-3 gap-1"
+                        id="nav-teacher" href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false"
+                        title="Switch teacher">
+                        <i class="icon-base ti tabler-user-star icon-22px text-heading"></i>
                         <span class="d-none d-sm-inline">
                             {{ $currentTeacher ? $currentTeacher->name ?? 'Teacher' : 'Select Teacher' }}
                         </span>
+                        <i class="icon-base ti tabler-chevron-down icon-18px text-heading dropdown-chevron"
+                            aria-hidden="true"></i>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-teacher" style="min-width: 260px;">
                         @if (($studentTeachers ?? collect())->count() > 0)
@@ -67,7 +78,7 @@
                                                 <div>{{ $t->teacher_name }}</div>
                                                 <div class="text-body-secondary small">
                                                     @if ($t->classroom_name)
-                                                        <span class="{{ $t->batch_name}}">Classroom:
+                                                        <span>Classroom:
                                                             {{ $t->classroom_name }}</span>
                                                     @endif
                                                 </div>
@@ -95,6 +106,129 @@
                         </li>
                     </ul>
                 </li>
+
+                @php
+                    $studentNavNotifications = $layoutStudentNotifications ?? collect();
+                    $studentNavUnreadCount = (int) ($layoutStudentUnreadNotificationCount ?? 0);
+                @endphp
+                <li class="nav-item dropdown-notifications navbar-dropdown dropdown me-3 me-xl-2">
+                    <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
+                        href="javascript:void(0);" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        aria-expanded="false">
+                        <span class="position-relative">
+                            <i class="icon-base ti tabler-bell icon-22px text-heading"></i>
+                            <span
+                                class="badge rounded-pill bg-danger badge-dot badge-notifications border @if ($studentNavUnreadCount < 1) d-none @endif"></span>
+                        </span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end p-0">
+                        <li class="dropdown-menu-header border-bottom">
+                            <div class="dropdown-header d-flex align-items-center py-3">
+                                <h6 class="mb-0 me-auto">Notification</h6>
+                                <div class="d-flex align-items-center h6 mb-0">
+                                    <span class="badge bg-label-primary me-2">{{ $studentNavUnreadCount }} New</span>
+
+                                </div>
+                            </div>
+                        </li>
+                        <li class="dropdown-notifications-list scrollable-container">
+                            <ul class="list-group list-group-flush">
+                                @forelse ($studentNavNotifications as $navNotification)
+                                    @php
+                                        $navData = is_array($navNotification->data)
+                                            ? $navNotification->data
+                                            : json_decode($navNotification->data, true) ?? [];
+
+                                        $navTitle = $navData['title'] ?? 'Notification';
+                                        $navMessage = $navData['message'] ?? '';
+                                        $navRead = $navNotification->read_at !== null;
+
+                                        // ✅ GET IDs
+                                        $batchId = $navData['batch_id'] ?? null;
+                                        $examId = $navData['exam_id'] ?? null;
+                                        $classroomId = $navData['classroom_id'] ?? null;
+
+                                        // ✅ BUILD URL
+                                        $url =
+                                            $batchId && $examId && $classroomId
+                                                ? url(
+                                                    'user/student/classroom/' .
+                                                        $classroomId .
+                                                        '?batch=' .
+                                                        $batchId .
+                                                        '&exam=' .
+                                                        $examId,
+                                                )
+                                                : 'javascript:void(0)';
+                                    @endphp
+
+                                    <li
+                                        class="list-group-item list-group-item-action dropdown-notifications-item {{ $navRead ? 'marked-as-read' : '' }}">
+                                        <div class="d-flex align-items-start w-100">
+                                            <a href="{{ $url }}"
+                                                class="d-flex flex-grow-1 min-w-0 text-reset text-decoration-none py-2 ps-3 pe-2">
+                                                <div class="flex-shrink-0 me-3">
+                                                    <div class="avatar">
+                                                        <span class="avatar-initial rounded-circle bg-label-success">
+                                                            <i class="icon-base ti tabler-clipboard-check"></i>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div class="flex-grow-1 min-w-0">
+                                                    <h6 class="mb-1 small">{{ $navTitle }}</h6>
+                                                    <small class="mb-1 d-block text-body">{{ $navMessage }}</small>
+                                                    <small class="text-body-secondary">
+                                                        {{ $navNotification->created_at }}
+                                                    </small>
+                                                </div>
+                                            </a>
+                                            <div class="flex-shrink-0 dropdown-notifications-actions pt-2 pe-2">
+                                                <a href="javascript:void(0)" class="dropdown-notifications-read"
+                                                    title="Mark as read"><span class="badge badge-dot"></span></a>
+                                                <a href="javascript:void(0)" class="dropdown-notifications-archive"
+                                                    data-id="{{ $navNotification->id }}">
+                                                    <span class="icon-base ti tabler-x"></span>
+                                                </a>
+
+                                            </div>
+                                        </div>
+                                    </li>
+
+                                @empty
+                                    <li class="list-group-item list-group-item-action dropdown-notifications-item">
+                                        <div class="d-flex">
+                                            <div class="flex-shrink-0 me-3">
+                                                <div class="avatar">
+                                                    <span class="avatar-initial rounded-circle bg-label-secondary">
+                                                        <i class="icon-base ti tabler-bell-off"></i>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <h6 class="mb-1 small">No notifications</h6>
+                                                <small class="mb-1 d-block text-body">
+                                                    When your teacher updates your marks, you will see them here.
+                                                </small>
+                                                <small class="text-body-secondary">—</small>
+                                            </div>
+                                            <div class="flex-shrink-0 dropdown-notifications-actions">
+                                                <a href="javascript:void(0)" class="dropdown-notifications-read">
+                                                    <span class="badge badge-dot"></span>
+                                                </a>
+                                                <!-- ✅ NO data-id here -->
+                                                <a href="javascript:void(0)" class="dropdown-notifications-archive">
+                                                    <span class="icon-base ti tabler-x"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </li>
+                                @endforelse
+
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle hide-arrow btn btn-icon btn-text-secondary rounded-pill"
                         id="nav-theme" href="javascript:void(0);" data-bs-toggle="dropdown">
@@ -105,19 +239,20 @@
                         <li>
                             <button type="button" class="dropdown-item align-items-center active"
                                 data-bs-theme-value="light" aria-pressed="false">
-                                <span><i class="icon-base ti tabler-sun icon-22px me-3" data-icon="sun"></i>Light</span>
+                                <span><i class="icon-base ti tabler-sun icon-22px me-3"
+                                        data-icon="sun"></i>Light</span>
                             </button>
                         </li>
                         <li>
-                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="dark"
-                                aria-pressed="true">
+                            <button type="button" class="dropdown-item align-items-center"
+                                data-bs-theme-value="dark" aria-pressed="true">
                                 <span><i class="icon-base ti tabler-moon-stars icon-22px me-3"
                                         data-icon="moon-stars"></i>Dark</span>
                             </button>
                         </li>
                         <li>
-                            <button type="button" class="dropdown-item align-items-center" data-bs-theme-value="system"
-                                aria-pressed="false">
+                            <button type="button" class="dropdown-item align-items-center"
+                                data-bs-theme-value="system" aria-pressed="false">
                                 <span><i class="icon-base ti tabler-device-desktop-analytics icon-22px me-3"
                                         data-icon="device-desktop-analytics"></i>System</span>
                             </button>
@@ -190,6 +325,12 @@
                     <div>Dashboard</div>
                 </a>
             </li>
+            <li class="menu-item {{ $active_tab === 'student_classrooms' ? 'active' : '' }}">
+                <a href="{{ url('user/student/classrooms') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-school"></i>
+                    <div>Classroom</div>
+                </a>
+            </li>
             <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
                 <a href="javascript:void(0)" class="menu-link menu-toggle">
                     <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
@@ -211,17 +352,85 @@
                 </ul>
             </li>
             <!-- <li class="menu-item {{ $active_tab === 'student_attendance' ? 'active' : '' }}">
-    <a href="{{ url('user/student/attendance') }}" class="menu-link">
-     <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
-     <div>Attendance</div>
-    </a>
-   </li>
-   <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
-    <a href="{{ url('user/student/report') }}" class="menu-link">
-     <i class="menu-icon icon-base ti tabler-report-analytics"></i>
-     <div>Report</div>
-    </a>
-   </li> -->
+        <a href="{{ url('user/student/attendance') }}" class="menu-link">
+         <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
+         <div>Attendance</div>
+        </a>
+       </li>
+       <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
+        <a href="{{ url('user/student/report') }}" class="menu-link">
+         <i class="menu-icon icon-base ti tabler-report-analytics"></i>
+         <div>Report</div>
+        </a>
+       </li> -->
         </ul>
     </div>
 </aside>
+
+@push('portal_notification_scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+
+            $(document).on('click', '.dropdown-notifications-archive', function() {
+
+                let $btn = $(this);
+                let id = $btn.data('id');
+
+                $.post("{{ route('notification.delete') }}", {
+                    _token: "{{ csrf_token() }}",
+                    id: id
+                }, function(res) {
+
+                    if (res.status === 1) {
+
+                        // ✅ remove notification row
+                        let $item = $btn.closest('li');
+                        $item.remove();
+
+                        // ✅ UPDATE COUNT
+                        let $countBadge = $('.badge.bg-label-primary');
+                        let text = $countBadge.text(); // "2 New"
+                        let currentCount = parseInt(text) || 0;
+
+                        if (currentCount > 0) {
+                            currentCount--;
+                        }
+
+                        $countBadge.text(currentCount + ' New');
+
+                        // ✅ HIDE RED DOT
+                        if (currentCount <= 0) {
+                            $('.badge-notifications').addClass('d-none');
+                        }
+
+                        // ✅ EMPTY STATE
+                        if ($('.dropdown-notifications-list ul li').length === 0) {
+                            $('.dropdown-notifications-list ul').html(`
+                        <li class="list-group-item list-group-item-action dropdown-notifications-item">
+                            <div class="d-flex">
+                                <div class="flex-shrink-0 me-3">
+                                    <div class="avatar">
+                                        <span class="avatar-initial rounded-circle bg-label-secondary">
+                                            <i class="icon-base ti tabler-bell-off"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1 small">No notifications</h6>
+                                    <small class="mb-1 d-block text-body">
+                                        No new notifications.
+                                    </small>
+                                </div>
+                            </div>
+                        </li>
+                    `);
+                        }
+                    }
+
+                });
+
+            });
+
+        });
+    </script>
+@endpush

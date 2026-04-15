@@ -49,6 +49,8 @@
 
     <!-- Helpers -->
     <script src="{{ url('public/admin_theme/assets/vendor/js/helpers.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script>
+
     <!--! Template customizer & Theme config files MUST be included after core stylesheets and helpers.js in the <head> section -->
 
     <!--? Template customizer: To hide customizer set displayCustomizer value false in config.js.  -->
@@ -64,17 +66,17 @@
         <div class="layout-container">
             <div class="layout-page">
                 <div class="content-wrapper d-flex flex-column">
-                @include('web.user.layouts.navigate') 
-                    <div class="container-fluid flex-grow-1 pt-4 pb-4">
+                    @include('web.user.layouts.navigate')
+                    <!-- <div class="container-fluid flex-grow-1 pt-4 pb-4"> -->
                         @yield('content')
-                    </div>
+                    <!-- </div> -->
 
                     <!-- Footer -->
                     <footer class="content-footer footer bg-footer-theme">
                         <div class="container-xxl">
                             <div
                                 class="footer-container d-flex align-items-center justify-content-between py-4 flex-md-row flex-column">
-                                
+
 
                             </div>
                         </div>
@@ -100,8 +102,8 @@
 
     @php
         $portalUserSession = session('portal_user') ?? [];
-        $suppressPasswordPopup = (int)($portalUserSession['is_password'] ?? 0) === 1;
-        $shouldShowPasswordPopup = (int)(session('show_teacher_password_popup') ?? 0) === 1 && !$suppressPasswordPopup;
+        $suppressPasswordPopup = (int) ($portalUserSession['is_password'] ?? 0) === 1;
+        $shouldShowPasswordPopup = (int) (session('show_teacher_password_popup') ?? 0) === 1 && !$suppressPasswordPopup;
     @endphp
 
     <!-- Change Password Required Modal -->
@@ -121,18 +123,27 @@
                         @csrf
                         <div class="mb-3 ajax-field">
                             <label class="form-label">New Password <span class="text-danger">*</span></label>
-                            <input type="password" name="password" class="form-control" placeholder="Enter new password">
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Enter new password">
                             <span class="ajax-error text-danger small"></span>
                         </div>
-                        <div class="mb-0 ajax-field">
+                        <div class="mb-3 ajax-field">
                             <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
-                            <input type="password" name="password_confirmation" class="form-control" placeholder="Confirm new password">
+                            <input type="password" name="password_confirmation" class="form-control"
+                                placeholder="Confirm new password">
+                            <span class="ajax-error text-danger small"></span>
+                        </div>
+                        <div class="mb-3 ajax-field">
+                            <label for="email" class="form-label">Recovery Email<span class="text-danger">*</span></label>
+                            <input class="form-control" type="text" id="recovery_email" name="recovery_email" 
+							placeholder="john.doe@example.com" />
                             <span class="ajax-error text-danger small"></span>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" id="portal-pass-skip-btn">Skip for now</button>
+                    <button type="button" class="btn btn-label-secondary" id="portal-pass-skip-btn">Skip for
+                        now</button>
                     <button type="button" class="btn btn-primary" id="portal-pass-save-btn">Update Password</button>
                 </div>
             </div>
@@ -143,6 +154,7 @@
     <!-- build:js assets/vendor/js/theme.js  -->
 
     <script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
+    @stack('portal_notification_scripts')
 
     <script src="{{ url('public/admin_theme/assets/vendor/libs/popper/popper.js') }}"></script>
     <script src="{{ url('public/admin_theme/assets/vendor/js/bootstrap.js') }}"></script>
@@ -179,54 +191,64 @@
             $scope.find('.ajax-error').text('');
             $scope.find('.portal-pass-msg').html('');
         }
+
         function showAjaxErrors(errors, scope) {
             const $scope = scope ? $(scope) : $(document);
-            Object.keys(errors || {}).forEach(function (key) {
-                const field = $scope.find('[name="'+ key +'"]');
+            Object.keys(errors || {}).forEach(function(key) {
+                const field = $scope.find('[name="' + key + '"]');
                 if (field.length) {
-                    field.closest('.ajax-field').find('.ajax-error').text(Array.isArray(errors[key]) ? errors[key][0] : errors[key]);
+                    field.closest('.ajax-field').find('.ajax-error').text(Array.isArray(errors[key]) ? errors[key][
+                        0] : errors[key]);
                 }
             });
         }
+
         function showAjaxMessage(type, text, scope) {
             const $scope = scope ? $(scope) : $(document);
             $scope.find('.portal-pass-msg').html('<div class="alert alert-' + type + ' mb-2">' + text + '</div>');
         }
 
-        $(function(){
+        $(function() {
             var shouldShowPopup = {{ $shouldShowPasswordPopup ? 'true' : 'false' }};
             if (shouldShowPopup) {
                 var modal = new bootstrap.Modal(document.getElementById('portalChangePasswordModal'));
                 modal.show();
 
-                $('#portalChangePasswordModal').on('hidden.bs.modal', function () {
+                $('#portalChangePasswordModal').on('hidden.bs.modal', function() {
                     clearAjaxState('#portalChangePasswordModal');
                     $('#portal-change-pass-form')[0].reset();
                 });
 
-                $('#portal-pass-skip-btn').on('click', function(){
-                    $.post('{{ url("user/skip_password_popup") }}', {
+                $('#portal-pass-skip-btn').on('click', function() {
+                    $.post('{{ url('user/skip_password_popup') }}', {
                         _token: '{{ csrf_token() }}'
-                    }, function(res){
+                    }, function(res) {
                         if (res.status == 1) {
                             modal.hide();
                         } else {
-                            showAjaxMessage('danger', res.error || 'Failed to skip', '#portalChangePasswordModal');
+                            showAjaxMessage('danger', res.error || 'Failed to skip',
+                                '#portalChangePasswordModal');
                         }
                     }, 'json');
                 });
 
-                $('#portal-pass-save-btn').on('click', function(){
+                $('#portal-pass-save-btn').on('click', function() {
                     clearAjaxState('#portalChangePasswordModal');
                     var btn = $(this);
                     btn.attr('disabled', true).text('Please wait...');
                     var payload = $('#portal-change-pass-form').serializeArray();
-                    payload.push({ name: '_token', value: '{{ csrf_token() }}' });
-                    $.post('{{ url("user/update_password_popup") }}', payload, function(res){
+                    payload.push({
+                        name: '_token',
+                        value: '{{ csrf_token() }}'
+                    });
+                    $.post('{{ url('user/update_password_popup') }}', payload, function(res) {
                         btn.attr('disabled', false).text('Update Password');
                         if (res.status == 1) {
-                            showAjaxMessage('success', res.msg || 'Password updated', '#portalChangePasswordModal');
-                            setTimeout(function(){ modal.hide(); }, 700);
+                            showAjaxMessage('success', res.msg || 'Password updated',
+                                '#portalChangePasswordModal');
+                            setTimeout(function() {
+                                modal.hide();
+                            }, 700);
                         } else if (res.error_array) {
                             showAjaxErrors(res.error_array, '#portalChangePasswordModal');
                         } else if (res.error) {
@@ -239,4 +261,5 @@
     </script>
     @yield('scripts')
 </body>
+
 </html>

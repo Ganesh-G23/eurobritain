@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Classroom extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -27,5 +29,10 @@ class Classroom extends Model
     public function students()
     {
         return $this->hasMany(PortalUser::class, 'classroom_id');
+    }
+
+    public function studentClassroomMaps()
+    {
+        return $this->hasMany(StudentClassroomMap::class, 'classroom_id');
     }
 }

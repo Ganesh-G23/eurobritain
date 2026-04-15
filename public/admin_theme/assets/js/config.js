@@ -68,19 +68,18 @@ window.templateName = document.documentElement.getAttribute('data-template');
  * defaultShowDropdownOnHover : true, false (for horizontal layout only)
  * controls: [ 'color', 'theme', 'skins', 'semiDark', 'layoutCollapsed', 'layoutNavbarOptions', 'headerType', 'contentLayout', 'rtl' ] | Show/Hide customizer controls
  */
-
 if (typeof TemplateCustomizer !== 'undefined') {
   window.templateCustomizer = new TemplateCustomizer({
-    displayCustomizer: true,
+    displayCustomizer: false,
     lang: localStorage.getItem('templateCustomizer-' + templateName + '--Lang') || 'en', // Set default language here
-    // defaultPrimaryColor: '#D11BB4',
-    // defaultSkin: 1,
-    // defaultTheme: 'system',
+    defaultPrimaryColor: '#FAAF3C',
+    defaultSkin: 1,
+    defaultTheme: 'light',
     // defaultSemiDark: true,
-    // defaultContentLayout: 'wide',
+    defaultContentLayout: 'compact',
     // defaultHeaderType: 'static',
     // defaultMenuCollapsed: true,
-    // defaultNavbarType: 'static',
+    defaultNavbarType: 'sticky',
     // defaultTextDir: 'rtl',
     // defaultFooterFixed: false,
     // defaultShowDropdownOnHover: false,

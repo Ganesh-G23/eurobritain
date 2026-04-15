@@ -30,30 +30,44 @@
                                 <div class="fw-semibold">{{ $student->phone ?? '-' }}</div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label text-muted mb-1">Classroom</label>
-                                <div class="fw-semibold">
-                                    {{ $student->classroom->name ?? ($student->batch->classroom->name ?? '-') }}</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label text-muted mb-1">Batch</label>
-                                <div class="fw-semibold">{{ $student->batch->name ?? '-' }}</div>
-                            </div>
-                            <div class="col-md-12">
                                 <label class="form-label text-muted mb-1">Mapped Teachers</label>
                                 <div class="fw-semibold">
-                                    @if(isset($student_teachers) && count($student_teachers) > 0)
+                                    @if (isset($student_teachers) && count($student_teachers) > 0)
                                         {{ $student_teachers->pluck('name')->implode(', ') }}
                                     @else
                                         -
                                     @endif
                                 </div>
                             </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label text-muted mb-1">Created At</label>
-                                <div class="fw-semibold">{{ \Carbon\Carbon::parse($student->created_at)->format('d-m-Y') }}
+                            @php
+                                $maps = isset($student_classroom_maps) ? $student_classroom_maps : collect();
+                            @endphp
+                            @if ($maps->count() > 0)
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted mb-1">Classrooms &amp; batches</label>
+                                    <ul class="list-unstyled mb-0 small">
+                                        @foreach ($maps as $row)
+                                            <li class="mb-1">
+                                                <span
+                                                    class="fw-semibold">{{ optional($row->classroom)->name ?? '—' }}</span>
+                                                <span class="text-muted"> · </span>
+                                                <span class="fw-semibold">{{ optional($row->batch)->name ?? '—' }}</span>
+                                            </li>
+                                        @endforeach
+                                    </ul>
                                 </div>
-                            </div>
+                            @else
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted mb-1">Classroom</label>
+                                    <div class="fw-semibold">
+                                        {{ $student->classroom->name ?? ($student->batch->classroom->name ?? '-') }}</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted mb-1">Batch</label>
+                                    <div class="fw-semibold">{{ $student->batch->name ?? '-' }}</div>
+                                </div>
+                            @endif
+
                         </div>
                     </div>
                 </div>
@@ -91,7 +105,7 @@
                                 <label class="form-label text-muted mb-1">Phone</label>
                                 <div class="fw-semibold">{{ $parent->phone ?? '-' }}</div>
                             </div>
-                            
+
                         </div>
                     </div>
                 </div>

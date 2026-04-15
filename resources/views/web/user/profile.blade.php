@@ -1,6 +1,9 @@
 @extends('web.user.layouts.app')
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y">
+@php
+    $isTeacher = (int) (session('portal_user')['role'] ?? 0) === 1;
+@endphp
+<div class="container-xxl flex-grow-1 container-p-y pt-2 pb-2">
     <div class="row g-6">
         <div class="col-md-12">
             <ul class="nav nav-pills flex-column flex-md-row mb-4">
@@ -12,7 +15,14 @@
                     <a class="nav-link" href="{{ url('user/security') }}"><i class="icon-base ti tabler-lock me-1"></i>
                         Change Password</a>
                 </li>
+                @if ($isTeacher)
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url('user/profile/settings') }}"><i
+                                class="icon-base ti tabler-settings me-1"></i> Settings</a>
+                    </li>
+                @endif
             </ul>
+
             <div class="card mb-4">
                 <h5 class="card-header">Profile Details</h5>
                 <div class="card-body">
@@ -36,11 +46,11 @@
                             <div class="mb-3 col-md-6 ajax-field">
                                 <label class="form-label" for="phoneNumber">Phone Number</label>
                                 <input type="text" id="phoneNumber" name="phone" class="form-control"
-                                       placeholder="202 555 0111" value="{{ $details->phone }}" />
+                                    placeholder="202 555 0111" value="{{ $details->phone }}" />
                                 <span class="ajax-error"></span>
                             </div>
                             <div class="mb-3 col-md-6 ajax-field">
-                                <label for="email" class="form-label">Recovery Email</label>
+                                <label for="recovery_email" class="form-label">Recovery Email</label>
                                 <input class="form-control" type="text" id="recovery_email" name="recovery_email"
                                     value="{{ $details->recovery_email }}" placeholder="john.doe@example.com" />
                                 <span class="ajax-error"></span>
@@ -78,4 +88,3 @@
     });
 </script>
 @endsection
-

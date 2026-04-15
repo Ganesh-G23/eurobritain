@@ -3,6 +3,7 @@
 	data-bs-theme="light" data-assets-path="{{ url('public/admin_theme/assets/') }}" data-template="horizontal-menu-template">
 <head>
 	<meta charset="utf-8" />
+	<meta name="csrf-token" content="{{ csrf_token() }}" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum=1.0" />
 	<meta name="robots" content="noindex, nofollow" />
 	<title>@yield('title', 'Student Panel') - EliteGrade</title>
@@ -21,6 +22,7 @@
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/apex-charts/apex-charts.css') }}" />
 	<link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/fonts/flag-icons.css') }}" />
+	<script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script>
 
 	<script src="{{ url('public/admin_theme/assets/vendor/js/helpers.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
@@ -31,9 +33,9 @@
 			<div class="layout-page">
 				<div class="content-wrapper d-flex flex-column">
 					@include('web.user.student.layouts.navigate')
-					<div class="container-fluid flex-grow-1 pt-2 pb-3">
+					<!-- <div class="container-fluid flex-grow-1 pt-2 pb-3"> -->
 						@yield('content')
-					</div>
+					<!-- </div> -->
 					<footer class="content-footer footer bg-footer-theme">
 						<div class="container-xxl">
 							<div class="footer-container d-flex align-items-center justify-content-between py-4 flex-md-row flex-column">
@@ -50,6 +52,7 @@
 	<div class="drag-target"></div>
 
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
+	@stack('portal_notification_scripts')
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/popper/popper.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/js/bootstrap.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/node-waves/node-waves.js') }}"></script>
