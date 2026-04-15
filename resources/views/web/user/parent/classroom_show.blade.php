@@ -9,10 +9,7 @@
         </div>
         @if (($classroom->batches ?? collect())->isEmpty())
             <div class="alert alert-info mb-0">
-                No batches in this classroom yet.
-                @if ($show_teacher_batch_manage_link ?? true)
-                    <a href="{{ url('user/teacher/batches') }}" class="alert-link">Manage batches</a>
-                @endif
+                No batches in this classroom yet. The teacher will add them when ready.
             </div>
         @else
             @if (session('import_marks_success'))

@@ -27,7 +27,7 @@
 
     <style>
         .select-teacher-sheet {
-            max-width: 36rem;
+            max-width: 45rem;
             width: 100%;
             margin-left: auto;
             margin-right: auto;
@@ -106,7 +106,7 @@
                             @endphp
                             <a href="{{ url('user/select-teacher') }}" class="d-flex align-items-center">
                                 <img src="{{ url('public/admin_theme/assets/img/logo.png') }}" alt="EliteGrade"
-                                    class="img-fluid" style="max-height: 28px;">
+                                    class="img-fluid" style="max-height: 40px;">
                             </a>
                             <div class="dropdown">
                                 <a class="nav-link dropdown-toggle hide-arrow p-0" href="javascript:void(0);"
@@ -145,16 +145,14 @@
                                                 <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
                                                     <div class="flex-grow-1">
                                                         <div class="teacher-row-title">{{ $t->teacher_name }}</div>
-                                                        <div class="teacher-row-sub">Email: {{ $t->teacher_email }}</div>
-                                                        @if ($t->teacher_phone)
-                                                            <div class="teacher-row-sub">Phone: {{ $t->teacher_phone }}</div>
+                                                        
+                                                        @if ($t->classroom_name)
+                                                            <div class="teacher-row-sub">Classroom: {{ $t->classroom_name }}</div>
                                                         @endif
                                                         @if ($t->batch_name)
                                                             <div class="teacher-row-sub">Batch: {{ $t->batch_name }}</div>
                                                         @endif
-                                                        @if ($t->classroom_name)
-                                                            <div class="teacher-row-sub">Classroom: {{ $t->classroom_name }}</div>
-                                                        @endif
+                                                        
                                                     </div>
                                                     <div>
                                                         <form method="post" action="{{ url('user/select-teacher/access') }}">

@@ -3,8 +3,7 @@
     <div class="container-xxl flex-grow-1 container-p-y">
         @if (($classroom->batches ?? collect())->isEmpty())
             <div class="alert alert-info mb-0">
-                No batches in this classroom yet.
-                <a href="{{ url('user/teacher/batches') }}" class="alert-link">Manage batches</a>
+                No batches in this classroom yet. Your teacher will add them when ready.
             </div>
         @else
             @if (session('import_marks_success'))

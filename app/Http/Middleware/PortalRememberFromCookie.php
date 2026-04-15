@@ -19,7 +19,9 @@ class PortalRememberFromCookie
             if (is_string($token) && $token !== '') {
                 $user = PortalUser::where('remember_token', $token)->first();
                 if ($user) {
-                    PortalSession::putRoleUser((int) ($user->role ?? 0), $user->toArray());
+                    $role = (int) ($user->role ?? 0);
+                    PortalSession::forgetOtherRoleBuckets($role);
+                    PortalSession::putRoleUser($role, $user->toArray());
                     session()->put('show_teacher_password_popup', (int) ($user->is_password_changed ?? 0) === 0 ? 1 : 0);
                 }
             }

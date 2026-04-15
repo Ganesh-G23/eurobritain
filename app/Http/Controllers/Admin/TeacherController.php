@@ -1193,6 +1193,7 @@ class TeacherController extends Controller
         }
 
         // Do NOT clear admin session to allow returning to admin panel
+        PortalSession::forgetOtherRoleBuckets(1);
         PortalSession::putRoleUser(1, $user->toArray());
 
         if ((int)($user->is_password_changed ?? 0) === 0) {
