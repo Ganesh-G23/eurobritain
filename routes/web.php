@@ -75,6 +75,11 @@ Route::prefix('user')->middleware('portal.auth')->group(function () {
     // User-side Teacher management (logged-in teacher) - original simple routes
     Route::middleware('portal.teacher')->prefix('teacher')->group(function () {
         Route::get('/', [UserTeacherController::class, 'index']);
+        Route::get('/events', [UserTeacherController::class, 'events']);
+        Route::get('/event_types', [UserTeacherController::class, 'eventTypes']);
+        Route::post('/event_types/save', [UserTeacherController::class, 'saveEventType']);
+        Route::post('/event_types/delete', [UserTeacherController::class, 'deleteEventType']);
+        Route::post('/events/save-event', [UserTeacherController::class, 'saveEvent']);
         Route::get('/classrooms', [UserTeacherController::class, 'classrooms']);
         Route::get('/batches', [UserTeacherController::class, 'batches']);
         Route::get('/students', [UserTeacherController::class, 'students']);
@@ -94,7 +99,7 @@ Route::prefix('user')->middleware('portal.auth')->group(function () {
         Route::post('/students/bulk-upload', [UserTeacherController::class, 'bulkUploadStudents']);
         Route::match(['get', 'post'], '/classrooms/details/{id}/export', [UserTeacherController::class, 'exportClassroomMarks']);
         Route::post('/classrooms/details/{id}/import-marks', [UserTeacherController::class, 'importMarksFromCsv']);
-        Route::get('/classrooms/details/{id}/export-attendance', [UserTeacherController::class, 'exportClassroomAttendance']);
+        Route::match(['get', 'post'], '/classrooms/details/{id}/export-attendance', [UserTeacherController::class, 'exportClassroomAttendance']);
         Route::post('/classrooms/details/{id}/import-attendance', [UserTeacherController::class, 'importAttendanceFromCsv']);
         Route::get('/classrooms/details/{id}', [UserTeacherController::class, 'classroomsDetails']);
         Route::post('/exams/save', [UserTeacherController::class, 'saveExam']);

@@ -34,6 +34,8 @@
 
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/css/core.css') }}" />
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/css/demo.css') }}" />
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/fullcalendar/fullcalendar.css') }}" />
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/css/pages/app-calendar.css') }}" />
 
     <!-- Vendors CSS -->
 
@@ -68,7 +70,7 @@
                 <div class="content-wrapper d-flex flex-column">
                     @include('web.user.layouts.navigate')
                     <!-- <div class="container-fluid flex-grow-1 pt-4 pb-4"> -->
-                        @yield('content')
+                    @yield('content')
                     <!-- </div> -->
 
                     <!-- Footer -->
@@ -134,9 +136,10 @@
                             <span class="ajax-error text-danger small"></span>
                         </div>
                         <div class="mb-3 ajax-field">
-                            <label for="email" class="form-label">Recovery Email<span class="text-danger">*</span></label>
-                            <input class="form-control" type="text" id="recovery_email" name="recovery_email" 
-							placeholder="john.doe@example.com" />
+                            <label for="email" class="form-label">Recovery Email<span
+                                    class="text-danger">*</span></label>
+                            <input class="form-control" type="text" id="recovery_email" name="recovery_email"
+                                placeholder="john.doe@example.com" />
                             <span class="ajax-error text-danger small"></span>
                         </div>
                     </form>
@@ -182,8 +185,40 @@
     <script src="{{ url('public/admin_theme/assets/js/main.js') }}"></script>
     <script src="{{ url('public/admin_theme/custom/custom.js') }}"></script>
 
+
     <!-- Page JS -->
+    <!-- <script src="{{ url('public/admin_theme/assets/js/dashboards-crm.js') }}"></script>
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/fullcalendar/fullcalendar.css') }}" />
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/css/pages/app-calendar.css') }}" />
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script> -->
+    <!-- Select2 -->
+    <!-- <script src="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/fullcalendar/fullcalendar.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/js/app-calendar-events.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/js/app-calendar.js') }}"></script> -->
+
+    <!-- 1. jQuery FIRST -->
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/jquery/jquery.js') }}"></script>
+
+    <!-- 2. Required plugins -->
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/fullcalendar/fullcalendar.js') }}"></script>
+
+    <!-- 3. Theme core JS -->
+    <script src="{{ url('public/admin_theme/assets/js/main.js') }}"></script>
+    <script src="{{ url('public/admin_theme/custom/custom.js') }}"></script>
+
+    <!-- 4. Page scripts -->
+    <script src="{{ url('public/admin_theme/assets/js/app-calendar-events.js') }}"></script>
+    @stack('after_calendar_events_seed')
+    <script src="{{ url('public/admin_theme/assets/js/app-calendar.js') }}"></script>
+
+    <!-- OPTIONAL (load only if needed) -->
     <script src="{{ url('public/admin_theme/assets/js/dashboards-crm.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/flatpickr/flatpickr.js') }}"></script>
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/flatpickr/flatpickr.css') }}">
+
+
 
     <script>
         function clearAjaxState(scope) {
@@ -198,7 +233,8 @@
                 const field = $scope.find('[name="' + key + '"]');
                 if (field.length) {
                     field.closest('.ajax-field').find('.ajax-error').text(Array.isArray(errors[key]) ? errors[key][
-                        0] : errors[key]);
+                        0
+                    ] : errors[key]);
                 }
             });
         }

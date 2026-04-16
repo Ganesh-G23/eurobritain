@@ -426,6 +426,19 @@
                     </a>
                 </li>
 
+                <li class="menu-item {{ $active_tab === 'events' ? 'active' : '' }}">
+                    <a href="{{ url('user/teacher/events') }}" class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-calendar"></i>
+                        <div data-i18n="Events">Events</div>
+                    </a>
+                </li>
+
+                <li class="menu-item {{ $active_tab === 'event_types' ? 'active' : '' }}">
+                    <a href="{{ url('user/teacher/event_types') }}" class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-calendar"></i>
+                        <div data-i18n="Event Types">Event Types</div>
+                    </a>
+                </li>
                 <li
                     class="menu-item {{ in_array($active_tab, ['profile', 'security', 'teacher_settings']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">

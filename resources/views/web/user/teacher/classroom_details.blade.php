@@ -388,13 +388,28 @@
                                                     $attendance_status_by_batch_date_student[$batch->id] ?? [];
                                                 $attReady = $attendance_table_ready ?? false;
                                                 $attColCount = max(2, 2 + $attDates->count());
+                                                $attFilterFrom = \Illuminate\Support\Carbon::now()
+                                                    ->startOfMonth()
+                                                    ->format('Y-m-d');
+                                                $attFilterTo = \Illuminate\Support\Carbon::now()
+                                                    ->endOfMonth()
+                                                    ->format('Y-m-d');
                                             @endphp
                                             <div class="attendance-save-msg mb-2" data-batch-id="{{ $batch->id }}"></div>
                                             <div
-                                                class="d-flex flex-wrap align-items-start align-items-md-center justify-content-between gap-2 mb-3">
+                                                class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                                                <span class="text-body-secondary small">Tick date columns to include
+                                                    them in the CSV, then click <strong>Export</strong></span>
                                                 <div
-                                                    class="d-flex flex-wrap align-items-center justify-content-end gap-2 flex-shrink-0 ms-md-auto">
-                                                    
+                                                    class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
+                                                    @if ($attReady && $attDates->isNotEmpty())
+                                                        <button type="button"
+                                                            class="btn btn-label-secondary btn-sm js-export-attendance-btn"
+                                                            data-export-url="{{ url('user/teacher/classrooms/details/' . $classroom->id . '/export-attendance') }}"
+                                                            data-batch-id="{{ $batch->id }}">
+                                                            <i class="icon-base ti tabler-download me-1"></i> Export
+                                                        </button>
+                                                    @endif
                                                     @if ($attReady)
                                                         <button type="button"
                                                             class="btn btn-label-secondary btn-sm"
@@ -416,8 +431,8 @@
                                                 <p class="text-body-secondary small">Attendance storage is not available
                                                     yet.</p>
                                             @else
-                                                <div class="row g-3 mb-3">
-                                                    <div class="col-md-4">
+                                                <div class="row g-3 mb-3 align-items-end">
+                                                    <div class="col-md-3">
                                                         <label class="form-label"
                                                             for="attendance-filter-{{ $batch->id }}">Search</label>
                                                         <input type="text" id="attendance-filter-{{ $batch->id }}"
@@ -425,22 +440,73 @@
                                                             placeholder="Student name" autocomplete="off"
                                                             data-attendance-table="#attendance-table-{{ $batch->id }}">
                                                     </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label"
+                                                            for="attendance-filter-from-{{ $batch->id }}">From
+                                                            date</label>
+                                                        <input type="date"
+                                                            class="form-control js-attendance-date-from"
+                                                            id="attendance-filter-from-{{ $batch->id }}"
+                                                            data-batch-id="{{ $batch->id }}"
+                                                            data-default-date="{{ $attFilterFrom }}"
+                                                            value="{{ $attFilterFrom }}"
+                                                            max="2099-12-31">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label"
+                                                            for="attendance-filter-to-{{ $batch->id }}">To date</label>
+                                                        <input type="date"
+                                                            class="form-control js-attendance-date-to"
+                                                            id="attendance-filter-to-{{ $batch->id }}"
+                                                            data-batch-id="{{ $batch->id }}"
+                                                            data-default-date="{{ $attFilterTo }}"
+                                                            value="{{ $attFilterTo }}"
+                                                            max="2099-12-31">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label d-block">&nbsp;</label>
+                                                        <div class="d-flex gap-2">
+                                                            <button type="button"
+                                                                class="btn btn-primary btn-lg-2 js-attendance-date-search-btn"
+                                                                data-batch-id="{{ $batch->id }}">
+                                                                Search
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn btn-label-secondary btn-lg-2 js-attendance-date-reset-btn"
+                                                                data-batch-id="{{ $batch->id }}">
+                                                                Reset
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="table-responsive">
+                                                <div class="table-responsive attendance-date-scroll">
                                                     <table
                                                         class="table table-bordered table-striped align-middle text-nowrap"
                                                         id="attendance-table-{{ $batch->id }}"
                                                         data-batch-id="{{ $batch->id }}">
                                                         <thead>
                                                             <tr>
-                                                                <th>#</th>
-                                                                <th>Student Name</th>
+                                                                <th
+                                                                    class="attendance-sticky-col attendance-sticky-col--num">
+                                                                    #</th>
+                                                                <th
+                                                                    class="attendance-sticky-col attendance-sticky-col--name">
+                                                                    Student Name</th>
                                                                 @foreach ($attDates as $d)
                                                                     <th class="text-center small align-top attendance-date-head"
                                                                         data-attendance-date="{{ $d }}"
                                                                         data-batch-id="{{ $batch->id }}">
                                                                         <div class="fw-semibold">
                                                                             {{ \Illuminate\Support\Carbon::parse($d)->format('d M Y') }}
+                                                                        </div>
+                                                                        <div
+                                                                            class="text-body-secondary fw-normal d-flex align-items-center justify-content-center gap-1 mt-1">
+                                                                            <input
+                                                                                class="form-check-input js-export-attendance-date-cb flex-shrink-0"
+                                                                                type="checkbox" value="{{ $d }}"
+                                                                                id="export-att-{{ $batch->id }}-{{ str_replace('-', '_', $d) }}"
+                                                                                checked
+                                                                                title="Include in export">
                                                                         </div>
                                                                         <div
                                                                             class="d-flex align-items-center justify-content-center gap-1 mt-1 flex-wrap">
@@ -487,8 +553,12 @@
                                                                     data-student-id="{{ $student->id }}"
                                                                     data-student-name="{{ Str::lower($student->name) }}"
                                                                     data-student-search="{{ $studentSearchHaystack }}">
-                                                                    <td>{{ $index + 1 }}</td>
-                                                                    <td class="fw-medium">{{ $student->name }}</td>
+                                                                    <td
+                                                                        class="attendance-sticky-col attendance-sticky-col--num">
+                                                                        {{ $index + 1 }}</td>
+                                                                    <td
+                                                                        class="fw-medium attendance-sticky-col attendance-sticky-col--name">
+                                                                        {{ $student->name }}</td>
                                                                     @foreach ($attDates as $d)
                                                                         @php
                                                                             $attCell = ($attGridBatch[$d] ?? [])[$sid] ?? '';
@@ -633,7 +703,8 @@
                                         <strong>attendance date</strong> first, then download the template. The sheet lists
                                         every student in that batch (same idea as marks import). Enter <strong>P</strong>,
                                         <strong>A</strong>, or <strong>L</strong> in the Status column (leave blank to
-                                        clear). Do not change the first three rows or the date in row 1.</p>
+                                        clear). Keep the header row as downloaded; use the same date here as for the
+                                        template.</p>
                                     <div class="mb-3">
                                         <label class="form-label" for="import_attendance_batch_select">Batch</label>
                                         <select class="form-select form-select-sm" name="batch_id"
@@ -737,7 +808,7 @@
                                     <label class="form-label" for="attendance_modal_date">Date <span
                                             class="text-danger">*</span></label>
                                     <input type="date" class="form-control" id="attendance_modal_date"
-                                        name="attendance_date">
+                                        name="date" required>
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
                                 <div class="mb-3 ajax-field">
@@ -1429,7 +1500,168 @@
                     });
                 }
 
+                function applyAttendanceDateRangeFilter(batchId) {
+                    var b = String(batchId);
+                    var fromEl = document.getElementById('attendance-filter-from-' + b);
+                    var toEl = document.getElementById('attendance-filter-to-' + b);
+                    var table = document.getElementById('attendance-table-' + b);
+                    if (!table) {
+                        return;
+                    }
+                    var fromVal = fromEl && fromEl.value ? String(fromEl.value).trim() : '';
+                    var toVal = toEl && toEl.value ? String(toEl.value).trim() : '';
+                    if (fromVal && toVal && fromVal > toVal) {
+                        var tmp = fromVal;
+                        fromVal = toVal;
+                        toVal = tmp;
+                        if (fromEl) {
+                            fromEl.value = fromVal;
+                        }
+                        if (toEl) {
+                            toEl.value = toVal;
+                        }
+                    }
+                    table.querySelectorAll('[data-attendance-date]').forEach(function(el) {
+                        if (!el.classList.contains('attendance-date-head') && !el.classList.contains(
+                                'attendance-date-cell')) {
+                            return;
+                        }
+                        var d = el.getAttribute('data-attendance-date') || '';
+                        if (!d) {
+                            return;
+                        }
+                        var show = true;
+                        if (fromVal && d < fromVal) {
+                            show = false;
+                        }
+                        if (toVal && d > toVal) {
+                            show = false;
+                        }
+                        el.classList.toggle('d-none', !show);
+                    });
+                }
+
                 document.addEventListener('click', function(e) {
+                    var rangeSearchBtn = e.target.closest('.js-attendance-date-search-btn');
+                    if (rangeSearchBtn) {
+                        e.preventDefault();
+                        var searchBatchId = rangeSearchBtn.getAttribute('data-batch-id');
+                        if (searchBatchId) {
+                            applyAttendanceDateRangeFilter(searchBatchId);
+                        }
+                        return;
+                    }
+
+                    var rangeResetBtn = e.target.closest('.js-attendance-date-reset-btn');
+                    if (rangeResetBtn) {
+                        e.preventDefault();
+                        var resetBatchId = rangeResetBtn.getAttribute('data-batch-id');
+                        if (!resetBatchId) {
+                            return;
+                        }
+                        var fromReset = document.getElementById('attendance-filter-from-' + resetBatchId);
+                        var toReset = document.getElementById('attendance-filter-to-' + resetBatchId);
+                        if (fromReset) {
+                            fromReset.value = fromReset.getAttribute('data-default-date') || '';
+                        }
+                        if (toReset) {
+                            toReset.value = toReset.getAttribute('data-default-date') || '';
+                        }
+                        applyAttendanceDateRangeFilter(resetBatchId);
+                        return;
+                    }
+
+                    var exportAttBtn = e.target.closest('.js-export-attendance-btn');
+                    if (exportAttBtn) {
+                        e.preventDefault();
+                        var batchId = exportAttBtn.getAttribute('data-batch-id');
+                        var action = exportAttBtn.getAttribute('data-export-url');
+                        var table = document.getElementById('attendance-table-' + batchId);
+                        if (!table || !action) {
+                            return;
+                        }
+                        var dateCbs = table.querySelectorAll(
+                            'thead input.js-export-attendance-date-cb[type="checkbox"]'
+                        );
+                        if (!dateCbs.length) {
+                            window.alert('No attendance dates in this batch to export.');
+                            return;
+                        }
+                        var attendanceDates = [];
+                        for (var i = 0; i < dateCbs.length; i++) {
+                            var thHead = dateCbs[i].closest('th.attendance-date-head');
+                            if (thHead && thHead.classList.contains('d-none')) {
+                                continue;
+                            }
+                            if (dateCbs[i].checked) {
+                                attendanceDates.push(dateCbs[i].value);
+                            }
+                        }
+                        if (!attendanceDates.length) {
+                            for (var j = 0; j < dateCbs.length; j++) {
+                                var th2 = dateCbs[j].closest('th.attendance-date-head');
+                                if (th2 && th2.classList.contains('d-none')) {
+                                    continue;
+                                }
+                                attendanceDates.push(dateCbs[j].value);
+                            }
+                        }
+                        if (!attendanceDates.length) {
+                            window.alert(
+                                'No attendance columns are visible for the current From / To range. Widen the date range.'
+                            );
+                            return;
+                        }
+                        var studentIds = [];
+                        table.querySelectorAll('tbody tr.attendance-student-row').forEach(function(tr) {
+                            if (tr.style.display === 'none') {
+                                return;
+                            }
+                            var sid = tr.getAttribute('data-student-id');
+                            if (sid) {
+                                studentIds.push(sid);
+                            }
+                        });
+                        if (!studentIds.length) {
+                            window.alert(
+                                'No students to export. Clear the search filter or add students to this batch.'
+                            );
+                            return;
+                        }
+                        var form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = action;
+                        form.style.display = 'none';
+                        var token = document.createElement('input');
+                        token.type = 'hidden';
+                        token.name = '_token';
+                        token.value = csrfAtt;
+                        form.appendChild(token);
+                        var bi = document.createElement('input');
+                        bi.type = 'hidden';
+                        bi.name = 'batch_id';
+                        bi.value = batchId;
+                        form.appendChild(bi);
+                        attendanceDates.forEach(function(d) {
+                            var inp = document.createElement('input');
+                            inp.type = 'hidden';
+                            inp.name = 'attendance_dates[]';
+                            inp.value = d;
+                            form.appendChild(inp);
+                        });
+                        studentIds.forEach(function(id) {
+                            var inp = document.createElement('input');
+                            inp.type = 'hidden';
+                            inp.name = 'student_ids[]';
+                            inp.value = id;
+                            form.appendChild(inp);
+                        });
+                        document.body.appendChild(form);
+                        form.submit();
+                        document.body.removeChild(form);
+                        return;
+                    }
+
                     var editBtn = e.target.closest('.js-edit-attendance-col');
                     if (editBtn) {
                         e.preventDefault();
@@ -1549,8 +1781,16 @@
                         });
                     }
                 });
+
+                document.querySelectorAll('input.js-attendance-date-from[data-batch-id]').forEach(function(inp) {
+                    var bid = inp.getAttribute('data-batch-id');
+                    if (bid) {
+                        applyAttendanceDateRangeFilter(bid);
+                    }
+                });
             })();
         </script>
+
         <script>
             $(function() {
                 var elS = document.getElementById('attendanceStudentsByBatchJson');
@@ -1703,7 +1943,7 @@
                 _this.find('.submit-button').text('Saving...');
 
                 const url = _this.attr('action');
-                const data = _this.serializeArray();
+                const data = _this.serialize();
 
                 $.post(url, data, function(res) {
                     _this.find('.submit-button').removeAttr('disabled');
@@ -1717,5 +1957,73 @@
                 });
             });
         </script>
+
+        <style>
+            /* Wider # track + same value for name `left` avoids date columns sliding under sticky labels */
+            .attendance-date-scroll {
+                --att-sticky-num-w: 4.5rem;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .attendance-date-scroll .attendance-sticky-col {
+                position: sticky;
+                background-clip: padding-box;
+                box-sizing: border-box;
+            }
+
+            .attendance-date-scroll thead .attendance-sticky-col {
+                vertical-align: top;
+                background-color: var(--bs-table-bg, var(--bs-body-bg, #fff));
+            }
+
+            .attendance-date-scroll tbody .attendance-sticky-col {
+                background-color: var(--bs-table-bg, var(--bs-body-bg, #fff));
+            }
+
+            .attendance-date-scroll table.table-striped>tbody>tr:nth-of-type(odd)>td.attendance-sticky-col {
+                background-color: var(--bs-table-striped-bg, rgba(0, 0, 0, 0.05));
+            }
+
+            .attendance-date-scroll table.table-striped>tbody>tr:nth-of-type(even)>td.attendance-sticky-col {
+                background-color: var(--bs-table-bg, var(--bs-body-bg, #fff));
+            }
+
+            /* Sticky stacks above scrolling date cells (later DOM siblings otherwise paint on top) */
+            .attendance-date-scroll thead th.attendance-date-head,
+            .attendance-date-scroll tbody td.attendance-date-cell {
+                position: relative;
+                z-index: 1;
+            }
+
+            .attendance-date-scroll tbody .attendance-sticky-col--num {
+                z-index: 11;
+            }
+
+            .attendance-date-scroll tbody .attendance-sticky-col--name {
+                z-index: 10;
+            }
+
+            .attendance-date-scroll thead .attendance-sticky-col--num {
+                z-index: 13;
+            }
+
+            .attendance-date-scroll thead .attendance-sticky-col--name {
+                z-index: 12;
+            }
+
+            .attendance-date-scroll .attendance-sticky-col--num {
+                left: 0;
+                min-width: var(--att-sticky-num-w);
+                width: var(--att-sticky-num-w);
+                max-width: var(--att-sticky-num-w);
+            }
+
+            .attendance-date-scroll .attendance-sticky-col--name {
+                left: var(--att-sticky-num-w);
+                min-width: 12rem;
+                max-width: 18rem;
+                box-shadow: 4px 0 6px -3px rgba(33, 37, 41, 0.12);
+            }
+        </style>
     @endif
 @endsection

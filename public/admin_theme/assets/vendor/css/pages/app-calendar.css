@@ -88,3 +88,18 @@
     background-color: transparent;
   }
 }
+
+/* Stacked title + time in day-grid (month / week) cells */
+.app-calendar-wrapper .fc-daygrid-event-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.05rem;
+  line-height: 1.15;
+  min-inline-size: 0;
+}
+.app-calendar-wrapper .fc-daygrid-event-time-below {
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.88;
+}

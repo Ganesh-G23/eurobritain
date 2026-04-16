@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Classroom;
+use App\Models\Event;
+use App\Models\EventType;
 use App\Models\Exam;
 use App\Models\Mark;
 use App\Models\MarkAbsence;
@@ -1137,7 +1139,7 @@ class UserTeacherController extends Controller
         } else {
             $validation = Validator::make($request->all(), [
                 'batch_id' => 'required|integer',
-                'date' => 'required|date',
+                'date' => 'required',
                 'student_id' => 'required|integer',
                 'attendance_status' => ['required', Rule::in(['P', 'A', 'L'])],
                 'return_classroom_id' => 'nullable|integer',
@@ -1167,7 +1169,7 @@ class UserTeacherController extends Controller
                             ->all();
 
                         $allowedSet = array_fill_keys($allowedStudentIds, true);
-                        $date = \Carbon\Carbon::parse($request->attendance_date)->format('Y-m-d');
+                        $date = \Carbon\Carbon::parse($request->date)->format('Y-m-d');
                         $sid = (int) $request->student_id;
                         $status = (string) $request->attendance_status;
 
@@ -1284,7 +1286,8 @@ class UserTeacherController extends Controller
     }
 
     /**
-     * CSV template for one batch + date: student names (like marks export) and a Status column (P / A / L).
+     * GET: CSV template for one batch + date (import / template download).
+     * POST: Multi-date export from the grid (same idea as marks export — selected columns + students).
      */
     public function exportClassroomAttendance(Request $request, $id)
     {
@@ -1303,16 +1306,9 @@ class UserTeacherController extends Controller
             abort(404);
         }
 
-        $batchId = (int) $request->query('batch_id', 0);
-        $dateRaw = $request->query('attendance_date', '');
-        if ($batchId <= 0 || trim((string) $dateRaw) === '') {
-            abort(422, 'batch_id and attendance_date are required.');
-        }
-
-        try {
-            $dateYmd = \Carbon\Carbon::parse($dateRaw)->format('Y-m-d');
-        } catch (\Throwable $e) {
-            abort(422, 'Invalid attendance_date.');
+        $batchId = (int) $request->input('batch_id', $request->query('batch_id', 0));
+        if ($batchId <= 0) {
+            abort(422, 'batch_id is required.');
         }
 
         $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey($batchId)->first();
@@ -1338,14 +1334,140 @@ class UserTeacherController extends Controller
         }
         $students = $students->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
+        $slugClass = Str::slug($classroom->name, '-') ?: 'classroom';
+        $slugBatch = Str::slug($batch->name, '-') ?: 'batch';
+
+        if ($request->isMethod('post')) {
+            $allowedDatesOrdered = StudentAttendance::query()
+                ->where('batch_id', $batch->id)
+                ->orderBy('date')
+                ->get()
+                ->pluck('date')
+                ->map(static fn($dt) => \Carbon\Carbon::parse($dt)->format('Y-m-d'))
+                ->unique()
+                ->values()
+                ->all();
+
+            if ($allowedDatesOrdered === []) {
+                abort(422, 'No attendance dates for this batch yet.');
+            }
+
+            $allowedDateSet = array_fill_keys($allowedDatesOrdered, true);
+
+            $datesInput = $request->input('attendance_dates', []);
+            if (!is_array($datesInput)) {
+                $datesInput = $datesInput !== null && $datesInput !== '' ? [$datesInput] : [];
+            }
+
+            $selectedDates = [];
+            $picked = [];
+            foreach ($datesInput as $raw) {
+                try {
+                    $d = \Carbon\Carbon::parse($raw)->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if (isset($allowedDateSet[$d]) && !isset($picked[$d])) {
+                    $picked[$d] = true;
+                    $selectedDates[] = $d;
+                }
+            }
+            if ($selectedDates === []) {
+                $selectedDates = $allowedDatesOrdered;
+            }
+
+            $allowedStudentIdSet = array_fill_keys($students->pluck('id')->map(static fn($i) => (int) $i)->values()->all(), true);
+
+            $studentIdsInput = $request->input('student_ids', []);
+            if (!is_array($studentIdsInput)) {
+                $studentIdsInput = [];
+            }
+            $studentIdsOrdered = array_values(array_unique(array_map('intval', array_filter($studentIdsInput))));
+            if ($studentIdsOrdered === []) {
+                abort(422, 'No students to export.');
+            }
+            foreach ($studentIdsOrdered as $sid) {
+                if (!isset($allowedStudentIdSet[$sid])) {
+                    abort(422, 'Invalid student in export.');
+                }
+            }
+            $studentsKeyed = $students->keyBy('id');
+            $studentsExport = collect();
+            foreach ($studentIdsOrdered as $sid) {
+                $s = $studentsKeyed->get($sid);
+                if ($s) {
+                    $studentsExport->push($s);
+                }
+            }
+
+            $byDateSid = [];
+            foreach ($selectedDates as $d) {
+                $byDateSid[$d] = [];
+            }
+            $attQuery = StudentAttendance::query()->where('batch_id', $batch->id);
+            $attQuery->where(function ($q) use ($selectedDates) {
+                foreach ($selectedDates as $d) {
+                    $q->orWhereDate('date', $d);
+                }
+            });
+            foreach ($attQuery->get(['student_id', 'date', 'attendance_status']) as $row) {
+                $d = $row->date->format('Y-m-d');
+                if (!isset($byDateSid[$d])) {
+                    continue;
+                }
+                $byDateSid[$d][(int) $row->student_id] = (string) $row->attendance_status;
+            }
+
+            $filename = $slugClass . '-' . $slugBatch . '-attendance-' . now()->format('Y-m-d') . '.csv';
+
+            return response()->streamDownload(
+                function () use ($classroom, $batch, $studentsExport, $selectedDates, $byDateSid) {
+                    $out = fopen('php://output', 'w');
+                    fwrite($out, "\xEF\xBB\xBF");
+
+                    $header = ['#', 'Student name', 'Classroom', 'Batch'];
+                    foreach ($selectedDates as $d) {
+                        $header[] = \Carbon\Carbon::parse($d)->format('j F Y');
+                    }
+                    fputcsv($out, $header);
+
+                    $rowNum = 0;
+                    foreach ($studentsExport as $student) {
+                        $rowNum++;
+                        $sid = (int) $student->id;
+                        $row = [$rowNum, $student->name, $classroom->name, $batch->name];
+                        foreach ($selectedDates as $d) {
+                            $row[] = $byDateSid[$d][$sid] ?? '';
+                        }
+                        fputcsv($out, $row);
+                    }
+
+                    fclose($out);
+                },
+                $filename,
+                [
+                    'Content-Type' => 'text/csv; charset=UTF-8',
+                ],
+            );
+        }
+
+        $dateRaw = $request->query('attendance_date', '');
+        if (trim((string) $dateRaw) === '') {
+            abort(422, 'batch_id and attendance_date are required.');
+        }
+
+        try {
+            $dateYmd = \Carbon\Carbon::parse($dateRaw)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            abort(422, 'Invalid attendance_date.');
+        }
+
         $statusBySid = StudentAttendance::query()
             ->where('batch_id', $batch->id)
             ->whereDate('date', $dateYmd)
             ->get()
             ->keyBy('student_id');
 
-        $slugClass = Str::slug($classroom->name, '-') ?: 'classroom';
-        $slugBatch = Str::slug($batch->name, '-') ?: 'batch';
         $filename = $slugClass . '-' . $slugBatch . '-attendance-' . $dateYmd . '.csv';
 
         return response()->streamDownload(
@@ -1353,8 +1475,6 @@ class UserTeacherController extends Controller
                 $out = fopen('php://output', 'w');
                 fwrite($out, "\xEF\xBB\xBF");
 
-                fputcsv($out, ['', '', '', '', 'Attendance date: ' . $dateYmd]);
-                fputcsv($out, ['', '', '', '', 'Fill Status with P, A, or L (leave blank to clear).']);
                 fputcsv($out, ['#', 'Student name', 'Classroom', 'Batch', 'Status']);
 
                 $rowNum = 0;
@@ -1438,19 +1558,28 @@ class UserTeacherController extends Controller
             return redirect()->back()->with('import_attendance_error', 'The CSV file is empty.');
         }
 
-        $line2 = fgetcsv($handle);
-        $header = fgetcsv($handle);
-        if ($header === false || $header === [null] || $header === []) {
-            fclose($handle);
+        $h1First = strtolower(trim((string) ($line1[1] ?? '')));
+        $h4First = strtolower(trim((string) ($line1[4] ?? '')));
+        $header = null;
+        $headerLineNum = 1;
 
-            return redirect()->back()->with('import_attendance_error', 'The CSV file is missing the header row.');
-        }
+        if ($h1First === 'student name' && $h4First === 'status') {
+            $header = $line1;
+        } else {
+            $meta = trim((string) ($line1[4] ?? ''));
+            if (!preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $meta, $m) || $m[1] !== $dateYmd) {
+                fclose($handle);
 
-        $meta = trim((string) ($line1[4] ?? ''));
-        if (!preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $meta, $m) || $m[1] !== $dateYmd) {
-            fclose($handle);
+                return redirect()->back()->with('import_attendance_error', 'This file does not match the selected date. Choose the same date you used for Download template, or download the template again.');
+            }
+            fgetcsv($handle);
+            $header = fgetcsv($handle);
+            $headerLineNum = 3;
+            if ($header === false || $header === [null] || $header === []) {
+                fclose($handle);
 
-            return redirect()->back()->with('import_attendance_error', 'This file does not match the selected date. Choose the same date you used for Download template, or download the template again.');
+                return redirect()->back()->with('import_attendance_error', 'The CSV file is missing the header row.');
+            }
         }
 
         $h1 = strtolower(trim((string) ($header[1] ?? '')));
@@ -1458,7 +1587,7 @@ class UserTeacherController extends Controller
         if ($h1 !== 'student name' || $h4 !== 'status') {
             fclose($handle);
 
-            return redirect()->back()->with('import_attendance_error', 'Unexpected header row. Download the template again and keep the first three rows unchanged.');
+            return redirect()->back()->with('import_attendance_error', 'Unexpected header row. Download the template again (first row must be: #, Student name, Classroom, Batch, Status).');
         }
 
         $allowedStudentIdSet = array_fill_keys(
@@ -1494,7 +1623,7 @@ class UserTeacherController extends Controller
         }
 
         $importedRows = 0;
-        $lineNum = 3;
+        $lineNum = $headerLineNum;
 
         try {
             DB::transaction(function () use ($handle, $batch, $dateYmd, $studentsByLowerName, $allowedStudentIdSet, &$importedRows, &$lineNum) {
@@ -2575,5 +2704,461 @@ class UserTeacherController extends Controller
                 );
             }
         }
+    }
+
+    public function events()
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return $redirect;
+        }
+
+        $data = [];
+        $data['title'] = 'Events';
+        $data['active_tab'] = 'events';
+        $data['classrooms'] = collect();
+        $data['batches'] = collect();
+        $data['event_types'] = collect();
+
+        if (Schema::hasTable('classrooms')) {
+            $data['classrooms'] = Classroom::query()
+                ->where('teacher_id', $teacherId)
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+        if (Schema::hasTable('batches')) {
+            $data['batches'] = Batch::query()
+                ->where('teacher_id', $teacherId)
+                ->orderBy('name')
+                ->get(['id', 'name', 'classroom_id']);
+        }
+        if (Schema::hasTable('event_types')) {
+            $data['event_types'] = EventType::query()->orderBy('title')->get(['id', 'title', 'color_code']);
+        }
+
+        $data['calendar_events'] = [];
+        if (Schema::hasTable('events')) {
+            $calendarQuery = Event::query()->orderBy('event_date')->orderBy('event_time');
+
+            if (Schema::hasColumn('events', 'teacher_id')) {
+                $calendarQuery->where(function ($q) use ($teacherId) {
+                    $q->where('teacher_id', $teacherId)
+                        ->orWhere(function ($legacy) use ($teacherId) {
+                            $legacy->whereNull('teacher_id')
+                                ->where(function ($scope) use ($teacherId) {
+                                    $scope->whereHas('classroom', function ($c) use ($teacherId) {
+                                        $c->where('teacher_id', $teacherId);
+                                    })->orWhereHas('batch', function ($b) use ($teacherId) {
+                                        $b->where('teacher_id', $teacherId);
+                                    });
+                                });
+                        });
+                });
+            } else {
+                $calendarQuery->where(function ($scope) use ($teacherId) {
+                    $scope->whereHas('classroom', function ($c) use ($teacherId) {
+                        $c->where('teacher_id', $teacherId);
+                    })->orWhereHas('batch', function ($b) use ($teacherId) {
+                        $b->where('teacher_id', $teacherId);
+                    });
+                });
+            }
+
+            $data['calendar_events'] = $calendarQuery
+                ->with('eventType')
+                ->get()
+                ->map(function (Event $event) {
+                    $dateStr = $event->event_date instanceof \Carbon\CarbonInterface
+                        ? $event->event_date->format('Y-m-d')
+                        : \Carbon\Carbon::parse($event->event_date)->format('Y-m-d');
+                    if ($event->event_time instanceof \Carbon\CarbonInterface) {
+                        $timeStr = $event->event_time->format('H:i:s');
+                    } elseif (is_string($event->event_time) && $event->event_time !== '') {
+                        $timeStr = strlen($event->event_time) >= 8
+                            ? substr($event->event_time, 0, 8)
+                            : \Carbon\Carbon::parse($event->event_time)->format('H:i:s');
+                    } else {
+                        $timeStr = '00:00:00';
+                    }
+                    $start = \Carbon\Carbon::parse($dateStr . ' ' . $timeStr)->format('Y-m-d\TH:i:s');
+
+                    $payload = [
+                        'id' => 'db-' . $event->id,
+                        'url' => '',
+                        'title' => $event->title,
+                        'start' => $start,
+                        'allDay' => false,
+                        'extendedProps' => array_merge([
+                            'calendar' => 'et' . (int) $event->event_type_id,
+                            'event_type_id' => $event->event_type_id,
+                            'classroom_id' => $event->classroom_id,
+                            'batch_id' => $event->batch_id,
+                            'status' => (int) $event->status,
+                            'description' => $event->description,
+                            'color_code' => $event->eventType?->color_code,
+                        ], Schema::hasColumn('events', 'all_classrooms') ? [
+                            'all_classrooms' => (bool) $event->all_classrooms,
+                        ] : [], Schema::hasColumn('events', 'all_batches') ? [
+                            'all_batches' => (bool) $event->all_batches,
+                        ] : []),
+                    ];
+
+                    return array_merge($payload, $this->calendarColorsForEventType($event->eventType));
+                })
+                ->values()
+                ->all();
+        }
+
+        return view('web.user.teacher.events', $data);
+    }
+
+    public function eventTypes()
+    {
+        [, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return $redirect;
+        }
+
+        $data = [
+            'title' => 'Event Types',
+            'active_tab' => 'event_types',
+            'event_types' => collect(),
+        ];
+        if (Schema::hasTable('event_types')) {
+            $data['event_types'] = EventType::query()->orderBy('title')->get(['id', 'title', 'color_code', 'created_at']);
+        }
+
+        return view('web.user.teacher.event_types', $data);
+    }
+
+    protected function teacherCanEditEvent(Event $event, int $teacherId): bool
+    {
+        if (Schema::hasColumn('events', 'teacher_id') && $event->teacher_id !== null) {
+            return (int) $event->teacher_id === (int) $teacherId;
+        }
+        if ($event->classroom_id) {
+            $classroom = Classroom::query()->whereKey($event->classroom_id)->first();
+            if ($classroom && (int) $classroom->teacher_id === (int) $teacherId) {
+                return true;
+            }
+        }
+        if ($event->batch_id) {
+            $batch = Batch::query()->whereKey($event->batch_id)->first();
+            if ($batch && (int) $batch->teacher_id === (int) $teacherId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build FullCalendar color fields from event_types.color_code (e.g. #0000FF, 0000FF, #00F).
+     *
+     * @return array{backgroundColor: string, borderColor: string, textColor: string}
+     */
+    protected function calendarColorsForEventType(?EventType $eventType): array
+    {
+        $raw = $eventType && $eventType->color_code !== null
+            ? trim((string) $eventType->color_code)
+            : '';
+        $raw = preg_replace('/\s+/', '', $raw) ?? '';
+
+        if ($raw === '') {
+            $bg = '#696cff';
+        } elseif (preg_match('/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/i', $raw)) {
+            $hex = ltrim($raw, '#');
+            if (strlen($hex) === 3) {
+                $bg = sprintf(
+                    '#%s%s%s%s%s%s',
+                    $hex[0],
+                    $hex[0],
+                    $hex[1],
+                    $hex[1],
+                    $hex[2],
+                    $hex[2],
+                );
+            } else {
+                $bg = '#' . strtolower($hex);
+            }
+        } elseif (preg_match('/^[a-z]+$/i', $raw)) {
+            $bg = strtolower($raw);
+        } else {
+            $bg = '#696cff';
+        }
+
+        $text = '#ffffff';
+        if (preg_match('/^#([0-9a-fA-F]{6})$/', $bg)) {
+            $r = hexdec(substr($bg, 1, 2));
+            $g = hexdec(substr($bg, 3, 2));
+            $b = hexdec(substr($bg, 5, 2));
+            $lum = ($r * 0.299 + $g * 0.587 + $b * 0.114) / 255;
+            $text = $lum > 0.65 ? '#212529' : '#ffffff';
+        }
+
+        return [
+            'backgroundColor' => $bg,
+            'borderColor' => $bg,
+            'textColor' => $text,
+        ];
+    }
+
+    public function saveEventType(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unauthorized request';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        if (!Schema::hasTable('event_types')) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Event types are not available.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $validation = Validator::make($request->all(), [
+            'id' => 'nullable|integer|exists:event_types,id',
+            'title' => 'required|string|max:255',
+            'color_code' => 'nullable|string|max:32',
+        ]);
+
+        if (!$validation->fails()) {
+            $attrs = [
+                'title' => trim((string) $request->title),
+                'color_code' => $request->color_code !== null && trim((string) $request->color_code) !== ''
+                    ? trim((string) $request->color_code)
+                    : null,
+            ];
+            if ($request->filled('id')) {
+                $row = EventType::query()->find((int) $request->id);
+                if (!$row) {
+                    $this->response['status'] = 0;
+                    $this->response['error'] = 'Event type not found.';
+                    echo json_encode($this->response);
+
+                    return;
+                }
+                $row->fill($attrs);
+                $row->save();
+                $this->response['msg'] = 'Event type updated.';
+            } else {
+                EventType::query()->create($attrs);
+                $this->response['msg'] = 'Event type saved.';
+            }
+            $this->response['status'] = 1;
+            $this->response['redirect_url'] = url('user/teacher/event_types');
+        } else {
+            $this->response['status'] = 0;
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+        }
+
+        echo json_encode($this->response);
+    }
+
+    public function deleteEventType(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unauthorized request';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        if (!Schema::hasTable('event_types')) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Event types are not available.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $validation = Validator::make($request->all(), [
+            'id' => 'required|integer|exists:event_types,id',
+        ]);
+
+        if ($validation->fails()) {
+            $this->response['status'] = 0;
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $id = (int) $request->id;
+        if (Schema::hasTable('events') && Event::query()->where('event_type_id', $id)->exists()) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'This type is used by one or more events. Remove or reassign those events first.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        EventType::query()->whereKey($id)->delete();
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Event type deleted.';
+        $this->response['redirect_url'] = url('user/teacher/event_types');
+        echo json_encode($this->response);
+    }
+
+    public function saveEvent(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unauthorized request';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        if (!Schema::hasTable('events') || !Schema::hasTable('event_types')) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Events are not available.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        if ($request->input('classroom_id') === '' || $request->input('classroom_id') === null) {
+            $request->merge(['classroom_id' => null]);
+        }
+        if ($request->input('batch_id') === '' || $request->input('batch_id') === null) {
+            $request->merge(['batch_id' => null]);
+        }
+
+        $validation = Validator::make($request->all(), [
+            'event_id' => 'nullable|integer|exists:events,id',
+            'event_type_id' => 'required|integer|exists:event_types,id',
+            'classroom_id' => 'nullable|integer',
+            'batch_id' => 'nullable|integer',
+            'all_classrooms' => 'nullable|boolean',
+            'all_batches' => 'nullable|boolean',
+            'title' => 'required',
+            'description' => 'nullable',
+            'event_date' => 'required',
+            'event_time' => 'required',
+            'status' => 'nullable',
+        ]);
+
+        if (!$validation->fails()) {
+            $eventId = $request->filled('event_id') ? (int) $request->event_id : null;
+            $hasScopeCols = Schema::hasColumn('events', 'all_classrooms')
+                && Schema::hasColumn('events', 'all_batches');
+            $allClassrooms = $hasScopeCols && $request->boolean('all_classrooms');
+            $allBatches = $hasScopeCols && $request->boolean('all_batches');
+
+            $classroomId = !$allClassrooms && $request->filled('classroom_id')
+                ? (int) $request->classroom_id
+                : null;
+            $batchId = !$allBatches && $request->filled('batch_id') ? (int) $request->batch_id : null;
+
+            if ($classroomId) {
+                $classroom = Classroom::query()
+                    ->where('teacher_id', $teacherId)
+                    ->whereKey($classroomId)
+                    ->first();
+                if (!$classroom) {
+                    $this->response['status'] = 0;
+                    $this->response['error_array'] = formatErrors([
+                        'classroom_id' => ['Classroom not found.'],
+                    ]);
+                    echo json_encode($this->response);
+
+                    return;
+                }
+            }
+
+            if ($batchId) {
+                $batch = Batch::query()
+                    ->where('teacher_id', $teacherId)
+                    ->whereKey($batchId)
+                    ->first();
+                if (!$batch) {
+                    $this->response['status'] = 0;
+                    $this->response['error_array'] = formatErrors([
+                        'batch_id' => ['Batch not found.'],
+                    ]);
+                    echo json_encode($this->response);
+
+                    return;
+                }
+                if ($classroomId !== null && (int) $batch->classroom_id !== $classroomId) {
+                    $this->response['status'] = 0;
+                    $this->response['error_array'] = formatErrors([
+                        'batch_id' => ['This batch does not belong to the selected classroom.'],
+                    ]);
+                    echo json_encode($this->response);
+
+                    return;
+                }
+                if ($classroomId === null && !$allClassrooms) {
+                    $classroomId = (int) $batch->classroom_id;
+                }
+            }
+
+            $timeStr = $request->event_time;
+            if (strlen($timeStr) === 5) {
+                $timeStr .= ':00';
+            } elseif (substr_count($timeStr, ':') === 1) {
+                $timeStr .= ':00';
+            }
+
+            $eventAttrs = [
+                'event_type_id' => (int) $request->event_type_id,
+                'batch_id' => $batchId,
+                'classroom_id' => $classroomId,
+                'title' => trim((string) $request->title),
+                'description' => $request->filled('description') ? trim((string) $request->description) : null,
+                'event_date' => \Carbon\Carbon::parse($request->event_date)->format('Y-m-d'),
+                'event_time' => $timeStr,
+                'status' => (int) ($request->input('status', 0)),
+            ];
+            if ($hasScopeCols) {
+                $eventAttrs['all_classrooms'] = $allClassrooms;
+                $eventAttrs['all_batches'] = $allBatches;
+            }
+
+            if ($eventId) {
+                $existing = Event::query()->whereKey($eventId)->first();
+                if (!$existing || !$this->teacherCanEditEvent($existing, $teacherId)) {
+                    $this->response['status'] = 0;
+                    $this->response['error_array'] = formatErrors([
+                        'event_id' => ['Event not found or you cannot edit it.'],
+                    ]);
+                    echo json_encode($this->response);
+
+                    return;
+                }
+                $existing->fill($eventAttrs);
+                $existing->save();
+
+                $this->response['status'] = 1;
+                $this->response['msg'] = 'Event updated.';
+                $this->response['redirect_url'] = url('user/teacher/events');
+            } else {
+                if (Schema::hasColumn('events', 'teacher_id')) {
+                    $eventAttrs['teacher_id'] = $teacherId;
+                }
+                Event::query()->create($eventAttrs);
+
+                $this->response['status'] = 1;
+                $this->response['msg'] = 'Event saved.';
+                $this->response['redirect_url'] = url('user/teacher/events');
+            }
+        } else {
+            $this->response['status'] = 0;
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+        }
+
+        echo json_encode($this->response);
     }
 }
