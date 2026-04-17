@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Classroom;
+use App\Models\Event;
+use App\Models\EventType;
 use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\PortalUser;
+use App\Models\StudentAttendance;
 use App\Models\TeacherSetting;
 use App\Support\PortalSession;
 use Illuminate\Http\Request;
@@ -456,13 +459,82 @@ class UserDashboardController extends Controller
             return redirect('user/select-teacher');
         }
 
+        $studentId = (int) ($portalUser['id'] ?? 0);
         $data = [];
         $data['title'] = 'My Attendance';
         $data['active_tab'] = 'student_attendance';
-        $data['teacher'] = \App\Models\PortalUser::where('role', 1)->find($teacherId);
-        // Placeholder data; wire up when attendance tables are available
+        $data['teacher'] = PortalUser::where('role', 1)->find($teacherId);
+        $data['student_id'] = $studentId;
+        $data['student_display_name'] = (string) ($portalUser['name'] ?? '');
+
+        $data['attendance_table_ready'] = Schema::hasTable('student_attendances');
         $data['summary'] = ['present' => 0, 'absent' => 0, 'late' => 0];
-        $data['records'] = collect([]);
+        $data['attendance_batches'] = collect();
+
+        $batchRows = DB::table('student_classroom_map as scm')
+            ->join('batches as b', 'b.id', '=', 'scm.batch_id')
+            ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+            ->where('scm.teacher_id', $teacherId)
+            ->where('scm.student_id', $studentId)
+            ->whereNotNull('scm.batch_id')
+            ->where('c.teacher_id', $teacherId)
+            ->select([
+                'b.id as batch_id',
+                'b.name as batch_name',
+                'c.name as classroom_name',
+            ])
+            ->distinct()
+            ->orderBy('c.name')
+            ->orderBy('b.name')
+            ->get();
+
+        if (!$data['attendance_table_ready'] || $batchRows->isEmpty()) {
+            return view('web.user.student.attendance', $data);
+        }
+
+        $batchIds = $batchRows->pluck('batch_id')->map(fn($id) => (int) $id)->unique()->values()->all();
+        $allRows = StudentAttendance::query()
+            ->whereIn('batch_id', $batchIds)
+            ->get(['batch_id', 'student_id', 'date', 'attendance_status']);
+
+        $dateKeysByBatch = [];
+        $studentStatusByBatchDate = [];
+        foreach ($allRows as $row) {
+            $bid = (int) $row->batch_id;
+            $d = $row->date->format('Y-m-d');
+            $dateKeysByBatch[$bid][$d] = true;
+            if ((int) $row->student_id === $studentId) {
+                $studentStatusByBatchDate[$bid][$d] = (string) $row->attendance_status;
+            }
+        }
+
+        $batchesOut = collect();
+        foreach ($batchRows as $br) {
+            $bid = (int) $br->batch_id;
+            $keys = array_keys($dateKeysByBatch[$bid] ?? []);
+            sort($keys, SORT_STRING);
+            $cells = [];
+            foreach ($keys as $d) {
+                $st = $studentStatusByBatchDate[$bid][$d] ?? '';
+                $cells[$d] = $st;
+                if ($st === 'P') {
+                    $data['summary']['present']++;
+                } elseif ($st === 'A') {
+                    $data['summary']['absent']++;
+                } elseif ($st === 'L') {
+                    $data['summary']['late']++;
+                }
+            }
+            $batchesOut->push((object) [
+                'id' => $bid,
+                'batch_name' => (string) $br->batch_name,
+                'classroom_name' => (string) $br->classroom_name,
+                'dates' => $keys,
+                'cells' => $cells,
+            ]);
+        }
+        $data['attendance_batches'] = $batchesOut;
+
         return view('web.user.student.attendance', $data);
     }
 
@@ -602,6 +674,348 @@ class UserDashboardController extends Controller
         return view('web.user.student.classrooms', $data);
     }
 
+    public function studentEvents()
+    {
+        if (!session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return redirect('user/dashboard');
+        }
+
+        $teacherId = (int) (session('selected_teacher_id') ?? 0);
+        if ($teacherId <= 0) {
+            return redirect('user/select-teacher');
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        $payload = $this->buildStudentEventsCalendarPayload($studentId, $teacherId);
+        if ($payload === null) {
+            return redirect('user/select-teacher');
+        }
+
+        $data = [];
+        $data['title'] = 'Events';
+        $data['active_tab'] = 'student_events';
+        $data['teacher'] = $payload['teacher'];
+        $data['event_types'] = $payload['event_types'];
+        $data['calendar_events'] = $payload['calendar_events'];
+
+        return view('web.user.student.events', $data);
+    }
+
+    /**
+     * Read-only calendar payload for a student + teacher (same rules as student Events page).
+     *
+     * @return array{teacher: ?PortalUser, event_types: \Illuminate\Support\Collection, calendar_events: array<int, mixed>}|null
+     */
+    private function buildStudentEventsCalendarPayload(int $studentId, int $teacherId): ?array
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return null;
+        }
+
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
+        if (!$teacher) {
+            return null;
+        }
+
+        $mappedRows = DB::table('student_classroom_map')
+            ->where('teacher_id', $teacherId)
+            ->where('student_id', $studentId)
+            ->get(['classroom_id', 'batch_id']);
+
+        $mappedClassroomIds = $mappedRows
+            ->pluck('classroom_id')
+            ->filter(fn($id) => $id !== null)
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $mappedBatchIds = $mappedRows
+            ->pluck('batch_id')
+            ->filter(fn($id) => $id !== null)
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $hasAllClassroomsColumn = Schema::hasColumn('events', 'all_classrooms');
+        $hasAllBatchesColumn = Schema::hasColumn('events', 'all_batches');
+
+        $events = Event::with(['eventType', 'classrooms', 'batches'])
+            ->where('teacher_id', $teacherId)
+            ->where(function ($q) use (
+                $mappedClassroomIds,
+                $mappedBatchIds,
+                $hasAllClassroomsColumn,
+                $hasAllBatchesColumn
+            ) {
+                $q->whereRaw('1 = 0');
+
+                if (!empty($mappedClassroomIds)) {
+                    $q->orWhereHas('classrooms', function ($cq) use ($mappedClassroomIds) {
+                        $cq->whereIn('classrooms.id', $mappedClassroomIds);
+                    });
+                }
+
+                if (!empty($mappedBatchIds)) {
+                    $q->orWhereHas('batches', function ($bq) use ($mappedBatchIds) {
+                        $bq->whereIn('batches.id', $mappedBatchIds);
+                    });
+                }
+
+                if ($hasAllClassroomsColumn || $hasAllBatchesColumn) {
+                    $q->orWhere(function ($allQ) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
+                        if ($hasAllClassroomsColumn) {
+                            $allQ->where('all_classrooms', 1);
+                        }
+                        if ($hasAllBatchesColumn) {
+                            $method = $hasAllClassroomsColumn ? 'orWhere' : 'where';
+                            $allQ->{$method}('all_batches', 1);
+                        }
+                    });
+                }
+            })
+            ->orderBy('start_date')
+            ->get();
+
+        $eventTypeIds = $events
+            ->pluck('event_type_id')
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $eventTypes = empty($eventTypeIds)
+            ? collect([])
+            : EventType::query()
+                ->whereIn('id', $eventTypeIds)
+                ->orderBy('title')
+                ->get(['id', 'title', 'color_code']);
+
+        $calendarEvents = $events->map(function ($event) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
+            $ext = [
+                'calendar' => 'et' . (int) $event->event_type_id,
+                'event_type_id' => $event->event_type_id,
+                'event_type_title' => $event->eventType?->title,
+                'classrooms' => $event->classrooms->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
+                'batches' => $event->batches->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
+                'status' => (int) $event->status,
+                'description' => $event->description,
+                'color_code' => $event->eventType?->color_code,
+            ];
+
+            if ($hasAllClassroomsColumn) {
+                $ext['all_classrooms'] = (int) ($event->getAttribute('all_classrooms') ?? 0);
+            }
+            if ($hasAllBatchesColumn) {
+                $ext['all_batches'] = (int) ($event->getAttribute('all_batches') ?? 0);
+            }
+
+            $row = [
+                'id' => 'db-' . $event->id,
+                'title' => $event->title,
+                'start' => $event->start_date,
+                'end' => $event->end_date,
+                'allDay' => true,
+                'extendedProps' => $ext,
+            ];
+
+            return array_merge($row, $this->studentCalendarColorsForEventType($event->eventType));
+        })->values()->all();
+
+        return [
+            'teacher' => $teacher,
+            'event_types' => $eventTypes,
+            'calendar_events' => $calendarEvents,
+        ];
+    }
+
+    /**
+     * Distinct teachers linked to a student (classroom map, else teacher map).
+     *
+     * @return \Illuminate\Support\Collection<int, object{teacher_id: int, teacher_name: string, teacher_email: string|null}>
+     */
+    private function teachersForStudentId(int $studentId): \Illuminate\Support\Collection
+    {
+        if ($studentId <= 0) {
+            return collect();
+        }
+
+        $fromMap = DB::table('student_classroom_map as scm')
+            ->join('portal_user as t', 't.id', '=', 'scm.teacher_id')
+            ->where('scm.student_id', $studentId)
+            ->where('t.role', 1)
+            ->whereNull('t.deleted_at')
+            ->select(['t.id as teacher_id', 't.name as teacher_name', 't.email as teacher_email'])
+            ->distinct()
+            ->orderBy('t.name')
+            ->get();
+
+        if ($fromMap->isNotEmpty()) {
+            return $fromMap;
+        }
+
+        if (!Schema::hasTable('student_teacher_map')) {
+            return collect();
+        }
+
+        return DB::table('student_teacher_map as stm')
+            ->join('portal_user as t', 't.id', '=', 'stm.teacher_id')
+            ->where('stm.student_id', $studentId)
+            ->where('t.role', 1)
+            ->whereNull('t.deleted_at')
+            ->select(['t.id as teacher_id', 't.name as teacher_name', 't.email as teacher_email'])
+            ->distinct()
+            ->orderBy('t.name')
+            ->get();
+    }
+
+    /**
+     * Parent Events: union of per-teacher student-visible events (same rules as student calendar per teacher).
+     *
+     * @return array{event_types: \Illuminate\Support\Collection, calendar_events: array<int, mixed>}
+     */
+    private function buildParentAggregatedStudentEventsPayload(int $studentId, string $studentDisplayName): array
+    {
+        if ($studentId <= 0) {
+            return ['event_types' => collect(), 'calendar_events' => []];
+        }
+
+        $teacherIds = $this->teachersForStudentId($studentId)
+            ->pluck('teacher_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $typesById = [];
+        $seenEventKeys = [];
+        $rows = [];
+
+        foreach ($teacherIds as $tid) {
+            $payload = $this->buildStudentEventsCalendarPayload($studentId, $tid);
+            if ($payload === null) {
+                continue;
+            }
+            foreach ($payload['event_types'] as $et) {
+                $typesById[(int) $et->id] = $et;
+            }
+            foreach ($payload['calendar_events'] as $ce) {
+                $key = isset($ce['id']) ? (string) $ce['id'] : '';
+                if ($key !== '' && isset($seenEventKeys[$key])) {
+                    continue;
+                }
+                if ($key !== '') {
+                    $seenEventKeys[$key] = true;
+                }
+                if ($studentDisplayName !== '') {
+                    $ce['extendedProps'] = array_merge($ce['extendedProps'] ?? [], [
+                        'portal_student_name' => $studentDisplayName,
+                    ]);
+                }
+                $rows[] = $ce;
+            }
+        }
+
+        usort($rows, function ($a, $b) {
+            $as = isset($a['start']) ? (string) $a['start'] : '';
+            $bs = isset($b['start']) ? (string) $b['start'] : '';
+
+            return $as <=> $bs;
+        });
+
+        $eventTypes = collect($typesById)->sortBy(fn ($et) => (string) ($et->title ?? ''))->values();
+
+        return [
+            'event_types' => $eventTypes,
+            'calendar_events' => array_values($rows),
+        ];
+    }
+
+    public function parentEvents()
+    {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null) {
+            return redirect('login');
+        }
+        if ((int) ($portalUser['role'] ?? 0) !== 3) {
+            return redirect('login');
+        }
+
+        $selectedStudentId = (int) (session('selected_student_id') ?? 0);
+        if ($selectedStudentId <= 0) {
+            return redirect('user/select-student');
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        if (!$this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        session()->forget('parent_selected_teacher_id');
+
+        $student = PortalUser::where('role', 2)->find($selectedStudentId);
+        $studentDisplayName = (string) ($student->name ?? '');
+        $agg = $this->buildParentAggregatedStudentEventsPayload($selectedStudentId, $studentDisplayName);
+
+        $data = [];
+        $data['title'] = 'Events';
+        $data['active_tab'] = 'parent_events';
+        $data['student'] = $student;
+        $data['student_display_name'] = $studentDisplayName;
+        $data['teacher'] = null;
+        $data['event_types'] = $agg['event_types'];
+        $data['calendar_events'] = $agg['calendar_events'];
+
+        return view('web.user.parent.events', $data);
+    }
+
+    /**
+     * @return array{backgroundColor: string, borderColor: string, textColor: string}
+     */
+    private function studentCalendarColorsForEventType(?EventType $eventType): array
+    {
+        $raw = $eventType && $eventType->color_code !== null ? trim((string) $eventType->color_code) : '';
+        $raw = preg_replace('/\s+/', '', $raw) ?? '';
+
+        if ($raw === '') {
+            $bg = '#696cff';
+        } elseif (preg_match('/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/i', $raw)) {
+            $hex = ltrim($raw, '#');
+            if (strlen($hex) === 3) {
+                $bg = sprintf('#%s%s%s%s%s%s', $hex[0], $hex[0], $hex[1], $hex[1], $hex[2], $hex[2]);
+            } else {
+                $bg = '#' . strtolower(substr($hex, 0, 6));
+            }
+        } elseif (preg_match('/^[a-z]+$/i', $raw)) {
+            $bg = strtolower($raw);
+        } else {
+            $bg = '#696cff';
+        }
+
+        $text = '#ffffff';
+        if (preg_match('/^#([0-9a-fA-F]{6})$/', $bg)) {
+            $r = hexdec(substr($bg, 1, 2));
+            $g = hexdec(substr($bg, 3, 2));
+            $b = hexdec(substr($bg, 5, 2));
+            $lum = ($r * 0.299 + $g * 0.587 + $b * 0.114) / 255;
+            $text = $lum > 0.65 ? '#212529' : '#ffffff';
+        }
+
+        return [
+            'backgroundColor' => $bg,
+            'borderColor' => $bg,
+            'textColor' => $text,
+        ];
+    }
+
     /**
      * Shared payload for student or parent viewing a classroom’s tests/marks.
      *
@@ -650,10 +1064,40 @@ class UserDashboardController extends Controller
             $countsByBatch = DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->where('scm.classroom_id', $classroomId)->whereIn('scm.batch_id', $batchIds)->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.batch_id', DB::raw('COUNT(DISTINCT scm.student_id) as c'))->groupBy('scm.batch_id')->get()->mapWithKeys(fn($r) => [(int) $r->batch_id => (int) $r->c]);
         }
 
+        $attendanceTableReady = Schema::hasTable('student_attendances');
+        $allClassroomBatchIds = $classroom->batches->pluck('id')->map(fn($x) => (int) $x)->values()->all();
+        $attendanceDateKeysByBatch = [];
+        $attendanceStudentStatusByBatchDate = [];
+        if ($attendanceTableReady && $allClassroomBatchIds !== []) {
+            $attRows = StudentAttendance::query()
+                ->whereIn('batch_id', $allClassroomBatchIds)
+                ->get(['batch_id', 'student_id', 'date', 'attendance_status']);
+            foreach ($attRows as $row) {
+                $bidAtt = (int) $row->batch_id;
+                $dAtt = $row->date->format('Y-m-d');
+                $attendanceDateKeysByBatch[$bidAtt][$dAtt] = true;
+                if ((int) $row->student_id === $studentId) {
+                    $attendanceStudentStatusByBatchDate[$bidAtt][$dAtt] = (string) $row->attendance_status;
+                }
+            }
+        }
         foreach ($classroom->batches as $batch) {
             $bid = (int) $batch->id;
             $batch->enrollment_student_count = (int) ($countsByBatch[$bid] ?? 0);
             $batch->is_my_batch = $myBatchIds->contains($bid);
+            if ($batch->is_my_batch) {
+                $keysAtt = array_keys($attendanceDateKeysByBatch[$bid] ?? []);
+                sort($keysAtt, SORT_STRING);
+                $cellsAtt = [];
+                foreach ($keysAtt as $dAtt) {
+                    $cellsAtt[$dAtt] = $attendanceStudentStatusByBatchDate[$bid][$dAtt] ?? '';
+                }
+                $batch->setAttribute('attendance_dates', $keysAtt);
+                $batch->setAttribute('attendance_cells', $cellsAtt);
+            } else {
+                $batch->setAttribute('attendance_dates', []);
+                $batch->setAttribute('attendance_cells', []);
+            }
             foreach ($batch->exams as $exam) {
                 $eid = (int) $exam->id;
                 $row = $marksByExamId->get($exam->id);
@@ -712,6 +1156,8 @@ class UserDashboardController extends Controller
             }
         }
 
+        $studentDisplayName = (string) (PortalUser::query()->whereKey($studentId)->value('name') ?? '');
+
         return [
             'title' => $classroom->name,
             'classroom' => $classroom,
@@ -720,6 +1166,9 @@ class UserDashboardController extends Controller
             'default_batch_id' => $defaultBatchId,
             'highlight_exam_id' => $highlightExamId,
             'show_teacher_batch_manage_link' => $showTeacherBatchManageLink,
+            'attendance_table_ready' => $attendanceTableReady,
+            'student_id' => $studentId,
+            'student_display_name' => $studentDisplayName,
         ];
     }
 
@@ -890,6 +1339,10 @@ class UserDashboardController extends Controller
 
         $data = $payload;
         $data['active_tab'] = 'classrooms';
+        $data['selected_student'] = PortalUser::query()
+            ->where('role', 2)
+            ->whereKey($selectedStudentId)
+            ->first(['id', 'name', 'email']);
 
         return view('web.user.parent.classroom_show', $data);
     }

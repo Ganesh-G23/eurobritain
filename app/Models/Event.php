@@ -9,39 +9,21 @@ class Event extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = [
-        'teacher_id',
-        'event_type_id',
-        'batch_id',
-        'classroom_id',
-        'all_classrooms',
-        'all_batches',
-        'title',
-        'description',
-        'event_date',
-        'event_time',
-        'status',
-    ];
+    protected $fillable = ['teacher_id', 'event_type_id', 'title', 'description', 'start_date', 'end_date', 'status'];
 
-    protected $casts = [
-        'event_date' => 'date',
-        'status' => 'integer',
-        'all_classrooms' => 'boolean',
-        'all_batches' => 'boolean',
-    ];
 
     public function eventType()
     {
         return $this->belongsTo(EventType::class);
     }
 
-    public function batch()
+    public function classrooms()
     {
-        return $this->belongsTo(Batch::class);
+        return $this->belongsToMany(Classroom::class, 'event_classrooms');
     }
 
-    public function classroom()
+    public function batches()
     {
-        return $this->belongsTo(Classroom::class);
+        return $this->belongsToMany(Batch::class, 'event_batches');
     }
 }

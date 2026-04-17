@@ -60,6 +60,7 @@
     <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
 
     <script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
+    @stack('page_styles')
 </head>
 
 <body>
@@ -216,7 +217,9 @@
     <!-- OPTIONAL (load only if needed) -->
     <script src="{{ url('public/admin_theme/assets/js/dashboards-crm.js') }}"></script>
     <script src="{{ url('public/admin_theme/assets/vendor/libs/flatpickr/flatpickr.js') }}"></script>
+    <script src="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.js') }}"></script>
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/flatpickr/flatpickr.css') }}">
+    <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.css') }}" />
 
 
 

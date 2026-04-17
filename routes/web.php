@@ -57,6 +57,7 @@ Route::prefix('user')->middleware('portal.auth')->group(function () {
         Route::get('/student/dashboard', [UserDashboardController::class, 'studentDashboard']);
         Route::get('/student/classrooms', [UserDashboardController::class, 'studentClassrooms']);
         Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
+        Route::get('/student/events', [UserDashboardController::class, 'studentEvents']);
         Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
         Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
     });
@@ -70,6 +71,7 @@ Route::prefix('user')->middleware('portal.auth')->group(function () {
         Route::get('/parent/dashboard', [UserDashboardController::class, 'parentDashboard']);
         Route::get('/parent/classrooms', [UserDashboardController::class, 'parentClassrooms']);
         Route::get('/parent/classroom/{id}', [UserDashboardController::class, 'parentClassroomShow']);
+        Route::get('/parent/events', [UserDashboardController::class, 'parentEvents']);
     });
 
     // User-side Teacher management (logged-in teacher) - original simple routes

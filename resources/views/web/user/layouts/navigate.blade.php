@@ -482,6 +482,14 @@
                         <div data-i18n="Classrooms">Classrooms</div>
                     </a>
                 </li>
+                <li
+                    class="menu-item {{ in_array($active_tab, ['student_events', 'parent_events'], true) ? 'active' : '' }}">
+                    <a href="{{ $portalRole === 2 ? ($selectedTeacherId > 0 ? url('user/student/events') : url('user/select-teacher')) : ($portalRole === 3 ? ((int) (session('selected_student_id') ?? 0) > 0 ? url('user/parent/events') : url('user/select-student')) : url('user/dashboard')) }}"
+                        class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-calendar-event"></i>
+                        <div data-i18n="Events">Events</div>
+                    </a>
+                </li>
                 <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>

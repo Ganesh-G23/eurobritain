@@ -330,6 +330,12 @@
                     <div>Classroom</div>
                 </a>
             </li>
+            <li class="menu-item {{ $active_tab === 'student_events' ? 'active' : '' }}">
+                <a href="{{ url('user/student/events') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-calendar-event"></i>
+                    <div>Events</div>
+                </a>
+            </li>
             <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
                 <a href="javascript:void(0)" class="menu-link menu-toggle">
                     <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>

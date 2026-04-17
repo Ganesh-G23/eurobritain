@@ -66,7 +66,11 @@
                                     $filterKey = 'et' . (int) $et->id;
                                     $extra = $filterStyleClasses[$loop->index % count($filterStyleClasses)];
                                     $swatch = $et->color_code ? trim((string) $et->color_code) : '#696cff';
-                                    if ($swatch !== '' && ($swatch[0] ?? '') !== '#' && preg_match('/^[0-9a-fA-F]{3,8}$/', $swatch)) {
+                                    if (
+                                        $swatch !== '' &&
+                                        ($swatch[0] ?? '') !== '#' &&
+                                        preg_match('/^[0-9a-fA-F]{3,8}$/', $swatch)
+                                    ) {
                                         $swatch = '#' . $swatch;
                                     }
                                     if (!preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $swatch)) {
@@ -87,7 +91,7 @@
                                 </div>
                             @empty
                                 <p class="small text-muted ms-2 mb-0">No event types yet. Add types under <strong>Event
-                                    Types</strong> to filter the calendar.</p>
+                                        Types</strong> to filter the calendar.</p>
                             @endforelse
                         </div>
                     </div>
@@ -124,66 +128,61 @@
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
                                 <div class="mb-5 ajax-field">
-                                    <label class="form-label" for="eventTypeSelect">Event type (database)</label>
-                                    <select class="select2 form-select" id="eventTypeSelect" name="event_type_id">
-                                        <option value="">Select event type</option>
-                                        @foreach ($event_types ?? [] as $et)
-                                            <option value="{{ $et->id }}">{{ $et->title }}</option>
+                                    <label class="form-label" for="eventLabel">Event Type</label>
+                                    <select class="select2 form-select" id="eventLabel" name="event_type_id"
+                                        data-select-placeholder="Select Event Type">
+                                        <option value="">Select Event Type</option>
+
+                                        @foreach ($event_types as $type)
+                                            <option value="{{ $type->id }}" data-color="{{ $type->color_code }}">
+                                                {{ $type->title }}
+                                            </option>
                                         @endforeach
                                     </select>
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
-                                <div class="mb-5 ajax-field">
-                                    <label class="form-label" for="schedule_event_date">Date</label>
-                                    <input type="date" class="form-control" id="schedule_event_date" name="event_date"
-                                        value="{{ date('Y-m-d') }}" />
+                                <div class="mb-5 ajax-field form-control-validation">
+                                    <label class="form-label" for="eventStartDate">Start Date</label>
+                                    <input type="text" class="form-control" id="eventStartDate" name="start_date"
+                                        placeholder="Start Date" />
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
-                                <div class="mb-5 ajax-field">
-                                    <label class="form-label" for="eventTime">Time</label>
-                                    <input type="time" class="form-control" id="eventTime" name="event_time"
-                                        value="09:00" />
+                                <div class="mb-5 ajax-field form-control-validation">
+                                    <label class="form-label" for="eventEndDate">End Date</label>
+                                    <input type="text" class="form-control" id="eventEndDate" name="end_date"
+                                        placeholder="End Date" />
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
-                                <div class="mb-5">
-                                    <div class="form-check form-switch">
-                                        <input type="checkbox" class="form-check-input" id="allClassroomsSwitch"
-                                            name="all_classrooms" value="1" />
-                                        <label class="form-check-label" for="allClassroomsSwitch">All classrooms</label>
-                                    </div>
-                                </div>
-                                <div class="mb-5 ajax-field">
-                                    <label class="form-label" for="eventClassroom">Classroom (optional)</label>
-                                    <select class="select2 form-select" id="eventClassroom" name="classroom_id">
-                                        <option value="">None</option>
-                                        @foreach ($classrooms ?? [] as $c)
-                                            <option value="{{ $c->id }}">{{ $c->name }}</option>
+                                <!-- Classrooms -->
+                                <div class="mb-4 ajax-field select2-primary">
+                                    <label class="form-label" for="eventGuests">Add Classrooms</label>
+                                    <select class="select2 form-select" id="eventGuests" name="classrooms[]" multiple>
+                                        @foreach ($classrooms as $classroom)
+                                            <option value="{{ $classroom->id }}">
+                                                {{ $classroom->name }}
+                                            </option>
                                         @endforeach
                                     </select>
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
-                                <div class="mb-5">
-                                    <div class="form-check form-switch">
-                                        <input type="checkbox" class="form-check-input" id="allBatchesSwitch"
-                                            name="all_batches" value="1" />
-                                        <label class="form-check-label" for="allBatchesSwitch">All batches</label>
-                                    </div>
-                                </div>
-                                <div class="mb-5 ajax-field">
-                                    <label class="form-label" for="eventBatches">Batch (optional)</label>
-                                    <select class="select2 form-select" id="eventBatches" name="batch_id">
-                                        <option value="">None</option>
-                                        @foreach ($batches ?? [] as $b)
-                                            <option value="{{ $b->id }}" data-classroom-id="{{ $b->classroom_id }}">
-                                                {{ $b->name }}</option>
+
+                                <!-- Batches -->
+                                <div class="mb-4 ajax-field select2-primary">
+                                    <label class="form-label" for="eventBatches">Add Batches</label>
+                                    <select class="select2 form-select" id="eventBatches" name="batches[]" multiple>
+                                        @foreach ($batches as $batch)
+                                            <option value="{{ $batch->id }}"
+                                                data-classroom-id="{{ $batch->classroom_id }}">
+                                                {{ $batch->name }}
+                                            </option>
                                         @endforeach
                                     </select>
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
+
                                 <div class="mb-5 ajax-field">
                                     <label class="form-label" for="eventDescription">Notes (optional)</label>
-                                    <textarea class="form-control" name="description" id="eventDescription"
-                                        rows="3"></textarea>
+                                    <textarea class="form-control" name="description" id="eventDescription" rows="3"></textarea>
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
                                 <div class="mb-5 ajax-field">
@@ -206,7 +205,7 @@
                                             Cancel
                                         </button>
                                     </div>
-                                    
+
                                 </div>
                             </form>
                         </div>
@@ -222,65 +221,164 @@
 @section('scripts')
     <script>
         (function() {
-            var classroomSel = document.getElementById('eventClassroom');
-            var batchSel = document.getElementById('eventBatches');
-            if (classroomSel && batchSel) {
-                function filterBatchesByClassroom() {
-                    var cid = classroomSel.value || '';
-                    var opts = batchSel.querySelectorAll('option[data-classroom-id]');
-                    opts.forEach(function(o) {
-                        if (!cid) {
-                            o.hidden = false;
-                            return;
-                        }
-                        o.hidden = o.getAttribute('data-classroom-id') !== cid;
-                    });
-                    var cur = batchSel.querySelector('option:checked');
-                    if (cur && cur.hidden) {
-                        batchSel.value = '';
-                    }
-                }
-                classroomSel.addEventListener('change', filterBatchesByClassroom);
-                filterBatchesByClassroom();
-                document.addEventListener('teacherCalendarPrefill', function() {
-                    filterBatchesByClassroom();
+
+            // =============================
+            // CLEAR ERRORS
+            // =============================
+            function clearAjaxErrors(container) {
+                var $c = $(container);
+                $c.find('.ajax-error').text('');
+                $c.find('.form-control').removeClass('is-invalid');
+
+                // Reset Select2 borders (full reset; showAjaxErrors may set border shorthand)
+                $c.find('.select2-selection').each(function() {
+                    this.style.border = '';
+                    this.style.borderColor = '';
                 });
             }
-        })();
 
-        $(document).on('click', '#saveEventToServerBtn', function() {
-            clearAjaxErrors('#addEventSidebar');
-            var $form = $('#eventForm');
-            var scheduleDate = ($form.find('#schedule_event_date').val() || '').trim();
-            if (!scheduleDate) {
-                $('#addEventSidebar .ajax-msg').html(
-                    '<div class="alert alert-danger mb-0" role="alert">Please choose a date.</div>');
-                return;
-            }
-            var scheduleTime = ($form.find('#eventTime').val() || '').trim();
-            if (!scheduleTime) {
-                $('#addEventSidebar .ajax-msg').html(
-                    '<div class="alert alert-danger mb-0" role="alert">Please choose a time.</div>');
-                return;
-            }
-
-            var btn = $(this);
-
-            function restoreSaveBtnLabel() {
-                var editing = ($form.find('#serverEventId').val() || '').trim() !== '';
-                btn.text(editing ? (btn.attr('data-text-edit') || 'Update event') : (btn.attr(
-                    'data-text-new') || 'Save to schedule'));
+            /** Map Laravel/formatErrors keys to actual form field names (e.g. classrooms → classrooms[]). */
+            function resolveErrorField(key) {
+                if (key === 'classrooms' || key.indexOf('classrooms[') === 0) {
+                    return $('[name="classrooms[]"]');
+                }
+                if (key === 'batches' || key.indexOf('batches[') === 0) {
+                    return $('[name="batches[]"]');
+                }
+                var normalized = key.replace(/\.\d+/g, '[]');
+                return $('#eventForm')
+                    .find('[name]')
+                    .filter(function() {
+                        return this.name === normalized;
+                    })
+                    .first();
             }
 
-            btn.prop('disabled', true).text('Saving...');
-            $.post($form.attr('action'), $form.serialize(), function(res) {
-                btn.prop('disabled', false);
-                restoreSaveBtnLabel();
-                processAjaxResponse(res, 1000, '#addEventSidebar', 'no');
-            }, 'json').fail(function() {
-                btn.prop('disabled', false);
-                restoreSaveBtnLabel();
+            // =============================
+            // SHOW ERRORS
+            // =============================
+            function showAjaxErrors(errors) {
+                $.each(errors, function(key, value) {
+                    var msg = Array.isArray(value) ? value[0] : value;
+                    if (msg == null || msg === '') {
+                        return;
+                    }
+
+                    var field = resolveErrorField(key);
+                    if (!field.length) {
+                        return;
+                    }
+
+                    var $container = field.closest('.ajax-field');
+                    var isSelect2 =
+                        field.is('select') &&
+                        (field.hasClass('select2') || field.data('select2'));
+
+                    if (isSelect2) {
+                        $container.find('.ajax-error').text(msg);
+                        field.next('.select2-container').find('.select2-selection').css('border', '1px solid red');
+                    } else {
+                        field.addClass('is-invalid');
+                        $container.find('.ajax-error').text(msg);
+                    }
+                });
+            }
+
+            // =============================
+            // FILTER BATCHES BY CLASSROOM
+            // =============================
+            var classroomSel = $('#eventGuests');
+            var batchSel = $('#eventBatches');
+
+            if (classroomSel.length && batchSel.length) {
+
+                function filterBatches() {
+                    var selectedClassrooms = classroomSel.val() || [];
+
+                    $('#eventBatches option').each(function() {
+                        var classroomId = $(this).data('classroom-id');
+
+                        if (!selectedClassrooms.length) {
+                            $(this).prop('disabled', false);
+                        } else {
+                            $(this).prop('disabled', !selectedClassrooms.includes(String(classroomId)));
+                        }
+                    });
+
+                    $('#eventBatches').trigger('change.select2');
+                }
+
+                classroomSel.on('change', filterBatches);
+            }
+
+            // Event type Select2 + colored dot: handled in app-calendar.js (#eventLabel, data-color)
+
+            // =============================
+            // CLASSROOM SELECT (TEXT ONLY)
+            // =============================
+            $('#eventGuests').select2({
+                dropdownParent: $('#addEventSidebar'),
+                placeholder: "Select Classrooms",
+
+                templateResult: function(data) {
+                    return data.text; // 🔥 no image
+                },
+                templateSelection: function(data) {
+                    return data.text;
+                }
             });
-        });
+
+            // =============================
+            // BATCH SELECT (TEXT ONLY)
+            // =============================
+            $('#eventBatches').select2({
+                dropdownParent: $('#addEventSidebar'),
+                placeholder: "Select Batches",
+
+                templateResult: function(data) {
+                    return data.text;
+                },
+                templateSelection: function(data) {
+                    return data.text;
+                }
+            });
+
+            // =============================
+            // AJAX SUBMIT
+            // =============================
+            $(document).on('click', '#saveEventToServerBtn', function(e) {
+                e.preventDefault();
+
+                clearAjaxErrors('#addEventSidebar');
+
+                var $form = $('#eventForm');
+                var btn = $(this);
+
+                btn.prop('disabled', true).text('Saving...');
+
+                $.ajax({
+                    url: $form.attr('action'),
+                    type: 'POST',
+                    data: $form.serialize(),
+                    dataType: 'json',
+
+                    success: function(res) {
+
+                        btn.prop('disabled', false).text('Save to schedule');
+
+                        if (res.status === 0) {
+                            showAjaxErrors(res.error_array); // 🔥 FIXED
+                        } else {
+                            processAjaxResponse(res, 1000, '#addEventSidebar', 'no');
+                        }
+                    },
+
+                    error: function() {
+                        btn.prop('disabled', false).text('Save to schedule');
+                    }
+                });
+            });
+
+        })();
     </script>
 @endsection

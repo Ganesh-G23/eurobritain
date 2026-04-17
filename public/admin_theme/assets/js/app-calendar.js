@@ -17,8 +17,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // DOM Elements
     const calendarEl = document.getElementById('calendar');
     const appCalendarSidebar = document.querySelector('.app-calendar-sidebar');
-    const calendarFilterRoot = appCalendarSidebar || document.getElementById('app-calendar-sidebar') || document;
+    const calendarFilterRoot =
+      document.getElementById('app-calendar-sidebar') ||
+      appCalendarSidebar ||
+      (calendarEl && calendarEl.closest && calendarEl.closest('.app-calendar-wrapper')) ||
+      document.body;
     const addEventSidebar = document.getElementById('addEventSidebar');
+    const viewEventSidebar = document.getElementById('viewEventSidebar');
     const appOverlay = document.querySelector('.app-overlay');
     const offcanvasTitle = document.querySelector('.offcanvas-title');
     const btnToggleSidebar = document.querySelector('.btn-toggle-sidebar');
@@ -33,8 +38,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const eventDescription = document.getElementById('eventDescription');
     const allDaySwitch = document.querySelector('.allDay-switch');
     const selectAll = document.querySelector('.select-all');
-    const filterInputs = Array.from(calendarFilterRoot.querySelectorAll('.input-filter'));
     const inlineCalendar = document.querySelector('.inline-calendar');
+    const viewEventTitle = document.getElementById('viewEventTitle');
+    const viewEventType = document.getElementById('viewEventType');
+    const viewEventDateTime = document.getElementById('viewEventDateTime');
+    const viewEventNotes = document.getElementById('viewEventNotes');
+    const viewEventStudentRow = document.getElementById('viewEventStudentRow');
+    const viewEventStudent = document.getElementById('viewEventStudent');
+    const viewEventEditBtn = document.getElementById('viewEventEditBtn');
+    const isStudentReadonlyCalendar = !!document.querySelector('[data-student-events-readonly="1"]');
 
     // Calendar settings
     const calendarColors = {
@@ -53,26 +65,77 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentEvents = Array.isArray(window.events) ? window.events : [];
     let isFormValid = false;
     let eventToUpdate = null;
+    let eventToView = null;
     let inlineCalInstance = null;
+    let calendar = null;
 
     // Offcanvas Instance
-    const bsAddEventSidebar = new bootstrap.Offcanvas(addEventSidebar);
+    var bsAddEventSidebar = null;
+    var bsViewEventSidebar = null;
+    if (addEventSidebar && typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
+      bsAddEventSidebar = new bootstrap.Offcanvas(addEventSidebar);
+    }
+    if (viewEventSidebar && typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
+      bsViewEventSidebar = new bootstrap.Offcanvas(viewEventSidebar);
+    }
 
     //! TODO: Update Event label and guest code to JS once select removes jQuery dependency
-    // Initialize Select2 with custom templates
+    // Initialize Select2 with custom templates (theme demo: data-label → bg-*; portal: data-color → hex dot)
     if (eventLabel.length) {
+      function normalizeEventTypeDotColor(raw) {
+        if (raw == null) {
+          return null;
+        }
+        var s = String(raw).replace(/\s+/g, '').trim();
+        if (!s) {
+          return null;
+        }
+        if (/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/i.test(s)) {
+          var h = s.replace(/^#/, '');
+          if (h.length === 3) {
+            return '#' + h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          }
+          return '#' + h.slice(0, 6).toLowerCase();
+        }
+        if (/^[a-z]{1,30}$/i.test(s)) {
+          return s.toLowerCase();
+        }
+        return null;
+      }
+
       function renderBadges(option) {
         if (!option.id) {
           return option.text;
         }
-        var $badge =
-          "<span class='badge badge-dot bg-" + $(option.element).data('label') + " me-2'> " + '</span>' + option.text;
-
-        return $badge;
+        var $el = $(option.element);
+        var attrColor = $el.attr('data-color');
+        var normalized = normalizeEventTypeDotColor(
+          attrColor !== undefined && attrColor !== null && attrColor !== '' ? attrColor : $el.data('color')
+        );
+        var label = ($el.attr('data-label') || $el.data('label') || '').toString().trim();
+        var dot = '';
+        if (normalized) {
+          dot =
+            "<span class='rounded-circle d-inline-block flex-shrink-0 me-2 align-middle' style='width:0.5625rem;height:0.5625rem;background-color:" +
+            normalized +
+            ";'></span>";
+        } else if (label) {
+          dot = "<span class='badge badge-dot bg-" + label + " me-2'></span>";
+        } else {
+          dot =
+            "<span class='rounded-circle d-inline-block flex-shrink-0 me-2 align-middle' style='width:0.5625rem;height:0.5625rem;background-color:#696cff;'></span>";
+        }
+        return dot + option.text;
       }
-      eventLabel.wrap('<div class="position-relative"></div>').select2({
-        placeholder: 'Select value',
-        dropdownParent: eventLabel.parent(),
+
+      eventLabel.wrap('<div class="position-relative"></div>');
+      var $eventTypeDropdownParent = $('#addEventSidebar');
+      if (!$eventTypeDropdownParent.length) {
+        $eventTypeDropdownParent = eventLabel.parent();
+      }
+      eventLabel.select2({
+        placeholder: eventLabel.data('selectPlaceholder') || 'Select value',
+        dropdownParent: $eventTypeDropdownParent,
         templateResult: renderBadges,
         templateSelection: renderBadges,
         minimumResultsForSearch: -1,
@@ -88,10 +151,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!option.id) return option.text;
         return `
     <div class='d-flex flex-wrap align-items-center'>
-      <div class='avatar avatar-xs me-2'>
-        <img src='${assetsPath}img/avatars/${$(option.element).data('avatar')}'
-          alt='avatar' class='rounded-circle' />
-      </div>
       ${option.text}
     </div>`;
       }
@@ -137,12 +196,39 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
+    function syncMainCalendarToDate(rawDate) {
+      if (!calendar || typeof calendar.gotoDate !== 'function' || !rawDate) {
+        return;
+      }
+      const d = rawDate instanceof Date ? rawDate : new Date(rawDate);
+      if (isNaN(d.getTime())) {
+        return;
+      }
+      calendar.gotoDate(d);
+      modifyToggler();
+      if (appCalendarSidebar) {
+        appCalendarSidebar.classList.remove('show');
+      }
+      if (appOverlay) {
+        appOverlay.classList.remove('show');
+      }
+    }
+
     // Inline sidebar calendar (flatpicker)
     if (inlineCalendar) {
       inlineCalInstance = inlineCalendar.flatpickr({
         monthSelectorType: 'static',
         static: true,
-        inline: true
+        inline: true,
+        onChange: function (selectedDates) {
+          syncMainCalendarToDate(selectedDates && selectedDates[0] ? selectedDates[0] : null);
+        },
+        onMonthChange: function (selectedDates, dateStr, instance) {
+          syncMainCalendarToDate(instance && instance.currentYear != null && instance.currentMonth != null ? new Date(instance.currentYear, instance.currentMonth, 1) : null);
+        },
+        onYearChange: function (selectedDates, dateStr, instance) {
+          syncMainCalendarToDate(instance && instance.currentYear != null && instance.currentMonth != null ? new Date(instance.currentYear, instance.currentMonth, 1) : null);
+        }
       });
     }
 
@@ -168,18 +254,20 @@ document.addEventListener('DOMContentLoaded', function () {
             portalSaveBtn.getAttribute('data-text-new') || portalSaveBtn.textContent;
         }
       }
+      const fcStartDt = fcEvent.start;
       const scheduleDate = document.getElementById('schedule_event_date');
       const eventTime = document.getElementById('eventTime');
-      const start = fcEvent.start;
-      if (scheduleDate && start) {
-        const y = start.getFullYear();
-        const m = String(start.getMonth() + 1).padStart(2, '0');
-        const d = String(start.getDate()).padStart(2, '0');
-        scheduleDate.value = y + '-' + m + '-' + d;
+      if (scheduleDate && fcStartDt) {
+        const d = fcStartDt instanceof Date ? fcStartDt : new Date(fcStartDt);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        scheduleDate.value = y + '-' + m + '-' + day;
       }
-      if (eventTime && start && !fcEvent.allDay) {
-        const h = String(start.getHours()).padStart(2, '0');
-        const min = String(start.getMinutes()).padStart(2, '0');
+      if (eventTime && fcStartDt && !fcEvent.allDay) {
+        const d = fcStartDt instanceof Date ? fcStartDt : new Date(fcStartDt);
+        const h = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
         eventTime.value = h + ':' + min;
       }
       const $jq = window.jQuery;
@@ -199,6 +287,11 @@ document.addEventListener('DOMContentLoaded', function () {
           .val(ext.event_type_id != null ? String(ext.event_type_id) : '')
           .trigger('change');
       }
+      if ($jq && $jq('#eventLabel').length) {
+        $jq('#eventLabel')
+          .val(ext.event_type_id != null ? String(ext.event_type_id) : '')
+          .trigger('change');
+      }
       if ($jq && $jq('#eventClassroom').length) {
         const clsVal =
           allClassrooms || ext.classroom_id == null || ext.classroom_id === ''
@@ -206,12 +299,44 @@ document.addEventListener('DOMContentLoaded', function () {
             : String(ext.classroom_id);
         $jq('#eventClassroom').val(clsVal).trigger('change');
       }
-      if ($jq && $jq('#eventBatches').length) {
+      function portalNormalizeIdArray(raw) {
+        if (raw == null) {
+          return [];
+        }
+        if (Array.isArray(raw)) {
+          return raw
+            .map(function (id) {
+              return String(id);
+            })
+            .filter(function (s) {
+              return s !== '';
+            });
+        }
+        return [String(raw)];
+      }
+      var isTeacherMultiClassrooms =
+        $jq && $jq('#eventGuests').length && $jq('#eventGuests').attr('name') === 'classrooms[]';
+      if (isTeacherMultiClassrooms) {
+        var clsArr = portalNormalizeIdArray(ext.classrooms);
+        $jq('#eventGuests').val(clsArr.length ? clsArr : null).trigger('change');
+        if ($jq('#eventBatches').length) {
+          var batchArr = portalNormalizeIdArray(ext.batches);
+          window.requestAnimationFrame(function () {
+            $jq('#eventBatches').val(batchArr.length ? batchArr : null).trigger('change');
+            document.dispatchEvent(new CustomEvent('teacherCalendarPrefill'));
+          });
+        } else {
+          document.dispatchEvent(new CustomEvent('teacherCalendarPrefill'));
+        }
+      } else if ($jq && $jq('#eventBatches').length) {
         const batchVal =
           allBatches || ext.batch_id == null || ext.batch_id === '' ? '' : String(ext.batch_id);
         window.requestAnimationFrame(function () {
           $jq('#eventBatches').val(batchVal).trigger('change');
+          document.dispatchEvent(new CustomEvent('teacherCalendarPrefill'));
         });
+      } else {
+        document.dispatchEvent(new CustomEvent('teacherCalendarPrefill'));
       }
       if ($jq && $jq('#eventStatus').length) {
         $jq('#eventStatus').val(String(ext.status != null ? ext.status : 0)).trigger('change');
@@ -219,7 +344,6 @@ document.addEventListener('DOMContentLoaded', function () {
       if (eventDescription) {
         eventDescription.value = ext.description != null ? String(ext.description) : '';
       }
-      document.dispatchEvent(new CustomEvent('teacherCalendarPrefill'));
     }
 
     // Event click function
@@ -229,7 +353,9 @@ document.addEventListener('DOMContentLoaded', function () {
         info.jsEvent.preventDefault();
         window.open(eventToUpdate.url, '_blank');
       }
-      bsAddEventSidebar.show();
+      if (bsAddEventSidebar) {
+        bsAddEventSidebar.show();
+      }
       // For update event set offcanvas title text: Update Event
       if (offcanvasTitle) {
         offcanvasTitle.innerHTML = 'Update Event';
@@ -257,19 +383,128 @@ document.addEventListener('DOMContentLoaded', function () {
           ? end.setDate(eventToUpdate.end, true, 'Y-m-d')
           : end.setDate(eventToUpdate.start, true, 'Y-m-d');
       }
-      if (eventLabel.length && eventToUpdate.extendedProps && eventToUpdate.extendedProps.calendar) {
-        eventLabel.val(eventToUpdate.extendedProps.calendar).trigger('change');
+      if (eventLabel.length && eventToUpdate.extendedProps) {
+        if (eventToUpdate.extendedProps.event_type_id != null && eventToUpdate.extendedProps.event_type_id !== '') {
+          eventLabel.val(String(eventToUpdate.extendedProps.event_type_id)).trigger('change');
+        } else if (eventToUpdate.extendedProps.calendar) {
+          eventLabel.val(eventToUpdate.extendedProps.calendar).trigger('change');
+        }
       }
       if (eventLocation && eventToUpdate.extendedProps && eventToUpdate.extendedProps.location !== undefined) {
         eventLocation.value = eventToUpdate.extendedProps.location;
       }
-      if (eventGuests.length && eventToUpdate.extendedProps && eventToUpdate.extendedProps.guests !== undefined) {
-        eventGuests.val(eventToUpdate.extendedProps.guests).trigger('change');
+      if (eventGuests.length && eventToUpdate.extendedProps) {
+        if (eventToUpdate.extendedProps.classrooms !== undefined) {
+          var pc = eventToUpdate.extendedProps.classrooms;
+          var pcArr = Array.isArray(pc) ? pc.map(function (id) { return String(id); }) : [String(pc)];
+          eventGuests.val(pcArr.length ? pcArr : null).trigger('change');
+        } else if (eventToUpdate.extendedProps.guests !== undefined) {
+          eventGuests.val(eventToUpdate.extendedProps.guests).trigger('change');
+        }
       }
       if (eventDescription && eventToUpdate.extendedProps && eventToUpdate.extendedProps.description !== undefined) {
         eventDescription.value = eventToUpdate.extendedProps.description;
       }
       fillPortalTeacherEventForm(info.event);
+    }
+
+    function eventOccursOnDate(eventObj, targetDate) {
+      if (!eventObj || !eventObj.start || !targetDate) {
+        return false;
+      }
+      const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const eventStart = new Date(eventObj.start);
+      if (isNaN(eventStart.getTime())) {
+        return false;
+      }
+      let eventEnd = eventObj.end ? new Date(eventObj.end) : null;
+      if (!eventEnd || isNaN(eventEnd.getTime()) || eventEnd <= eventStart) {
+        eventEnd = new Date(eventStart);
+        eventEnd.setDate(eventEnd.getDate() + 1);
+      }
+      return eventStart < dayEnd && eventEnd > dayStart;
+    }
+
+    function eventTypeNameFromEvent(eventObj) {
+      const ext = eventObj && eventObj.extendedProps ? eventObj.extendedProps : {};
+      if (ext.event_type_title != null && String(ext.event_type_title).trim() !== '') {
+        return String(ext.event_type_title).trim();
+      }
+      const typeId = ext.event_type_id != null ? String(ext.event_type_id) : '';
+      if (!typeId) {
+        return '-';
+      }
+      const opt = document.querySelector('#eventLabel option[value="' + typeId + '"]');
+      return opt && opt.textContent ? opt.textContent.trim() : '-';
+    }
+
+    function formatEventDateText(eventObj, fallbackDate) {
+      if (eventObj && eventObj.start) {
+        const s = new Date(eventObj.start);
+        const e = eventObj.end ? new Date(eventObj.end) : null;
+        if (!isNaN(s.getTime())) {
+          const datePart = s.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          });
+          if (eventObj.allDay) {
+            return datePart + ' (All day)';
+          }
+          const opts = { hour: 'numeric', minute: '2-digit' };
+          const startTime = s.toLocaleTimeString(undefined, opts);
+          if (e && !isNaN(e.getTime())) {
+            return datePart + ' • ' + startTime + ' - ' + e.toLocaleTimeString(undefined, opts);
+          }
+          return datePart + ' • ' + startTime;
+        }
+      }
+      if (fallbackDate) {
+        return fallbackDate.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+      return '-';
+    }
+
+    function showEventDetailsOffcanvas(eventObj, fallbackDate) {
+      eventToView = eventObj || null;
+      const ext = eventObj && eventObj.extendedProps ? eventObj.extendedProps : {};
+      if (viewEventTitle) {
+        viewEventTitle.textContent = eventObj && eventObj.title ? eventObj.title : 'No event found';
+      }
+      if (viewEventType) {
+        viewEventType.textContent = eventObj ? eventTypeNameFromEvent(eventObj) : '-';
+      }
+      if (viewEventDateTime) {
+        viewEventDateTime.textContent = formatEventDateText(eventObj, fallbackDate);
+      }
+      if (viewEventStudentRow && viewEventStudent) {
+        const sn = ext.portal_student_name;
+        if (sn != null && String(sn).trim() !== '') {
+          viewEventStudent.textContent = String(sn).trim();
+          viewEventStudentRow.classList.remove('d-none');
+        } else {
+          viewEventStudent.textContent = '-';
+          viewEventStudentRow.classList.add('d-none');
+        }
+      }
+      if (viewEventNotes) {
+        viewEventNotes.textContent =
+          eventObj && ext.description != null && String(ext.description).trim() !== ''
+            ? String(ext.description)
+            : 'No notes';
+      }
+      if (viewEventEditBtn) {
+        viewEventEditBtn.disabled = !eventObj;
+      }
+      if (bsViewEventSidebar) {
+        bsViewEventSidebar.show();
+      }
     }
 
     // Modify sidebar toggler
@@ -295,7 +530,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Filter events by calender
     function selectedCalendars() {
       const selected = [];
-      const filterInputChecked = [].slice.call(calendarFilterRoot.querySelectorAll('.input-filter:checked'));
+      const root = calendarFilterRoot || document.body;
+      const filterInputChecked = [].slice.call(root.querySelectorAll('.input-filter:checked'));
 
       filterInputChecked.forEach(item => {
         const v = item.getAttribute('data-value');
@@ -307,19 +543,39 @@ document.addEventListener('DOMContentLoaded', function () {
       return selected;
     }
 
+    function refetchCalendarSafe() {
+      if (calendar && typeof calendar.refetchEvents === 'function') {
+        calendar.refetchEvents();
+      }
+    }
+
     // --------------------------------------------------------------------------------------------------
     // AXIOS: fetchEvents
     // * This will be called by fullCalendar to fetch events. Also this can be used to refetch events.
     // --------------------------------------------------------------------------------------------------
     function fetchEvents(info, successCallback) {
+      if (Array.isArray(window.events)) {
+        currentEvents = window.events;
+      }
+      const sourceList = Array.isArray(currentEvents) ? currentEvents : [];
       const calendars = selectedCalendars();
-      const totalTypeFilters = calendarFilterRoot.querySelectorAll('.input-filter').length;
+      const root = calendarFilterRoot || document.body;
+      const totalTypeFilters = root.querySelectorAll('.input-filter').length;
       // We are reading event object from app-calendar-events.js file directly by including that file above app-calendar file.
       // You should make an API call, look into above commented API call for reference
-      let selectedEvents = currentEvents.filter(function (event) {
+      let selectedEvents = sourceList.filter(function (event) {
+        const ext = event.extendedProps || {};
+        var rawCal = ext.calendar;
+        if (
+          (rawCal === undefined || rawCal === null || rawCal === '') &&
+          ext.event_type_id != null &&
+          ext.event_type_id !== ''
+        ) {
+          rawCal = 'et' + String(ext.event_type_id);
+        }
         const cal =
-          event.extendedProps && typeof event.extendedProps.calendar === 'string'
-            ? event.extendedProps.calendar.toLowerCase()
+          rawCal !== undefined && rawCal !== null && rawCal !== ''
+            ? String(rawCal).toLowerCase().trim()
             : '';
         if (totalTypeFilters === 0) {
           return true;
@@ -327,16 +583,20 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!calendars.length) {
           return false;
         }
-        return cal && calendars.includes(cal);
+        return cal !== '' && calendars.indexOf(cal) !== -1;
       });
       // if (selectedEvents.length > 0) {
       successCallback(selectedEvents);
       // }
     }
 
+    if (!calendarEl) {
+      return;
+    }
+
     // Init FullCalendar
     // ------------------------------------------------
-    let calendar = new Calendar(calendarEl, {
+    calendar = new Calendar(calendarEl, {
       initialView: 'dayGridMonth',
       events: fetchEvents,
       plugins: [dayGridPlugin, interactionPlugin, listPlugin, timegridPlugin],
@@ -421,9 +681,25 @@ document.addEventListener('DOMContentLoaded', function () {
         return { domNodes: [wrap] };
       },
       dateClick: function (info) {
+        if (isStudentReadonlyCalendar) {
+          const clickedDate = info && info.date ? new Date(info.date) : null;
+          let eventForDate = null;
+          if (calendar && clickedDate) {
+            const eventsOnDate = calendar.getEvents().filter(function (ev) {
+              return eventOccursOnDate(ev, clickedDate);
+            });
+            if (eventsOnDate.length) {
+              eventForDate = eventsOnDate[0];
+            }
+          }
+          showEventDetailsOffcanvas(eventForDate, clickedDate);
+          return;
+        }
         let date = moment(info.date).format('YYYY-MM-DD');
         resetValues();
+        if (bsAddEventSidebar) {
         bsAddEventSidebar.show();
+      }
 
         // For new event set offcanvas title text: Add Event
         if (offcanvasTitle) {
@@ -453,6 +729,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       },
       eventClick: function (info) {
+        if (isStudentReadonlyCalendar) {
+          if (info && info.jsEvent && typeof info.jsEvent.preventDefault === 'function') {
+            info.jsEvent.preventDefault();
+          }
+          showEventDetailsOffcanvas(info.event, info && info.event ? info.event.start : null);
+          return;
+        }
         eventClick(info);
       },
       datesSet: function () {
@@ -469,7 +752,12 @@ document.addEventListener('DOMContentLoaded', function () {
     modifyToggler();
 
     const eventForm = document.getElementById('eventForm');
-    if (eventForm) {
+    if (
+      eventForm &&
+      typeof FormValidation !== 'undefined' &&
+      FormValidation.formValidation &&
+      FormValidation.plugins
+    ) {
       const fvFields = {
         eventTitle: {
           validators: {
@@ -662,7 +950,9 @@ document.addEventListener('DOMContentLoaded', function () {
             };
 
             updateEvent(eventData);
-            bsAddEventSidebar.hide();
+            if (bsAddEventSidebar) {
+              bsAddEventSidebar.hide();
+            }
           }
         }
       });
@@ -673,13 +963,21 @@ document.addEventListener('DOMContentLoaded', function () {
       btnDeleteEvent.addEventListener('click', e => {
         removeEvent(parseInt(eventToUpdate.id));
         // eventToUpdate.remove();
-        bsAddEventSidebar.hide();
+        if (bsAddEventSidebar) {
+          bsAddEventSidebar.hide();
+        }
       });
     }
 
     // Reset event form inputs values
     // ------------------------------------------------
     function resetValues() {
+      if (typeof start !== 'undefined' && start) {
+        start.clear();
+      }
+      if (typeof end !== 'undefined' && end) {
+        end.clear();
+      }
       if (eventEndDate) {
         eventEndDate.value = '';
       }
@@ -708,8 +1006,18 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       const portalJq = window.jQuery;
       if (portalJq && portalJq('#eventForm').length) {
-        portalJq('#eventClassroom').val('').trigger('change');
-        portalJq('#eventBatches').val('').trigger('change');
+        if (portalJq('#eventClassroom').length) {
+          portalJq('#eventClassroom').val('').trigger('change');
+        }
+        if (portalJq('#eventBatches').length) {
+          portalJq('#eventBatches').val(null).trigger('change');
+        }
+        if (portalJq('#eventLabel').length) {
+          portalJq('#eventLabel').val(null).trigger('change');
+        }
+        if (portalJq('#eventTypeSelect').length) {
+          portalJq('#eventTypeSelect').val('').trigger('change');
+        }
       }
       if (eventGuests.length) {
         eventGuests.val('').trigger('change');
@@ -728,9 +1036,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // When modal hides reset input values
-    addEventSidebar.addEventListener('hidden.bs.offcanvas', function () {
-      resetValues();
-    });
+    if (addEventSidebar) {
+      addEventSidebar.addEventListener('hidden.bs.offcanvas', function () {
+        resetValues();
+      });
+    }
 
     // Hide left sidebar if the right sidebar is open
     if (btnToggleSidebar) {
@@ -757,44 +1067,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Calender filter functionality
     // ------------------------------------------------
-    if (selectAll) {
-      selectAll.addEventListener('click', e => {
-        if (e.currentTarget.checked) {
-          calendarFilterRoot.querySelectorAll('.input-filter').forEach(c => {
-            c.checked = true;
-          });
-        } else {
-          calendarFilterRoot.querySelectorAll('.input-filter').forEach(c => {
-            c.checked = false;
-          });
-        }
-        calendar.refetchEvents();
-      });
-    }
-
-    if (filterInputs) {
-      filterInputs.forEach(item => {
-        item.addEventListener('click', () => {
-          const checked = calendarFilterRoot.querySelectorAll('.input-filter:checked').length;
-          const total = calendarFilterRoot.querySelectorAll('.input-filter').length;
-          selectAll.checked = total > 0 && checked === total;
-          calendar.refetchEvents();
+    const filterRoot = calendarFilterRoot || document.body;
+    filterRoot.addEventListener('change', function (e) {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement)) {
+        return;
+      }
+      if (t.classList.contains('select-all')) {
+        filterRoot.querySelectorAll('.input-filter').forEach(function (c) {
+          c.checked = t.checked;
         });
-      });
-    }
+      } else if (t.classList.contains('input-filter')) {
+        const checked = filterRoot.querySelectorAll('.input-filter:checked').length;
+        const total = filterRoot.querySelectorAll('.input-filter').length;
+        const sa = filterRoot.querySelector('.select-all') || selectAll;
+        if (sa) {
+          sa.checked = total > 0 && checked === total;
+        }
+      } else {
+        return;
+      }
+      refetchCalendarSafe();
+    });
 
-    // Jump to date on sidebar(inline) calendar change
-    if (inlineCalInstance && inlineCalInstance.config && inlineCalInstance.config.onChange) {
-      inlineCalInstance.config.onChange.push(function (date) {
-        calendar.changeView(calendar.view.type, moment(date[0]).format('YYYY-MM-DD'));
-        modifyToggler();
-        if (appCalendarSidebar) {
-          appCalendarSidebar.classList.remove('show');
-        }
-        if (appOverlay) {
-          appOverlay.classList.remove('show');
-        }
-      });
-    }
+    // Inline calendar navigation handlers are bound during flatpickr init.
   })();
 });

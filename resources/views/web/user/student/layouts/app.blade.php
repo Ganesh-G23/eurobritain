@@ -26,6 +26,7 @@
 
 	<script src="{{ url('public/admin_theme/assets/vendor/js/helpers.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/js/config.js') }}"></script>
+	@stack('page_styles')
 </head>
 <body>
 	<div class="layout-wrapper layout-navbar-full layout-horizontal layout-without-menu">
