@@ -41,6 +41,7 @@
 
     <link rel="stylesheet"
         href="{{ url('public/admin_theme/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
+        <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/css/pages/app-logistics-dashboard.css') }}" />
 
     <!-- endbuild -->
 
@@ -48,8 +49,6 @@
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/fonts/flag-icons.css') }}" />
 
     <!-- Page CSS -->
-
-    <!-- Helpers -->
     <script src="{{ url('public/admin_theme/assets/vendor/js/helpers.js') }}"></script>
     <script src="{{ url('public/admin_theme/assets/vendor/js/template-customizer.js') }}"></script>
 
@@ -182,11 +181,9 @@
     <script src="{{ url('public/admin_theme/assets/vendor/libs/apex-charts/apexcharts.js') }}"></script>
 
     <!-- Main JS -->
-
     <script src="{{ url('public/admin_theme/assets/js/main.js') }}"></script>
     <script src="{{ url('public/admin_theme/custom/custom.js') }}"></script>
-
-
+    
     <!-- Page JS -->
     <!-- <script src="{{ url('public/admin_theme/assets/js/dashboards-crm.js') }}"></script>
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/fullcalendar/fullcalendar.css') }}" />
@@ -220,7 +217,7 @@
     <script src="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.js') }}"></script>
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/flatpickr/flatpickr.css') }}">
     <link rel="stylesheet" href="{{ url('public/admin_theme/assets/vendor/libs/select2/select2.css') }}" />
-
+    <script src="{{ url('public/admin_theme/assets/js/app-logistics-dashboard.js') }}"></script>
 
 
     <script>

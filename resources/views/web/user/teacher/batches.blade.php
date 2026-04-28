@@ -13,7 +13,7 @@
             <div class="card h-100">
                 <div class="card-body d-flex flex-column justify-content-between">
                     <div>
-                        <h6 class="mb-1">{{ $batch->name }}</h6>
+                        <h6 class="mb-1"><a href="{{ url('user/teacher/classrooms/details/' . $batch->classroom_id) }}">{{ $batch->name }}</a></h6>
                         <small class="d-block text-body-secondary">Classroom: {{ $batch->classroom->name ?? '-' }}</small>
                         <small class="text-body-secondary">Status: {{ ucfirst($batch->status ?? '-') }}</small>
                     </div>

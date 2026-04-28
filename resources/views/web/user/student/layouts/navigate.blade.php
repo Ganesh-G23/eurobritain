@@ -28,7 +28,8 @@
                         }
                     }
                     // Fetch mapped teachers for quick switcher
-                    $studentId = (int) (session('portal_user.id') ?? (session('portal_user')['id'] ?? 0));
+                    $pu = session('portal_user');
+                    $studentId = (int) (is_array($pu) ? ($pu['id'] ?? 0) : 0);
                     $studentTeachers = \Illuminate\Support\Facades\DB::table('portal_user as t')
                         ->join('student_teacher_map as stm', 'stm.teacher_id', '=', 't.id')
                         ->leftJoin('student_classroom_map as scm', function ($join) {
@@ -141,6 +142,7 @@
 
                                         $navTitle = $navData['title'] ?? 'Notification';
                                         $navMessage = $navData['message'] ?? '';
+                                        $navType = $navData['type'] ?? '';
 
                                         // ✅ GET IDs
                                         $meta = $navData['meta'] ?? [];
@@ -149,17 +151,20 @@
                                         $classroomId = $meta['classroom_id'] ?? null;
 
                                         // ✅ BUILD URL
-                                        $url =
-                                            $batchId && $examId && $classroomId
-                                                ? url(
-                                                    'user/student/classroom/' .
-                                                        $classroomId .
-                                                        '?batch=' .
-                                                        $batchId .
-                                                        '&exam=' .
-                                                        $examId,
-                                                )
-                                                : 'javascript:void(0)';
+                                        if ($navType === 'leave') {
+                                            $url = url('user/student/leave');
+                                        } elseif ($batchId && $examId && $classroomId) {
+                                            $url = url(
+                                                'user/student/classroom/' .
+                                                    $classroomId .
+                                                    '?batch=' .
+                                                    $batchId .
+                                                    '&exam=' .
+                                                    $examId,
+                                            );
+                                        } else {
+                                            $url = 'javascript:void(0)';
+                                        }
                                     @endphp
 
                                     <li class="list-group-item list-group-item-action dropdown-notifications-item">
@@ -334,6 +339,18 @@
                 <a href="{{ url('user/student/events') }}" class="menu-link">
                     <i class="menu-icon icon-base ti tabler-calendar-event"></i>
                     <div>Events</div>
+                </a>
+            </li>
+            <li class="menu-item {{ $active_tab === 'student_leave' ? 'active' : '' }}">
+                <a href="{{ url('user/student/leave') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-calendar-off"></i>
+                    <div>Leave</div>
+                </a>
+            </li>
+            <li class="menu-item {{ $active_tab === 'complaints' ? 'active' : '' }}">
+                <a href="{{ url('user/student/complaints') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-alert-circle"></i>
+                    <div>Complaints</div>
                 </a>
             </li>
             <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">

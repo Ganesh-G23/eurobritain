@@ -248,6 +248,12 @@
                                                                 </div>
                                                             </th>
 
+                                                            <th class="text-center small align-top">
+                                                                <div class="fw-semibold">
+                                                                    Total Percentage
+                                                                </div>
+                                                            </th>
+
                                                         </tr>
                                                     </thead>
 
@@ -356,10 +362,18 @@
                                                                     {{ $totalMarks > 0 ? $totalMarks : '—' }}
                                                                 </td>
 
+                                                                <td class="text-center fw-semibold marks-total-pct-cell">
+                                                                    @if ($marksReady && $totalMaxMarks > 0)
+                                                                        {{ number_format(($totalMarks / $totalMaxMarks) * 100, 2) }}%
+                                                                    @else
+                                                                        —
+                                                                    @endif
+                                                                </td>
+
                                                             </tr>
                                                         @empty
                                                             <tr>
-                                                                <td colspan="{{ 2 + $batchExams->count() }}"
+                                                                <td colspan="{{ 3 + $batchExams->count() }}"
                                                                     class="text-center text-body-secondary py-4">No
                                                                     students in this batch yet.</td>
                                                             </tr>
@@ -388,6 +402,21 @@
                                                     $attendance_status_by_batch_date_student[$batch->id] ?? [];
                                                 $attReady = $attendance_table_ready ?? false;
                                                 $attColCount = max(2, 2 + $attDates->count());
+                                                $attOverallSessionsInit = 0;
+                                                foreach ($attDates as $_d) {
+                                                    $_hasAny = false;
+                                                    foreach ($list as $_student) {
+                                                        $_sid = (int) $_student->id;
+                                                        $_v = ($attGridBatch[$_d] ?? [])[$_sid] ?? '';
+                                                        if ($_v === 'P' || $_v === 'A' || $_v === 'L') {
+                                                            $_hasAny = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if ($_hasAny) {
+                                                        $attOverallSessionsInit++;
+                                                    }
+                                                }
                                                 $attFilterFrom = \Illuminate\Support\Carbon::now()
                                                     ->startOfMonth()
                                                     ->format('Y-m-d');
@@ -479,6 +508,13 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                                @if ($attDates->isNotEmpty())
+                                                    <p class="small text-body-secondary mb-2">
+                                                        Total sessions:
+                                                        <strong class="text-body"
+                                                            id="attendance-overall-sessions-{{ $batch->id }}">{{ $attOverallSessionsInit }}</strong>
+                                                    </p>
+                                                @endif
                                                 <div class="table-responsive attendance-date-scroll">
                                                     <table
                                                         class="table table-bordered table-striped align-middle text-nowrap"
@@ -1539,6 +1575,46 @@
                         }
                         el.classList.toggle('d-none', !show);
                     });
+                    recalcAttendanceSessionTable(b);
+                }
+
+                function recalcAttendanceSessionTable(batchId) {
+                    var b = String(batchId);
+                    var table = document.getElementById('attendance-table-' + b);
+                    if (!table) {
+                        return;
+                    }
+                    var overall = 0;
+                    table.querySelectorAll('thead th.attendance-date-head').forEach(function(th) {
+                        if (th.classList.contains('d-none')) {
+                            return;
+                        }
+                        var dateStr = th.getAttribute('data-attendance-date');
+                        if (!dateStr) {
+                            return;
+                        }
+                        var hasAny = false;
+                        table.querySelectorAll('tbody tr.attendance-student-row').forEach(function(tr) {
+                            var td = tr.querySelector(
+                                'td.attendance-date-cell[data-attendance-date="' + dateStr + '"]'
+                            );
+                            if (!td || td.classList.contains('d-none')) {
+                                return;
+                            }
+                            var span = td.querySelector('.attendance-cell-display');
+                            var t = span ? String(span.textContent).trim() : '';
+                            if (t === 'P' || t === 'A' || t === 'L') {
+                                hasAny = true;
+                            }
+                        });
+                        if (hasAny) {
+                            overall++;
+                        }
+                    });
+                    var out = document.getElementById('attendance-overall-sessions-' + b);
+                    if (out) {
+                        out.textContent = String(overall);
+                    }
                 }
 
                 document.addEventListener('click', function(e) {
@@ -1770,6 +1846,7 @@
                                 exitEditAttendance(pane, batchId, dateStr);
                                 activeAttendanceColumn = null;
                                 attShowMsg(pane, res.msg || 'Attendance saved', false);
+                                recalcAttendanceSessionTable(batchId);
                             } else if (res.error) {
                                 attShowMsg(pane, res.error, true);
                             } else if (res.error_array) {

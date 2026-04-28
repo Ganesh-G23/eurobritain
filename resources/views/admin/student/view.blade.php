@@ -5,7 +5,7 @@
         $student = $portal_user;
     @endphp
     <div class="container-xxl flex-grow-1 container-p-y">
-        <div class="row g-4 align-items-stretch">
+        <div class="row g-4 align-items-stretch min-w-0">
             <div class="col-lg-4 col-md-5 d-flex">
                 <div class="card mb-4 w-100">
                     <div class="card-body text-center">
@@ -34,7 +34,7 @@
                             </label>
                             <p class="mb-0">{{ $student->phone ?? '-' }}</p>
                         </div>
-                        @if($student->teachers->isNotEmpty())
+                        @if ($student->teachers->isNotEmpty())
                             <div class="mb-3">
                                 <label class="form-label fw-semibold d-block mb-2">
                                     <i class="icon-base ti tabler-school me-1"></i> Teachers
@@ -51,7 +51,8 @@
                     </div>
                     <div class="card-body pt-0">
                         <div class="d-grid gap-2">
-                            <a href="{{ url('admin/student/edit?id=' . base64_encode($student->id)) }}" class="btn btn-primary">
+                            <a href="{{ url('admin/student/edit?id=' . base64_encode($student->id)) }}"
+                                class="btn btn-primary">
                                 <i class="icon-base ti tabler-edit me-1"></i> Edit Student
                             </a>
                             <a href="{{ url('admin/student') }}" class="btn btn-label-secondary">
@@ -62,13 +63,13 @@
                 </div>
             </div>
 
-            <div class="col-lg-8 col-md-7 d-flex flex-column">
-                <div class="card tab-panel-card flex-grow-1 d-flex flex-column">
-                    <div class="card-header border-bottom">
-                        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <div class="col-lg-8 col-md-7 d-flex flex-column min-w-0">
+                <div class="card tab-panel-card flex-grow-1 d-flex flex-column min-w-0">
+                    <div class="card-header border-bottom student-view-tab-header px-2 px-sm-3">
+                        <ul class="nav nav-tabs nav-justified card-header-tabs student-view-tabs" role="tablist">
                             <li class="nav-item">
-                                <button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview"
-                                    role="tab" aria-selected="true">
+                                <button type="button" class="nav-link active" data-bs-toggle="tab"
+                                    data-bs-target="#overview" role="tab" aria-selected="true">
                                     <i class="icon-base ti tabler-dashboard me-1"></i> Overview
                                 </button>
                             </li>
@@ -94,6 +95,12 @@
                                 <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tests"
                                     role="tab" aria-selected="false">
                                     <i class="icon-base ti tabler-users-group me-1"></i> Tests
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#attendance"
+                                    role="tab" aria-selected="false">
+                                    <i class="icon-base ti tabler-calendar me-1"></i> Attendance
                                 </button>
                             </li>
                         </ul>
@@ -177,30 +184,34 @@
                         <div class="tab-pane fade" id="teachers" role="tabpanel">
                             <div class="card-body">
                                 <div class="row g-4">
-                                    @if(count($view_teachers ?? []) > 0)
-                                        @foreach($view_teachers as $teacher)
+                                    @if (count($view_teachers ?? []) > 0)
+                                        @foreach ($view_teachers as $teacher)
                                             <div class="col-md-6 col-lg-4">
                                                 <div class="card h-100">
                                                     <div class="card-body">
                                                         <div class="d-flex align-items-start gap-3 mb-3">
                                                             <div class="avatar flex-shrink-0">
-                                                                <span class="avatar-initial rounded-circle bg-label-primary"
+                                                                <span
+                                                                    class="avatar-initial rounded-circle bg-label-primary"
                                                                     style="width: 3rem; height: 3rem; font-size: 1.25rem; display: flex; align-items: center; justify-content: center;">
                                                                     {{ strtoupper(substr($teacher->name, 0, 1)) }}
                                                                 </span>
                                                             </div>
                                                             <div class="flex-grow-1 min-w-0 mt-2">
-                                                                <h5 class="card-title mb-1 text-truncate">{{ $teacher->name }}</h5>
+                                                                <h5 class="card-title mb-1 text-truncate">
+                                                                    {{ $teacher->name }}</h5>
                                                             </div>
                                                         </div>
                                                         <div class="mb-2 small">
                                                             <div class="d-flex align-items-start mb-1">
                                                                 <i class="icon-base ti tabler-mail me-2 text-primary"></i>
-                                                                <span class="text-muted text-break">{{ $teacher->email ?? '—' }}</span>
+                                                                <span
+                                                                    class="text-muted text-break">{{ $teacher->email ?? '—' }}</span>
                                                             </div>
                                                             <div class="d-flex align-items-start mb-1">
                                                                 <i class="icon-base ti tabler-phone me-2 text-primary"></i>
-                                                                <span class="text-muted">{{ $teacher->phone ?? '—' }}</span>
+                                                                <span
+                                                                    class="text-muted">{{ $teacher->phone ?? '—' }}</span>
                                                             </div>
                                                         </div>
                                                         <div class="d-flex align-items-center mb-3">
@@ -220,7 +231,8 @@
                                     @else
                                         <div class="col-12">
                                             <div class="text-center py-5">
-                                                <i class="icon-base ti tabler-chalkboard text-muted" style="font-size: 3rem;"></i>
+                                                <i class="icon-base ti tabler-chalkboard text-muted"
+                                                    style="font-size: 3rem;"></i>
                                                 <p class="text-muted mt-3 mb-0">No teachers linked to this student</p>
                                             </div>
                                         </div>
@@ -232,8 +244,8 @@
                         <div class="tab-pane fade" id="classrooms" role="tabpanel">
                             <div class="card-body">
                                 <div class="row g-4">
-                                    @if(count($view_classrooms) > 0)
-                                        @foreach($view_classrooms as $classroom)
+                                    @if (count($view_classrooms) > 0)
+                                        @foreach ($view_classrooms as $classroom)
                                             <div class="col-md-6 col-lg-4">
                                                 <div class="card h-100">
                                                     <div class="card-body">
@@ -253,7 +265,8 @@
                                     @else
                                         <div class="col-12">
                                             <div class="text-center py-5">
-                                                <i class="icon-base ti tabler-building text-muted" style="font-size: 3rem;"></i>
+                                                <i class="icon-base ti tabler-building text-muted"
+                                                    style="font-size: 3rem;"></i>
                                                 <p class="text-muted mt-3">No classrooms found</p>
                                             </div>
                                         </div>
@@ -265,13 +278,14 @@
                         <div class="tab-pane fade" id="batches" role="tabpanel">
                             <div class="card-body">
                                 <div class="row g-3">
-                                    @if(count($view_batches) > 0)
-                                        @foreach($view_batches as $batch)
+                                    @if (count($view_batches) > 0)
+                                        @foreach ($view_batches as $batch)
                                             <div class="col-auto">
                                                 <div class="card batch-card">
                                                     <div class="card-body p-3">
                                                         <div class="d-flex justify-content-between align-items-start mb-2">
-                                                            <h6 class="card-title mb-0 small"><strong>{{ $batch->name }}</strong></h6>
+                                                            <h6 class="card-title mb-0 small">
+                                                                <strong>{{ $batch->name }}</strong></h6>
                                                         </div>
                                                         <div class="mb-2">
                                                             <div class="mb-1">
@@ -285,7 +299,7 @@
                                                                     {{ $batch->status ? ucfirst((string) $batch->status) : '—' }}
                                                                 </span>
                                                             </small>
-                                                            @if($batch->schedule)
+                                                            @if ($batch->schedule)
                                                                 <small class="text-muted d-block">
                                                                     <i class="icon-base ti tabler-calendar me-1"></i>
                                                                     {{ $batch->schedule }}
@@ -302,10 +316,12 @@
                                                 <div class="card-body d-flex flex-column align-items-center justify-content-center text-center"
                                                     style="min-height: 220px;">
                                                     <div class="mb-3">
-                                                        <i class="icon-base ti tabler-users-group text-muted" style="font-size: 3rem;"></i>
+                                                        <i class="icon-base ti tabler-users-group text-muted"
+                                                            style="font-size: 3rem;"></i>
                                                     </div>
                                                     <h6 class="mb-2">No batches found</h6>
-                                                    <p class="text-muted small mb-0">No batches assigned to this student.</p>
+                                                    <p class="text-muted small mb-0">No batches assigned to this student.
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>
@@ -316,14 +332,35 @@
 
                         <div class="tab-pane fade" id="tests" role="tabpanel">
                             <div class="card-body">
+                                <p class="text-muted small mb-3">
+                                    Tests from previous batches (after a batch change) stay listed here; marks and
+                                    attendance are kept in the system.
+                                </p>
                                 <div class="row g-3">
-                                    @if(count($view_tests) > 0)
-                                        @foreach($view_tests as $test)
+                                    @if (count($view_tests) > 0)
+                                        @foreach ($view_tests as $test)
                                             <div class="col-auto">
                                                 <div class="card batch-card">
                                                     <div class="card-body p-3">
-                                                        <div class="d-flex justify-content-between align-items-start mb-2">
-                                                            <h6 class="card-title mb-0 small"><strong>{{ $test->batch->name }}</strong></h6>
+                                                        <div
+                                                            class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-1">
+                                                            <h6 class="card-title mb-0 small">
+                                                                <strong>{{ $test->batch?->name ?? 'Batch #' . (int) ($test->batch_id ?? 0) }}</strong>
+                                                            </h6>
+                                                            @php
+                                                                $isCurrentBatch = in_array(
+                                                                    (int) ($test->batch_id ?? 0),
+                                                                    $current_batch_ids_for_student ?? [],
+                                                                    true,
+                                                                );
+                                                            @endphp
+                                                            @if ($isCurrentBatch)
+                                                                <span class="badge bg-label-primary badge-sm">Current
+                                                                    batch</span>
+                                                            @else
+                                                                <span class="badge bg-label-secondary badge-sm">Previous
+                                                                    batch</span>
+                                                            @endif
                                                         </div>
                                                         <div class="mb-2">
                                                             <div class="mb-1">
@@ -335,14 +372,21 @@
                                                                 $absRow = $test->markAbsences->first();
                                                                 $maxM = $test->max_marks ?? '—';
                                                                 if ($absRow) {
-                                                                    $mode = (int) ($absRow->value !== null && $absRow->value !== ''
-                                                                        ? $absRow->value
-                                                                        : \App\Models\TeacherSetting::COUNT_AS_ZERO);
+                                                                    $mode =
+                                                                        (int) ($absRow->value !== null &&
+                                                                        $absRow->value !== ''
+                                                                            ? $absRow->value
+                                                                            : \App\Models\TeacherSetting::COUNT_AS_ZERO);
                                                                     $marksLabel =
-                                                                        $mode === \App\Models\TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE
+                                                                        $mode ===
+                                                                        \App\Models\TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE
                                                                             ? 'A'
                                                                             : 'A(0)';
-                                                                } elseif ($markRow && $markRow->marks !== null && $markRow->marks !== '') {
+                                                                } elseif (
+                                                                    $markRow &&
+                                                                    $markRow->marks !== null &&
+                                                                    $markRow->marks !== ''
+                                                                ) {
                                                                     $marksLabel = $markRow->marks;
                                                                 } else {
                                                                     $marksLabel = '—';
@@ -365,15 +409,72 @@
                                                 <div class="card-body d-flex flex-column align-items-center justify-content-center text-center"
                                                     style="min-height: 220px;">
                                                     <div class="mb-3">
-                                                        <i class="icon-base ti tabler-users-group text-muted" style="font-size: 3rem;"></i>
+                                                        <i class="icon-base ti tabler-users-group text-muted"
+                                                            style="font-size: 3rem;"></i>
                                                     </div>
                                                     <h6 class="mb-2">No tests found</h6>
-                                                    <p class="text-muted small mb-0">No tests and marks assigned to this student.</p>
+                                                    <p class="text-muted small mb-0">No tests and marks assigned to this
+                                                        student.</p>
                                                 </div>
                                             </div>
                                         </div>
                                     @endif
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="attendance" role="tabpanel">
+                            <div class="card-body">
+                                @if ($attendance_date_cards->count() > 0)
+                                    <div class="table-responsive border rounded">
+                                        <table class="table table-hover table-striped align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th scope="col" class="text-nowrap" style="width: 3rem;">#</th>
+                                                    <th scope="col" class="text-nowrap">Date</th>
+                                                    <th scope="col">Batch</th>
+                                                    <th scope="col" class="text-center text-nowrap"
+                                                        style="width: 8rem;">Attendance</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach ($attendance_date_cards as $idx => $att)
+                                                    @php
+                                                        $d = $att->date
+                                                            ? \Carbon\Carbon::parse($att->date)->timezone($tz)
+                                                            : null;
+                                                        $dateStr = $d ? $d->format('d M Y') : '—';
+                                                        $statusLabel = $att->status
+                                                            ? ucfirst((string) $att->status)
+                                                            : '—';
+                                                    @endphp
+                                                    <tr>
+                                                        <td class="text-muted small">{{ $attendance_date_cards->firstItem() + $idx }}</td>
+                                                        <td class="fw-medium text-nowrap">{{ $dateStr }}</td>
+                                                        <td>{{ $att->batch->name ?? '—' }}</td>
+                                                        <td>{{ $att->attendance_status }}</td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                        <div class="mt-3">
+                                            {{ $attendance_date_cards->appends(['id' => base64_encode($portal_user->id)])->links('pagination::bootstrap-5') }}
+                                        </div>
+                                    </div>
+                                @else
+                                    <div class="card h-100 border-dashed">
+                                        <div class="card-body d-flex flex-column align-items-center justify-content-center text-center"
+                                            style="min-height: 220px;">
+                                            <div class="mb-3">
+                                                <i class="icon-base ti tabler-calendar-off text-muted"
+                                                    style="font-size: 3rem;"></i>
+                                            </div>
+                                            <h6 class="mb-2">No attendance records</h6>
+                                            <p class="text-muted small mb-0">No attendance has been saved for this student
+                                                yet.</p>
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -406,23 +507,78 @@
 
         .tab-panel-card {
             max-height: none;
+            min-width: 0;
+            max-width: 100%;
             overflow: visible;
+        }
+
+        /* Tab strip: stay inside card (Sneat adds margin-inline-end on non-justified tabs → row > 100%) */
+        .student-view-tab-header {
+            min-width: 0;
+            max-width: 100%;
+            overflow-x: clip;
+            overflow-y: hidden;
+        }
+
+        .student-view-tabs {
+            flex-wrap: nowrap !important;
+            width: 100%;
+            max-width: 100%;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+
+        .student-view-tabs.nav-justified .nav-item {
+            min-width: 0;
+        }
+
+        .student-view-tabs .nav-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2rem;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+            padding: 0.5rem 0.15rem;
+            font-size: 0.8125rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-inline-start: 0 !important;
+            margin-inline-end: 0 !important;
+        }
+
+        .student-view-tabs .nav-link .icon-base {
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 575.98px) {
+            .student-view-tabs .nav-link .icon-base {
+                display: none;
+            }
+
+            .student-view-tabs .nav-link {
+                font-size: 0.75rem;
+                padding: 0.45rem 0.1rem;
+            }
         }
 
         .tab-panel-card .tab-content {
             max-height: none;
             overflow: visible;
+            min-width: 0;
         }
 
         .tab-pane {
             min-height: auto;
         }
 
-        .tab-content > .tab-pane {
+        .tab-content>.tab-pane {
             display: block;
         }
 
-        .tab-content > .tab-pane:not(.active) {
+        .tab-content>.tab-pane:not(.active) {
             display: none;
         }
 

@@ -41,6 +41,7 @@ class StudentEnrollmentSync
                 PortalUser::where('id', $studentId)->where('role', 2)->update([
                     'classroom_id' => $first['classroom_id'],
                     'batch_id' => $first['batch_id'],
+                    'default_teacher_id' => $teacherId,
                 ]);
             } else {
                 StudentTeacherMap::where('student_id', $studentId)

@@ -57,7 +57,7 @@
                             </div>
                         </div>
                         <div class="mt-2">
-                            <button type="submit" class="btn btn-primary me-2 submit-button">Save changes</button>
+                            <button type="submit" class="btn btn-primary me-2 submit-button">Save</button>
                             <button type="reset" class="btn btn-label-secondary">Cancel</button>
                         </div>
                     </form>

@@ -17,7 +17,7 @@
             <div class="card-body d-flex flex-column">
                 <div class="d-flex align-items-start justify-content-between">
                     <div>
-                        <h6 class="mb-1">{{ $classroom->name }}</h6>
+                        <h6 class="mb-1"><a href="{{ url('user/teacher/classrooms/details/' . $classroom->id) }}">{{ $classroom->name }}</a></h6>
                         <small class="text-body-secondary d-block">Created {{ optional($classroom->created_at)->format('d M y') }}</small>
                     </div>
                     <div class="d-flex gap-1">

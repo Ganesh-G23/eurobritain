@@ -12,6 +12,10 @@ use App\Models\StudentTeacherMap;
 use App\Models\ParentStudentMap;
 use Illuminate\Support\Collection;
 use App\Models\Exam;
+use App\Models\Mark;
+use App\Models\StudentAttendance;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class StudentController extends Controller
 {
@@ -247,20 +251,27 @@ class StudentController extends Controller
         [$viewClassrooms, $viewBatches] = $this->studentViewEnrollmentCollections($portalUser);
         $viewTeachers = $portalUser->teachers()->where('portal_user.role', 1)->whereNull('portal_user.deleted_at')->orderBy('portal_user.name')->get();
         $teacherCount = $viewTeachers->count();
-        
 
-        $batchIdsForTests = $viewBatches->pluck('id')
+        $currentBatchIdsForStudent = $viewBatches
+            ->pluck('id')
             ->merge($portalUser->batch_id ? [(int) $portalUser->batch_id] : [])
+            ->map(static fn($id) => (int) $id)
+            ->filter(static fn($id) => $id > 0)
             ->unique()
-            ->filter()
             ->values();
+
+        $historicBatchIds = $this->batchIdsFromStudentAcademicHistory((int) $portalUser->id);
+
+        $batchIdsForTests = $currentBatchIdsForStudent->merge($historicBatchIds)->unique()->filter()->values();
 
         $viewTests = $batchIdsForTests->isEmpty()
             ? collect()
             : Exam::query()
                 ->whereIn('batch_id', $batchIdsForTests->all())
                 ->with([
-                    'batch:id,name',
+                    'batch' => static function ($q) {
+                        $q->withTrashed();
+                    },
                     'marks' => static function ($q) use ($portalUser) {
                         $q->where('student_id', $portalUser->id);
                     },
@@ -272,8 +283,9 @@ class StudentController extends Controller
                 ->orderByDesc('id')
                 ->get();
 
-        $testCount = Exam::where('batch_id', $portalUser->batch_id)->count();
-        // dd($testCount);
+        $testCount = $currentBatchIdsForStudent->isEmpty() ? 0 : (int) Exam::query()->whereIn('batch_id', $currentBatchIdsForStudent->all())->count();
+
+        $attendanceDateCards = StudentAttendance::with('batch')->where('student_id', $portalUser->id)->orderByDesc('date')->paginate(10);
 
         return view('admin.student.view', [
             'title' => 'View Student',
@@ -287,6 +299,8 @@ class StudentController extends Controller
             'total_teachers' => $teacherCount,
             'view_tests' => $viewTests,
             'test_count' => $testCount,
+            'current_batch_ids_for_student' => $currentBatchIdsForStudent->all(),
+            'attendance_date_cards' => $attendanceDateCards,
         ]);
     }
 
@@ -319,5 +333,34 @@ class StudentController extends Controller
         return [$classroomsKeyed->values(), $batchesKeyed->values()];
     }
 
+    /**
+     * Batch IDs where this student already has marks, test absences, or attendance (so Tests tab still shows history after a batch change).
+     *
+     * @return Collection<int, int>
+     */
+    protected function batchIdsFromStudentAcademicHistory(int $studentId): Collection
+    {
+        $ids = collect();
+
+        if (Schema::hasTable('marks')) {
+            $ids = $ids->merge(Mark::query()->where('student_id', $studentId)->whereNotNull('batch_id')->pluck('batch_id'));
+        }
+
+        if (Schema::hasTable('mark_absences') && Schema::hasTable('exams')) {
+            $ids = $ids->merge(DB::table('mark_absences as ma')->join('exams as e', 'e.id', '=', 'ma.exam_id')->where('ma.student_id', $studentId)->pluck('e.batch_id'));
+        }
+
+        if (Schema::hasTable('student_attendances')) {
+            $ids = $ids->merge(StudentAttendance::query()->where('student_id', $studentId)->pluck('batch_id'));
+        }
+
+        return $ids->map(static fn($id) => (int) $id)->filter(static fn($id) => $id > 0)->unique()->values();
+    }
+
+    /**
+     * Individual attendance rows for admin student Attendance tab (newest first).
+     *
+     * @return Collection<int, object>
+     */
     
 }

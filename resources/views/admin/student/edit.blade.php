@@ -75,7 +75,7 @@
                             </div>
 
                             <div class="mt-4 d-flex flex-wrap gap-2">
-                                <button type="submit" class="btn btn-primary">Save changes</button>
+                                <button type="submit" class="btn btn-primary">Save</button>
                                 <a href="#" class="btn btn-label-secondary disabled" id="openTeacherPageLinkEdit"
                                     aria-disabled="true">Open teacher page</a>
                             </div>

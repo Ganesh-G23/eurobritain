@@ -7,6 +7,7 @@ use App\Models\Batch;
 use App\Models\Classroom;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\LeaveRequests;
 use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\PortalUser;
@@ -35,9 +36,11 @@ class UserDashboardController extends Controller
             $defaultTeacherId = (int) ($student->default_teacher_id ?? 0);
             if ($defaultTeacherId > 0) {
                 // Verify mapping still exists
-                $isMapped = \App\Models\StudentTeacherMap::where('student_id', (int) ($portalUser['id'] ?? 0))->where('teacher_id', $defaultTeacherId)->exists();
+                $studentId = (int) ($portalUser['id'] ?? 0);
+                $isMapped = \App\Models\StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $defaultTeacherId)->exists();
                 if ($isMapped) {
-                    session()->put('selected_teacher_id', $defaultTeacherId);
+                    [$tid] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $defaultTeacherId);
+                    session()->put('selected_teacher_id', $tid);
                     return redirect('user/student/dashboard');
                 }
             }
@@ -396,6 +399,22 @@ class UserDashboardController extends Controller
             ->orderBy('t.name')
             ->get();
 
+        foreach ($teachers as $row) {
+            if ((int) ($row->classroom_id ?? 0) > 0) {
+                continue;
+            }
+            $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, (int) $row->teacher_id);
+            if ($legacy === null) {
+                continue;
+            }
+            $row->classroom_id = $legacy['classroom_id'];
+            $row->batch_id = $legacy['batch_id'];
+            $row->classroom_name = DB::table('classrooms')->where('id', $legacy['classroom_id'])->value('name');
+            $row->batch_name = $legacy['batch_id'] !== null
+                ? DB::table('batches')->where('id', $legacy['batch_id'])->value('name')
+                : null;
+        }
+
         $data = [];
         $data['teachers'] = $teachers;
         // Expose the session flag to control password popup
@@ -460,6 +479,7 @@ class UserDashboardController extends Controller
         }
 
         $studentId = (int) ($portalUser['id'] ?? 0);
+        [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
         $data = [];
         $data['title'] = 'My Attendance';
         $data['active_tab'] = 'student_attendance';
@@ -487,6 +507,39 @@ class UserDashboardController extends Controller
             ->orderBy('c.name')
             ->orderBy('b.name')
             ->get();
+
+        if ($batchRows->isEmpty()) {
+            $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+            if ($legacy !== null) {
+                if ($legacy['batch_id'] !== null) {
+                    $batchRows = DB::table('batches as b')
+                        ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                        ->where('b.id', $legacy['batch_id'])
+                        ->where('c.teacher_id', $teacherId)
+                        ->whereNull('b.deleted_at')
+                        ->select([
+                            'b.id as batch_id',
+                            'b.name as batch_name',
+                            'c.name as classroom_name',
+                        ])
+                        ->get();
+                } else {
+                    $batchRows = DB::table('batches as b')
+                        ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                        ->where('b.classroom_id', $legacy['classroom_id'])
+                        ->where('c.teacher_id', $teacherId)
+                        ->whereNull('b.deleted_at')
+                        ->select([
+                            'b.id as batch_id',
+                            'b.name as batch_name',
+                            'c.name as classroom_name',
+                        ])
+                        ->orderBy('c.name')
+                        ->orderBy('b.name')
+                        ->get();
+                }
+            }
+        }
 
         if (!$data['attendance_table_ready'] || $batchRows->isEmpty()) {
             return view('web.user.student.attendance', $data);
@@ -574,18 +627,9 @@ class UserDashboardController extends Controller
             return redirect('user/select-teacher');
         }
 
-        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
         $studentId = (int) ($portalUser['id'] ?? 0);
-
-        $mappedClassrooms = DB::table('student_classroom_map as scm')
-            ->join('classrooms as c', 'c.id', '=', 'scm.classroom_id')
-            ->where('scm.teacher_id', $teacherId)
-            ->where('scm.student_id', $studentId)
-            ->whereNotNull('scm.classroom_id')
-            ->select(['c.id', 'c.name'])
-            ->distinct()
-            ->orderBy('c.name')
-            ->get();
+        [$teacherId, $mappedClassrooms] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
 
         $classroomIds = $mappedClassrooms->pluck('id')->map(fn($id) => (int) $id)->values();
         $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
@@ -631,18 +675,9 @@ class UserDashboardController extends Controller
             return redirect('user/select-teacher');
         }
 
-        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
         $studentId = (int) ($portalUser['id'] ?? 0);
-
-        $mappedClassrooms = DB::table('student_classroom_map as scm')
-            ->join('classrooms as c', 'c.id', '=', 'scm.classroom_id')
-            ->where('scm.teacher_id', $teacherId)
-            ->where('scm.student_id', $studentId)
-            ->whereNotNull('scm.classroom_id')
-            ->select(['c.id', 'c.name'])
-            ->distinct()
-            ->orderBy('c.name')
-            ->get();
+        [$teacherId, $mappedClassrooms] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
 
         $classroomIds = $mappedClassrooms->pluck('id')->map(fn($id) => (int) $id)->values();
         $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
@@ -690,6 +725,7 @@ class UserDashboardController extends Controller
         }
 
         $studentId = (int) ($portalUser['id'] ?? 0);
+        [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
         $payload = $this->buildStudentEventsCalendarPayload($studentId, $teacherId);
         if ($payload === null) {
             return redirect('user/select-teacher');
@@ -742,6 +778,34 @@ class UserDashboardController extends Controller
             ->values()
             ->all();
 
+        $legacyEnrollment = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+        if ($legacyEnrollment !== null) {
+            if (!in_array($legacyEnrollment['classroom_id'], $mappedClassroomIds, true)) {
+                $mappedClassroomIds[] = $legacyEnrollment['classroom_id'];
+            }
+            if ($legacyEnrollment['batch_id'] !== null && !in_array((int) $legacyEnrollment['batch_id'], $mappedBatchIds, true)) {
+                $mappedBatchIds[] = (int) $legacyEnrollment['batch_id'];
+            }
+        }
+
+        /** @var list<array{classroom_id: int, batch_id: int}> */
+        $enrollmentPairs = [];
+        foreach ($mappedRows as $row) {
+            $cid = $row->classroom_id !== null ? (int) $row->classroom_id : 0;
+            $bid = $row->batch_id !== null ? (int) $row->batch_id : 0;
+            if ($cid > 0 && $bid > 0) {
+                $enrollmentPairs[$cid . ':' . $bid] = ['classroom_id' => $cid, 'batch_id' => $bid];
+            }
+        }
+        if ($legacyEnrollment !== null) {
+            $lc = (int) $legacyEnrollment['classroom_id'];
+            $lb = $legacyEnrollment['batch_id'] !== null ? (int) $legacyEnrollment['batch_id'] : 0;
+            if ($lc > 0 && $lb > 0) {
+                $enrollmentPairs[$lc . ':' . $lb] = ['classroom_id' => $lc, 'batch_id' => $lb];
+            }
+        }
+        $enrollmentPairs = array_values($enrollmentPairs);
+
         $hasAllClassroomsColumn = Schema::hasColumn('events', 'all_classrooms');
         $hasAllBatchesColumn = Schema::hasColumn('events', 'all_batches');
 
@@ -750,22 +814,53 @@ class UserDashboardController extends Controller
             ->where(function ($q) use (
                 $mappedClassroomIds,
                 $mappedBatchIds,
+                $enrollmentPairs,
                 $hasAllClassroomsColumn,
                 $hasAllBatchesColumn
             ) {
                 $q->whereRaw('1 = 0');
 
-                if (!empty($mappedClassroomIds)) {
-                    $q->orWhereHas('classrooms', function ($cq) use ($mappedClassroomIds) {
-                        $cq->whereIn('classrooms.id', $mappedClassroomIds);
+                // Event targets specific classroom(s) AND batch(es): student must match a (classroom, batch) pair.
+                if ($enrollmentPairs !== []) {
+                    $q->orWhere(function ($both) use ($enrollmentPairs) {
+                        $both->whereHas('classrooms')
+                            ->whereHas('batches')
+                            ->where(function ($inner) use ($enrollmentPairs) {
+                                $inner->whereRaw('1 = 0');
+                                foreach ($enrollmentPairs as $pair) {
+                                    $inner->orWhere(function ($row) use ($pair) {
+                                        $cid = $pair['classroom_id'];
+                                        $bid = $pair['batch_id'];
+                                        $row->whereHas('classrooms', fn($cq) => $cq->where('classrooms.id', $cid))
+                                            ->whereHas('batches', fn($bq) => $bq->where('batches.id', $bid));
+                                    });
+                                }
+                            });
                     });
                 }
 
-                if (!empty($mappedBatchIds)) {
-                    $q->orWhereHas('batches', function ($bq) use ($mappedBatchIds) {
-                        $bq->whereIn('batches.id', $mappedBatchIds);
+                // Classrooms only (no batch list on the event): any student in those classrooms.
+                if ($mappedClassroomIds !== []) {
+                    $q->orWhere(function ($classOnly) use ($mappedClassroomIds) {
+                        $classOnly->whereHas('classrooms', function ($cq) use ($mappedClassroomIds) {
+                            $cq->whereIn('classrooms.id', $mappedClassroomIds);
+                        })->whereDoesntHave('batches');
                     });
                 }
+
+                // Batches only (no classroom list on the event): any student in those batches.
+                if ($mappedBatchIds !== []) {
+                    $q->orWhere(function ($batchOnly) use ($mappedBatchIds) {
+                        $batchOnly->whereHas('batches', function ($bq) use ($mappedBatchIds) {
+                            $bq->whereIn('batches.id', $mappedBatchIds);
+                        })->whereDoesntHave('classrooms');
+                    });
+                }
+
+                // No classroom/batch pivots: treat as broadcast for all students under this teacher.
+                $q->orWhere(function ($wide) {
+                    $wide->whereDoesntHave('classrooms')->whereDoesntHave('batches');
+                });
 
                 if ($hasAllClassroomsColumn || $hasAllBatchesColumn) {
                     $q->orWhere(function ($allQ) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
@@ -1017,6 +1112,215 @@ class UserDashboardController extends Controller
     }
 
     /**
+     * Older admin flows store one classroom (and optional batch) on portal_user. The student portal
+     * primarily uses student_classroom_map; this bridges the two so legacy assignments still work.
+     *
+     * @return array{classroom_id: int, batch_id: int|null}|null
+     */
+    private function legacyEnrollmentForStudentTeacher(int $studentId, int $teacherId): ?array
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return null;
+        }
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id', 'batch_id']);
+        if (!$student) {
+            return null;
+        }
+
+        $classroomId = (int) ($student->classroom_id ?? 0);
+        if ($classroomId <= 0) {
+            return null;
+        }
+
+        $classroom = Classroom::query()->whereKey($classroomId)->first(['id', 'teacher_id']);
+        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+            return null;
+        }
+
+        $batchId = (int) ($student->batch_id ?? 0);
+        if ($batchId > 0) {
+            $batch = Batch::query()->whereKey($batchId)->first(['id', 'classroom_id', 'teacher_id']);
+            if (!$batch || (int) $batch->classroom_id !== $classroomId || (int) $batch->teacher_id !== $teacherId) {
+                $batchId = 0;
+            }
+        }
+
+        return [
+            'classroom_id' => $classroomId,
+            'batch_id' => $batchId > 0 ? $batchId : null,
+        ];
+    }
+
+    /**
+     * Classrooms for a student under one teacher: map rows plus legacy portal_user.classroom_id when missing.
+     *
+     * @return \Illuminate\Support\Collection<int, object{id: int|string, name: string}>
+     */
+    private function mergedStudentClassroomsForTeacher(int $studentId, int $teacherId): \Illuminate\Support\Collection
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return collect();
+        }
+
+        $classroomIds = DB::table('student_classroom_map')
+            ->where('teacher_id', $teacherId)
+            ->where('student_id', $studentId)
+            ->whereNotNull('classroom_id')
+            ->distinct()
+            ->pluck('classroom_id')
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $rows = collect();
+        if ($classroomIds->isNotEmpty()) {
+            $rows = Classroom::query()
+                ->whereIn('id', $classroomIds->all())
+                ->where('teacher_id', $teacherId)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn($c) => (object) ['id' => $c->id, 'name' => (string) $c->name]);
+        }
+
+        $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+        if ($legacy !== null && !$rows->contains(fn($r) => (int) $r->id === $legacy['classroom_id'])) {
+            $name = DB::table('classrooms')->where('id', $legacy['classroom_id'])->whereNull('deleted_at')->value('name');
+            if ($name !== null) {
+                $rows->push((object) ['id' => $legacy['classroom_id'], 'name' => (string) $name]);
+            }
+        }
+
+        return $rows->sortBy(fn($r) => strtolower((string) $r->name))->values();
+    }
+
+    /**
+     * When the session “selected teacher” has no classroom data but another teacher linked to the student does,
+     * switch to that teacher so the portal matches student_classroom_map (fixes wrong default_teacher_id).
+     *
+     * @return array{0: int, 1: \Illuminate\Support\Collection<int, object{id: int|string, name: string}>}
+     */
+    private function alignStudentPortalTeacherWithEnrollments(int $studentId, int $teacherId): array
+    {
+        $merged = $this->mergedStudentClassroomsForTeacher($studentId, $teacherId);
+        if ($merged->isNotEmpty()) {
+            return [$teacherId, $merged];
+        }
+
+        $candidateIds = DB::table('student_classroom_map')
+            ->where('student_id', $studentId)
+            ->whereNotNull('classroom_id')
+            ->distinct()
+            ->orderBy('teacher_id')
+            ->pluck('teacher_id')
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        foreach ($candidateIds as $tid) {
+            if ($tid <= 0 || $tid === $teacherId) {
+                continue;
+            }
+            if (!Schema::hasTable('student_teacher_map') || !DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()) {
+                continue;
+            }
+            $try = $this->mergedStudentClassroomsForTeacher($studentId, $tid);
+            if ($try->isNotEmpty()) {
+                session()->put('selected_teacher_id', $tid);
+                PortalUser::where('id', $studentId)->where('role', 2)->update(['default_teacher_id' => $tid]);
+                $freshStudent = PortalUser::where('role', 2)->find($studentId);
+                if ($freshStudent) {
+                    PortalSession::updateRoleUserArray(2, $freshStudent->toArray());
+                }
+
+                return [$tid, $try];
+            }
+        }
+
+        return [$teacherId, $merged];
+    }
+
+    /**
+     * Teacher for a student’s classroom: prefer student_classroom_map, else legacy portal_user row + STM.
+     */
+    private function resolveTeacherIdForStudentClassroom(int $studentId, int $classroomId): int
+    {
+        if ($studentId <= 0 || $classroomId <= 0) {
+            return 0;
+        }
+
+        $fromMap = (int) (DB::table('student_classroom_map')->where('student_id', $studentId)->where('classroom_id', $classroomId)->value('teacher_id') ?? 0);
+        if ($fromMap > 0) {
+            return $fromMap;
+        }
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id']);
+        if (!$student || (int) ($student->classroom_id ?? 0) !== $classroomId) {
+            return 0;
+        }
+
+        $tid = (int) (Classroom::query()->whereKey($classroomId)->value('teacher_id') ?? 0);
+        if ($tid <= 0) {
+            return 0;
+        }
+
+        if (!Schema::hasTable('student_teacher_map')) {
+            return 0;
+        }
+
+        return DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists() ? $tid : 0;
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}> $mappedRows
+     * @return \Illuminate\Support\Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}>
+     */
+    private function mergeLegacyIntoParentClassroomList(int $studentId, \Illuminate\Support\Collection $mappedRows): \Illuminate\Support\Collection
+    {
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id']);
+        if (!$student || !(int) ($student->classroom_id ?? 0)) {
+            return $mappedRows;
+        }
+
+        $cid = (int) $student->classroom_id;
+        $cRow = DB::table('classrooms as c')
+            ->join('portal_user as t', 't.id', '=', 'c.teacher_id')
+            ->where('c.id', $cid)
+            ->whereNull('c.deleted_at')
+            ->where('t.role', 1)
+            ->whereNull('t.deleted_at')
+            ->select(['c.id', 'c.name', 'c.teacher_id', 't.name as teacher_name'])
+            ->first();
+
+        if (!$cRow) {
+            return $mappedRows;
+        }
+
+        $tid = (int) $cRow->teacher_id;
+        $exists = $mappedRows->contains(fn($r) => (int) $r->id === $cid && (int) ($r->teacher_id ?? 0) === $tid);
+        if ($exists) {
+            return $mappedRows;
+        }
+
+        $linked = DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()
+            || DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists();
+
+        if (!$linked) {
+            return $mappedRows;
+        }
+
+        $mappedRows->push((object) [
+            'id' => $cid,
+            'name' => $cRow->name,
+            'teacher_id' => $tid,
+            'teacher_name' => $cRow->teacher_name,
+        ]);
+
+        return $mappedRows;
+    }
+
+    /**
      * Shared payload for student or parent viewing a classroom’s tests/marks.
      *
      * @return array<string, mixed>|null
@@ -1024,6 +1328,10 @@ class UserDashboardController extends Controller
     private function buildStudentClassroomShowPayload(int $studentId, int $teacherId, int $classroomId, Request $request, bool $showTeacherBatchManageLink): ?array
     {
         $hasAccess = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->exists();
+        if (!$hasAccess) {
+            $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+            $hasAccess = $legacy !== null && (int) $legacy['classroom_id'] === $classroomId;
+        }
 
         if (!$hasAccess) {
             return null;
@@ -1038,6 +1346,18 @@ class UserDashboardController extends Controller
 
         if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
             return null;
+        }
+
+        $myBatchIds = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->whereNotNull('batch_id')->pluck('batch_id')->map(fn($b) => (int) $b)->unique()->values();
+        $legacyEnrollment = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+        if ($legacyEnrollment !== null && (int) $legacyEnrollment['classroom_id'] === $classroomId && $legacyEnrollment['batch_id'] !== null) {
+            $myBatchIds = $myBatchIds->push((int) $legacyEnrollment['batch_id'])->unique()->values();
+        }
+        if ($myBatchIds->isNotEmpty()) {
+            $classroom->setRelation(
+                'batches',
+                $classroom->batches->filter(fn($batch) => $myBatchIds->contains((int) $batch->id))->values()
+            );
         }
 
         $teacher = PortalUser::where('role', 1)->find($teacherId);
@@ -1055,8 +1375,6 @@ class UserDashboardController extends Controller
         if (Schema::hasTable('mark_absences') && $examIds->isNotEmpty()) {
             $absenceByExamId = MarkAbsence::query()->where('student_id', $studentId)->whereIn('exam_id', $examIds)->get()->keyBy(fn($r) => (int) $r->exam_id);
         }
-
-        $myBatchIds = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->whereNotNull('batch_id')->pluck('batch_id')->map(fn($b) => (int) $b)->unique()->values();
 
         $batchIds = $classroom->batches->pluck('id')->map(fn($bid) => (int) $bid)->values();
         $countsByBatch = collect();
@@ -1276,6 +1594,8 @@ class UserDashboardController extends Controller
             ->orderBy('c.name')
             ->get();
 
+        $mappedRows = $this->mergeLegacyIntoParentClassroomList($selectedStudentId, $mappedRows);
+
         $classroomIds = $mappedRows->pluck('id')->map(fn($id) => (int) $id)->unique()->values();
         $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
 
@@ -1326,7 +1646,7 @@ class UserDashboardController extends Controller
         }
 
         $classroomId = (int) $id;
-        $teacherId = (int) (DB::table('student_classroom_map')->where('student_id', $selectedStudentId)->where('classroom_id', $classroomId)->value('teacher_id') ?? 0);
+        $teacherId = $this->resolveTeacherIdForStudentClassroom($selectedStudentId, $classroomId);
 
         if ($teacherId <= 0) {
             return redirect('user/parent/classrooms');
@@ -1549,7 +1869,7 @@ class UserDashboardController extends Controller
         }
 
         $user = PortalUser::whereKey($uid)
-            ->whereIn('role', [2, 3])
+            ->whereIn('role', [1, 2, 3])
             ->whereNull('deleted_at')
             ->first();
 
@@ -1597,5 +1917,51 @@ class UserDashboardController extends Controller
         }
 
         return response()->json(['status' => $updated ? 1 : 0]);
+    }
+
+    public function studentLeave()
+    {
+        if (! session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 3) {
+            return redirect('user/dashboard');
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        if ($parentId < 1) {
+            return redirect('login');
+        }
+
+        $childIds = DB::table('portal_user as s')
+            ->leftJoin('parent_student_map as psm', function ($join) use ($parentId) {
+                $join->on('psm.student_id', '=', 's.id')->where('psm.parent_id', '=', $parentId);
+            })
+            ->where('s.role', 2)
+            ->whereNull('s.deleted_at')
+            ->where(function ($q) use ($parentId) {
+                $q->where('s.parent_id', $parentId)->orWhereNotNull('psm.id');
+            })
+            ->pluck('s.id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $studentLeaveRequests = collect();
+        if ($childIds->isNotEmpty()) {
+            $studentLeaveRequests = LeaveRequests::query()
+                ->with(['student', 'classroom', 'batch'])
+                ->whereIn('student_id', $childIds)
+                ->orderByDesc('id')
+                ->get();
+        }
+
+        return view('web.user.parent.student_leave', [
+            'title' => 'Student leave requests',
+            'active_tab' => 'leave',
+            'student_leave_requests' => $studentLeaveRequests,
+        ]);
     }
 }

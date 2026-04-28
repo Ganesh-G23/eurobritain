@@ -3,11 +3,11 @@
 namespace App\Providers;
 
 use App\Models\PortalUser;
-use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Pagination\Paginator;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Paginator::useBootstrap();
         View::composer('web.user.student.layouts.navigate', function ($view) {
             $layoutStudentNotifications = collect();
             $StudentUnreadNotificationCount = 0;
@@ -32,13 +33,32 @@ class AppServiceProvider extends ServiceProvider
             $studentId = (int) ($portal['id'] ?? 0);
             $role = (int) ($portal['role'] ?? 0);
 
-            if ($studentId > 0 && $role === 2 && Schema::hasTable('notifications')) {
+            $conn = DB::getDefaultConnection();
+            if ($studentId > 0 && $role === 2 && Schema::connection($conn)->hasTable('notifications')) {
                 $user = PortalUser::whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
 
                 if ($user) {
-                    $layoutStudentNotifications = DB::table('notifications')->where('notifiable_id', $studentId)->whereNull('deleted_at')->where('notifiable_type', $user->getMorphClass())->orderByDesc('created_at')->limit(15)->get();
+                    $morph = $user->getMorphClass();
+                    $layoutStudentNotifications = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $studentId)
+                        ->whereNull('deleted_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->orderByDesc('created_at')
+                        ->limit(15)
+                        ->get();
 
-                    $StudentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $studentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
+                    $StudentUnreadNotificationCount = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $studentId)
+                        ->whereNull('deleted_at')
+                        ->whereNull('read_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->count();
                 }
             }
 
@@ -56,13 +76,32 @@ class AppServiceProvider extends ServiceProvider
             $parentId = (int) ($portal['id'] ?? 0);
             $role = (int) ($portal['role'] ?? 0);
 
-            if ($parentId > 0 && $role === 3 && Schema::hasTable('notifications')) {
+            $conn = DB::getDefaultConnection();
+            if ($parentId > 0 && $role === 3 && Schema::connection($conn)->hasTable('notifications')) {
                 $user = PortalUser::whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
 
                 if ($user) {
-                    $layoutParentNotifications = DB::table('notifications')->where('notifiable_id', $parentId)->whereNull('deleted_at')->where('notifiable_type', $user->getMorphClass())->orderByDesc('created_at')->limit(15)->get();
+                    $morph = $user->getMorphClass();
+                    $layoutParentNotifications = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $parentId)
+                        ->whereNull('deleted_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->orderByDesc('created_at')
+                        ->limit(15)
+                        ->get();
 
-                    $layoutParentUnreadNotificationCount = DB::table('notifications')->where('notifiable_id', $parentId)->where('notifiable_type', $user->getMorphClass())->whereNull('deleted_at')->count();
+                    $layoutParentUnreadNotificationCount = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $parentId)
+                        ->whereNull('deleted_at')
+                        ->whereNull('read_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->count();
                 }
             }
 
@@ -71,5 +110,53 @@ class AppServiceProvider extends ServiceProvider
                 'layoutParentUnreadNotificationCount' => $layoutParentUnreadNotificationCount,
             ]);
         });
+
+        View::composer('web.user.layouts.navigate', function ($view) {
+
+            $layoutTeacherNotifications = collect();
+            $teacherUnreadNotificationCount = 0;
+        
+            $portal = session('portal_user');
+            $teacherId = (int) ($portal['id'] ?? 0);
+            $role = (int) ($portal['role'] ?? 0);
+        
+            $conn = DB::getDefaultConnection();
+            if ($teacherId > 0 && $role === 1 && Schema::connection($conn)->hasTable('notifications')) {
+                $user = PortalUser::whereKey($teacherId)
+                    ->where('role', 1)
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if ($user) {
+                    $morph = $user->getMorphClass();
+                    $layoutTeacherNotifications = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $teacherId)
+                        ->whereNull('deleted_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->orderByDesc('created_at')
+                        ->limit(15)
+                        ->get();
+
+                    $teacherUnreadNotificationCount = DB::connection($conn)->table('notifications')
+                        ->where('notifiable_id', $teacherId)
+                        ->whereNull('deleted_at')
+                        ->whereNull('read_at')
+                        ->where(function ($q) use ($morph) {
+                            $q->where('notifiable_type', $morph)
+                                ->orWhere('notifiable_type', PortalUser::class);
+                        })
+                        ->count();
+                }
+            }
+        
+            $view->with([
+                'layoutTeacherNotifications' => $layoutTeacherNotifications,
+                'teacherUnreadNotificationCount' => $teacherUnreadNotificationCount,
+            ]);
+        });
+        
     }
 }

@@ -83,18 +83,24 @@
                                 <tbody>
                                     @forelse ($student_list ?? [] as $key => $student)
                                         @php
-                                            $primaryTeacher = $student->teachers->first();
                                             $maps = $student->studentClassroomMaps;
                                             $teacherCount = $student->teachers->count();
                                             if ($maps->isNotEmpty()) {
                                                 $classroomCount = $maps->pluck('classroom_id')->filter()->unique()->count();
                                                 $batchCount = $maps->pluck('batch_id')->filter()->unique()->count();
+                                                $dominantTeacherId = (int) $maps->groupBy('teacher_id')->map->count()->sortDesc()->keys()->first();
+                                                $enrollmentTeacher = $student->teachers->firstWhere('id', $dominantTeacherId)
+                                                    ?? \App\Models\PortalUser::where('role', 1)->whereKey($dominantTeacherId)->first();
+                                                if (!$enrollmentTeacher) {
+                                                    $enrollmentTeacher = $student->teachers->first();
+                                                }
                                             } else {
                                                 $classroomCount = $student->classroom_id ? 1 : 0;
                                                 $batchCount = $student->batch_id ? 1 : 0;
+                                                $enrollmentTeacher = $student->teachers->first();
                                             }
-                                            $mapsForPrimary = $primaryTeacher
-                                                ? $maps->where('teacher_id', $primaryTeacher->id)->map(static function ($m) {
+                                            $mapsForEnrollment = $enrollmentTeacher
+                                                ? $maps->where('teacher_id', $enrollmentTeacher->id)->map(static function ($m) {
                                                     return [
                                                         'classroom_id' => (int) $m->classroom_id,
                                                         'batch_id' => (int) $m->batch_id,
@@ -112,12 +118,12 @@
                                             <td class="text-center">{{ $batchCount }}</td>
                                             <td class="text-end">
                                                 <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
-                                                    @if ($primaryTeacher)
+                                                    @if ($enrollmentTeacher)
                                                         <button type="button"
                                                             class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments-list"
                                                             data-student-id="{{ base64_encode($student->id) }}"
-                                                            data-teacher-id="{{ $primaryTeacher->id }}"
-                                                            data-maps='@json($mapsForPrimary)'
+                                                            data-teacher-id="{{ $enrollmentTeacher->id }}"
+                                                            data-maps='@json($mapsForEnrollment)'
                                                             title="Classrooms &amp; batches">
                                                             <i class="icon-base ti tabler-school"></i>
                                                         </button>

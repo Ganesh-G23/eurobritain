@@ -16,9 +16,12 @@ use App\Models\StudentAttendance;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
+use App\Models\LeaveRequests;
 use App\Notifications\MarksUpdatedNotification;
 use App\Notifications\PortalNotification;
+use App\Support\PortalDatabaseNotify;
 use App\Support\StudentEnrollmentSync;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
@@ -555,6 +558,32 @@ class UserTeacherController extends Controller
             ->get(['id', 'name']);
 
         return response()->json(['status' => 1, 'data' => $batches]);
+    }
+
+    public function getExamsByBatch(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+
+        $batchId = (int) ($request->batch_id ?? 0);
+        if ($batchId < 1) {
+            return response()->json(['status' => 0, 'error' => 'Batch ID is required']);
+        }
+
+        $batch = Batch::where('teacher_id', $teacherId)->find($batchId);
+        if (!$batch) {
+            return response()->json(['status' => 0, 'error' => 'Invalid batch']);
+        }
+
+        $exams = Exam::query()
+            ->where('batch_id', $batchId)
+            ->orderBy('exam_date')
+            ->orderBy('id')
+            ->get(['id', 'exam_name', 'max_marks', 'exam_date']);
+
+        return response()->json(['status' => 1, 'data' => $exams]);
     }
 
     public function deleteStudent(Request $request)
@@ -2667,13 +2696,161 @@ class UserTeacherController extends Controller
         }
     }
 
+    protected function syncApprovedLeaveAttendance(LeaveRequests $leave, int $teacherId): void
+    {
+        if (!Schema::hasTable('student_attendances')) {
+            return;
+        }
+
+        // Resolve batch by classroom ownership (same idea as student attendance / leave forms).
+        // Relying on batches.teacher_id alone fails when that column is stale while the classroom
+        // still belongs to this teacher — then no "L" rows are written.
+        $batch = Batch::query()
+            ->whereKey((int) $leave->batch_id)
+            ->where('classroom_id', (int) $leave->classroom_id)
+            ->whereHas('classroom', static function ($q) use ($teacherId) {
+                $q->where('teacher_id', $teacherId);
+            })
+            ->first();
+
+        if (!$batch) {
+            return;
+        }
+
+        $studentId = (int) $leave->student_id;
+        $mapped = StudentClassroomMap::query()
+            ->where('classroom_id', (int) $leave->classroom_id)
+            ->where('batch_id', (int) $leave->batch_id)
+            ->where('student_id', $studentId)
+            ->exists();
+
+        if (!$mapped) {
+            $student = PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
+            if (
+                !$student
+                || (int) $student->classroom_id !== (int) $leave->classroom_id
+                || (int) $student->batch_id !== (int) $leave->batch_id
+            ) {
+                return;
+            }
+        }
+
+        $start = \Carbon\Carbon::parse((string) $leave->from_date)->startOfDay();
+        $end = \Carbon\Carbon::parse((string) $leave->to_date)->startOfDay();
+        if ($end->lt($start)) {
+            return;
+        }
+
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $ymd = $d->format('Y-m-d');
+            $att = StudentAttendance::withTrashed()->firstOrNew([
+                'batch_id' => $batch->id,
+                'student_id' => (int) $leave->student_id,
+                'date' => $ymd,
+            ]);
+            $att->attendance_status = 'L';
+            if ($att->trashed()) {
+                $att->restore();
+            } else {
+                $att->save();
+            }
+        }
+    }
+
+    protected function deliverLeaveDecisionNotification(LeaveRequests $leave, string $action, int $teacherId): void
+    {
+        if (! Schema::connection(DB::getDefaultConnection())->hasTable('notifications')) {
+            return;
+        }
+
+        $student = PortalUser::query()
+            ->whereKey((int) $leave->student_id)
+            ->where('role', 2)
+            ->whereNull('deleted_at')
+            ->first();
+        if (!$student) {
+            return;
+        }
+
+        $studentName = trim((string) ($student->name ?? ''));
+        if ($studentName === '') {
+            $studentName = 'The student';
+        }
+
+        $teacherName = trim((string) PortalUser::query()->whereKey($teacherId)->value('name'));
+        if ($teacherName === '') {
+            $teacherName = 'Your teacher';
+        }
+
+        $fromDate = \Carbon\Carbon::parse((string) $leave->from_date)->format('d M Y');
+        $toDate = \Carbon\Carbon::parse((string) $leave->to_date)->format('d M Y');
+        $dateLabel = $fromDate === $toDate ? $fromDate : ($fromDate . ' to ' . $toDate);
+
+        if ($action === 'approve') {
+            $title = 'Leave approved';
+            $message = $teacherName . ' approved your leave request for ' . $dateLabel . '.';
+            $parentMessage = $teacherName . ' approved ' . $studentName . '\'s leave request for ' . $dateLabel . '.';
+        } else {
+            $title = 'Leave rejected';
+            $reason = trim((string) ($leave->reject_reason ?? ''));
+            $message = $teacherName . ' rejected your leave request for ' . $dateLabel . '.';
+            $parentMessage = $teacherName . ' rejected ' . $studentName . '\'s leave request for ' . $dateLabel . '.';
+            if ($reason !== '') {
+                $message .= ' Reason: ' . $reason;
+                $parentMessage .= ' Reason: ' . $reason;
+            }
+        }
+
+        $meta = [
+            'leave_request_id' => (int) $leave->id,
+            'student_id' => (int) $leave->student_id,
+            'teacher_id' => (int) $leave->teacher_id,
+            'classroom_id' => (int) $leave->classroom_id,
+            'batch_id' => (int) $leave->batch_id,
+            'from_date' => (string) $leave->from_date,
+            'to_date' => (string) $leave->to_date,
+            'status' => (string) $leave->status,
+            'reject_reason' => (string) ($leave->reject_reason ?? ''),
+        ];
+
+        PortalDatabaseNotify::send($student, new PortalNotification($title, $message, 'leave', $meta));
+
+        $parentIds = collect();
+        $legacyParentId = (int) ($student->parent_id ?? 0);
+        if ($legacyParentId > 0) {
+            $parentIds->push($legacyParentId);
+        }
+        if (Schema::hasTable('parent_student_map')) {
+            foreach (DB::table('parent_student_map')->where('student_id', (int) $student->id)->pluck('parent_id') as $pid) {
+                $pid = (int) $pid;
+                if ($pid > 0) {
+                    $parentIds->push($pid);
+                }
+            }
+        }
+
+        $parentIds = $parentIds->unique()->values();
+        if ($parentIds->isEmpty()) {
+            return;
+        }
+
+        $parents = PortalUser::query()
+            ->whereIn('id', $parentIds)
+            ->where('role', 3)
+            ->whereNull('deleted_at')
+            ->get();
+
+        foreach ($parents as $parent) {
+            PortalDatabaseNotify::send($parent, new PortalNotification($title, $parentMessage, 'leave', $meta));
+        }
+    }
+
     public function events()
     {
         [$teacherId, $redirect] = $this->requireTeacher();
         if ($redirect) {
             return $redirect;
         }
-
         $data = [];
         $data['title'] = 'Events';
         $data['active_tab'] = 'events';
@@ -2692,45 +2869,44 @@ class UserTeacherController extends Controller
         $data['calendar_events'] = [];
 
         if (Schema::hasTable('events')) {
-
             $events = Event::with(['eventType', 'classrooms', 'batches'])
                 ->where(function ($q) use ($teacherId) {
-                    $q->where('teacher_id', $teacherId)
-                    ->orWhereHas('classrooms', fn($c) => $c->where('teacher_id', $teacherId))
-                    ->orWhereHas('batches', fn($b) => $b->where('teacher_id', $teacherId));
+                    $q->where('teacher_id', $teacherId)->orWhereHas('classrooms', fn($c) => $c->where('teacher_id', $teacherId))->orWhereHas('batches', fn($b) => $b->where('teacher_id', $teacherId));
                 })
                 ->orderBy('start_date')
                 ->get();
 
-            $data['calendar_events'] = $events->map(function ($event) {
-                $row = [
-                    'id' => 'db-' . $event->id,
-                    'title' => $event->title,
-                    'start' => $event->start_date,
-                    'end' => $event->end_date,
-                    'allDay' => true,
+            $data['calendar_events'] = $events
+                ->map(function ($event) {
+                    $row = [
+                        'id' => 'db-' . $event->id,
+                        'title' => $event->title,
+                        'start' => $event->start_date,
+                        'end' => $event->end_date,
+                        'allDay' => true,
 
-                    'extendedProps' => [
-                        'calendar' => 'et' . (int) $event->event_type_id,
-                        'event_type_id' => $event->event_type_id,
+                        'extendedProps' => [
+                            'calendar' => 'et' . (int) $event->event_type_id,
+                            'event_type_id' => $event->event_type_id,
 
-                        // 🔥 REQUIRED FOR MULTI SELECT EDIT
-                        'classrooms' => $event->classrooms->pluck('id')->toArray(),
-                        'batches' => $event->batches->pluck('id')->toArray(),
+                            // 🔥 REQUIRED FOR MULTI SELECT EDIT
+                            'classrooms' => $event->classrooms->pluck('id')->toArray(),
+                            'batches' => $event->batches->pluck('id')->toArray(),
 
-                        'status' => (int) $event->status,
-                        'description' => $event->description,
-                        'color_code' => $event->eventType?->color_code,
-                    ],
-                ];
+                            'status' => (int) $event->status,
+                            'description' => $event->description,
+                            'color_code' => $event->eventType?->color_code,
+                        ],
+                    ];
 
-                return array_merge($row, $this->calendarColorsForEventType($event->eventType));
-            })->values()->toArray();
+                    return array_merge($row, $this->calendarColorsForEventType($event->eventType));
+                })
+                ->values()
+                ->toArray();
         }
 
         return view('web.user.teacher.events', $data);
     }
-
 
     public function eventTypes()
     {
@@ -2957,10 +3133,7 @@ class UserTeacherController extends Controller
         ];
 
         if ($request->filled('event_id')) {
-            $event = Event::updateOrCreate(
-                ['id' => (int) $request->event_id],
-                $attrs,
-            );
+            $event = Event::updateOrCreate(['id' => (int) $request->event_id], $attrs);
         } else {
             $event = Event::create($attrs);
         }
@@ -2985,4 +3158,107 @@ class UserTeacherController extends Controller
             'redirect_url' => url('user/teacher/events'),
         ]);
     }
+
+    public function studentLeave()
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return $redirect;
+        }
+
+        $student_leave_requests = LeaveRequests::with('student')->where('teacher_id', $teacherId)->orderBy('id', 'desc')->get();
+        $data = [];
+        $data['title'] = 'Student Leave';
+        $data['active_tab'] = 'student_leave';
+        $data['student_leave_requests'] = $student_leave_requests;
+
+        return view('web.user.teacher.student_leave', $data);
+    }
+
+    public function leaveAction(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized request.',
+            ], 401);
+        }
+
+        $request->validate([
+            'id' => 'required|integer|exists:leave_requests,id',
+            'action' => 'required|in:approve,reject',
+            'reason' => 'nullable|string',
+        ]);
+
+        $id = (int) $request->id;
+        $action = (string) $request->action;
+
+        $blocked = false;
+        $processedLeave = null;
+
+        try {
+            DB::transaction(function () use ($request, $teacherId, $id, $action, &$blocked, &$processedLeave) {
+                $leave = LeaveRequests::query()
+                    ->whereKey($id)
+                    ->where('teacher_id', $teacherId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $leave) {
+                    throw new ModelNotFoundException();
+                }
+
+                $st = strtolower(trim((string) ($leave->status ?? '')));
+                if ($st === '') {
+                    $st = 'pending';
+                }
+                if ($st !== 'pending') {
+                    $blocked = true;
+
+                    return;
+                }
+
+                $leave->status = $action === 'approve' ? 'approved' : 'rejected';
+                $leave->reject_reason = $action === 'reject' ? trim((string) $request->reason) : null;
+                $leave->save();
+
+                if ($action === 'approve') {
+                    $this->syncApprovedLeaveAttendance($leave, $teacherId);
+                }
+
+                $processedLeave = $leave->fresh();
+            });
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Leave request not found.',
+            ], 404);
+        }
+
+        if ($blocked) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This leave request is already processed.',
+            ], 422);
+        }
+
+        if ($processedLeave instanceof LeaveRequests) {
+            try {
+                $this->deliverLeaveDecisionNotification($processedLeave, $action, $teacherId);
+            } catch (\Throwable $e) {
+                Log::error('Leave decision notification failed', [
+                    'leave_id' => $processedLeave->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'status' => $processedLeave?->status,
+        ]);
+    }
+
+    
 }
