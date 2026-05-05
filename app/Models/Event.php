@@ -9,8 +9,16 @@ class Event extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['teacher_id', 'event_type_id', 'title', 'description', 'start_date', 'end_date', 'status'];
+    protected $fillable = ['teacher_id', 'event_type_id', 'title', 'description', 'start_date', 'end_date', 'all_day', 'status'];
 
+    protected function casts(): array
+    {
+        return [
+            'start_date' => 'datetime',
+            'end_date' => 'datetime',
+            'all_day' => 'boolean',
+        ];
+    }
 
     public function eventType()
     {

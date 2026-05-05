@@ -12,48 +12,56 @@ use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\PortalUser;
 use App\Models\StudentAttendance;
+use App\Models\StudentPersonalEvent;
+use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
+use App\Support\FullCalendarEventPayload;
 use App\Support\PortalSession;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class UserDashboardController extends Controller
 {
     public function index()
     {
-        if (!PortalSession::anyRoleLoggedIn()) {
+        if (! PortalSession::anyRoleLoggedIn()) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
         // If student, decide between previously selected teacher dashboard vs selection page
         if ((int) ($portalUser['role'] ?? 0) === 2) {
             // Try to load default teacher from DB
-            $student = \App\Models\PortalUser::find((int) ($portalUser['id'] ?? 0));
+            $student = PortalUser::find((int) ($portalUser['id'] ?? 0));
             $defaultTeacherId = (int) ($student->default_teacher_id ?? 0);
             if ($defaultTeacherId > 0) {
                 // Verify mapping still exists
                 $studentId = (int) ($portalUser['id'] ?? 0);
-                $isMapped = \App\Models\StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $defaultTeacherId)->exists();
+                $isMapped = StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $defaultTeacherId)->exists();
                 if ($isMapped) {
                     [$tid] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $defaultTeacherId);
                     session()->put('selected_teacher_id', $tid);
+
                     return redirect('user/student/dashboard');
                 }
             }
+
             return redirect('user/select-teacher');
         }
         // If parent, take them to student selection page
         if ((int) ($portalUser['role'] ?? 0) === 3) {
             // Try to redirect to previously selected student if available
-            $parent = \App\Models\PortalUser::find((int) ($portalUser['id'] ?? 0));
+            $parent = PortalUser::find((int) ($portalUser['id'] ?? 0));
             $defaultStudentId = (int) ($parent->default_student_id ?? 0);
             if ($defaultStudentId > 0) {
                 // Ensure relationship exists (via legacy parent_id or parent_student_map)
-                $isMapped = \Illuminate\Support\Facades\DB::table('portal_user')
+                $isMapped = DB::table('portal_user')
                     ->where('id', $defaultStudentId)
                     ->where('role', 2)
                     ->where(function ($q) use ($parent, $defaultStudentId) {
@@ -64,9 +72,11 @@ class UserDashboardController extends Controller
                     ->exists();
                 if ($isMapped) {
                     session()->put('selected_student_id', $defaultStudentId);
+
                     return redirect('user/parent/dashboard');
                 }
             }
+
             return redirect('user/select-student');
         }
         $data = [];
@@ -108,17 +118,18 @@ class UserDashboardController extends Controller
             $data['total_students'] = 0;
             $data['total_classrooms_details'] = collect();
         }
+
         return view('web.user.dashboard', $data);
     }
 
     public function profile()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
         $details = PortalUser::find($portalUser['id'] ?? 0);
-        if (!$details) {
+        if (! $details) {
             return redirect('login');
         }
         $data = [];
@@ -137,7 +148,7 @@ class UserDashboardController extends Controller
 
     public function teacherProfileSettings()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -145,7 +156,7 @@ class UserDashboardController extends Controller
             return redirect('user/profile');
         }
         $details = PortalUser::find($portalUser['id'] ?? 0);
-        if (!$details) {
+        if (! $details) {
             return redirect('login');
         }
         $data = [];
@@ -159,7 +170,7 @@ class UserDashboardController extends Controller
 
     public function security()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -185,9 +196,10 @@ class UserDashboardController extends Controller
 
     public function updatePasswordPopup(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             $this->response['error'] = 'Unauthorized request';
             echo json_encode($this->response);
+
             return;
         }
 
@@ -195,12 +207,13 @@ class UserDashboardController extends Controller
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        if (!$validation->fails()) {
+        if (! $validation->fails()) {
             $portalUser = session('portal_user');
             $user = PortalUser::find($portalUser['id'] ?? 0);
-            if (!$user) {
+            if (! $user) {
                 $this->response['error'] = 'User not found';
                 echo json_encode($this->response);
+
                 return;
             }
 
@@ -224,9 +237,10 @@ class UserDashboardController extends Controller
 
     public function skipPasswordPopup()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             $this->response['error'] = 'Unauthorized request';
             echo json_encode($this->response);
+
             return;
         }
 
@@ -238,10 +252,11 @@ class UserDashboardController extends Controller
 
     public function saveProfile(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Unauthorized request';
             echo json_encode($this->response);
+
             return;
         }
 
@@ -254,12 +269,13 @@ class UserDashboardController extends Controller
             'phone' => ['required', Rule::unique('portal_user', 'phone')->ignore($userId)],
         ]);
 
-        if (!$validation->fails()) {
+        if (! $validation->fails()) {
             $user = PortalUser::find($userId);
-            if (!$user) {
+            if (! $user) {
                 $this->response['status'] = 0;
                 $this->response['error'] = 'User not found';
                 echo json_encode($this->response);
+
                 return;
             }
 
@@ -284,7 +300,7 @@ class UserDashboardController extends Controller
 
     public function saveTeacherSettings(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Unauthorized request';
             echo json_encode($this->response);
@@ -325,10 +341,11 @@ class UserDashboardController extends Controller
 
     public function saveChangePassword(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Unauthorized request';
             echo json_encode($this->response);
+
             return;
         }
 
@@ -338,13 +355,14 @@ class UserDashboardController extends Controller
             'password' => 'required|confirmed|min:6',
         ]);
 
-        if (!$validation->fails()) {
+        if (! $validation->fails()) {
             $portalUser = session('portal_user');
             $user = PortalUser::find($portalUser['id'] ?? 0);
-            if (!$user) {
+            if (! $user) {
                 $this->response['status'] = 0;
                 $this->response['error'] = 'User not found';
                 echo json_encode($this->response);
+
                 return;
             }
 
@@ -375,7 +393,7 @@ class UserDashboardController extends Controller
 
     public function selectTeacher()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -419,12 +437,13 @@ class UserDashboardController extends Controller
         $data['teachers'] = $teachers;
         // Expose the session flag to control password popup
         $data['portal_user'] = $portalUser;
+
         return view('web.user.student.select_teacher', $data);
     }
 
     public function accessTeacher(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -441,8 +460,8 @@ class UserDashboardController extends Controller
         }
 
         // Ensure this teacher is mapped to the logged-in student
-        $isMapped = \App\Models\StudentTeacherMap::where('student_id', (int) ($portalUser['id'] ?? 0))->where('teacher_id', $teacherId)->exists();
-        if (!$isMapped) {
+        $isMapped = StudentTeacherMap::where('student_id', (int) ($portalUser['id'] ?? 0))->where('teacher_id', $teacherId)->exists();
+        if (! $isMapped) {
             return redirect('user/select-teacher');
         }
 
@@ -452,7 +471,7 @@ class UserDashboardController extends Controller
         session()->forget('show_teacher_password_popup');
 
         // Persist as student's default teacher for future logins
-        $student = \App\Models\PortalUser::where('role', 2)->find((int) ($portalUser['id'] ?? 0));
+        $student = PortalUser::where('role', 2)->find((int) ($portalUser['id'] ?? 0));
         if ($student) {
             $student->default_teacher_id = $teacherId;
             $student->save();
@@ -466,7 +485,7 @@ class UserDashboardController extends Controller
 
     public function studentAttendance()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -541,11 +560,11 @@ class UserDashboardController extends Controller
             }
         }
 
-        if (!$data['attendance_table_ready'] || $batchRows->isEmpty()) {
+        if (! $data['attendance_table_ready'] || $batchRows->isEmpty()) {
             return view('web.user.student.attendance', $data);
         }
 
-        $batchIds = $batchRows->pluck('batch_id')->map(fn($id) => (int) $id)->unique()->values()->all();
+        $batchIds = $batchRows->pluck('batch_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $allRows = StudentAttendance::query()
             ->whereIn('batch_id', $batchIds)
             ->get(['batch_id', 'student_id', 'date', 'attendance_status']);
@@ -593,7 +612,7 @@ class UserDashboardController extends Controller
 
     public function studentReport()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -608,14 +627,15 @@ class UserDashboardController extends Controller
         $data = [];
         $data['title'] = 'My Reports';
         $data['active_tab'] = 'student_report';
-        $data['teacher'] = \App\Models\PortalUser::where('role', 1)->find($teacherId);
+        $data['teacher'] = PortalUser::where('role', 1)->find($teacherId);
         $data['reports'] = collect([]);
+
         return view('web.user.student.report', $data);
     }
 
     public function studentDashboard()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -629,12 +649,12 @@ class UserDashboardController extends Controller
 
         $studentId = (int) ($portalUser['id'] ?? 0);
         [$teacherId, $mappedClassrooms] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
-        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
 
-        $classroomIds = $mappedClassrooms->pluck('id')->map(fn($id) => (int) $id)->values();
-        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
+        $classroomIds = $mappedClassrooms->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
 
-        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_students]);
+        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_students]);
 
         $classrooms = $mappedClassrooms->map(function ($row) use ($batchCountsByClassroom, $studentCountsByClassroom) {
             $cid = (int) $row->id;
@@ -658,12 +678,13 @@ class UserDashboardController extends Controller
             'attendanceRate' => 0,
             'reportsAvailable' => 0,
         ];
+
         return view('web.user.student.dashboard', $data);
     }
 
     public function studentClassrooms()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -677,12 +698,12 @@ class UserDashboardController extends Controller
 
         $studentId = (int) ($portalUser['id'] ?? 0);
         [$teacherId, $mappedClassrooms] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
-        $teacher = \App\Models\PortalUser::where('role', 1)->find($teacherId);
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
 
-        $classroomIds = $mappedClassrooms->pluck('id')->map(fn($id) => (int) $id)->values();
-        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
+        $classroomIds = $mappedClassrooms->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
 
-        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_students]);
+        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_students]);
 
         $classrooms = $mappedClassrooms->map(function ($row) use ($batchCountsByClassroom, $studentCountsByClassroom) {
             $cid = (int) $row->id;
@@ -711,7 +732,7 @@ class UserDashboardController extends Controller
 
     public function studentEvents()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -741,22 +762,124 @@ class UserDashboardController extends Controller
         return view('web.user.student.events', $data);
     }
 
-    /**
-     * Read-only calendar payload for a student + teacher (same rules as student Events page).
-     *
-     * @return array{teacher: ?PortalUser, event_types: \Illuminate\Support\Collection, calendar_events: array<int, mixed>}|null
-     */
-    private function buildStudentEventsCalendarPayload(int $studentId, int $teacherId): ?array
+    public function saveStudentPersonalEvent(Request $request)
     {
-        if ($studentId <= 0 || $teacherId <= 0) {
-            return null;
+        if (! session()->has('portal_user')) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 403);
+        }
+        if (! Schema::hasTable('student_personal_events')) {
+            return response()->json(['status' => 0, 'error' => 'Personal events are not available.']);
         }
 
-        $teacher = PortalUser::where('role', 1)->find($teacherId);
-        if (!$teacher) {
-            return null;
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        $validation = Validator::make($request->all(), [
+            'id' => 'nullable|integer|exists:student_personal_events,id',
+            'title' => 'required|string|max:255',
+            'start_at' => 'required|date',
+            'end_at' => 'required|date',
+            'description' => 'nullable|string',
+            'all_day' => 'nullable|in:0,1,true,false',
+            'reminder_eligible' => 'nullable|in:0,1,true,false',
+        ]);
+
+        if ($validation->fails()) {
+            return response()->json([
+                'status' => 0,
+                'error_array' => formatErrors($validation->errors()->toArray()),
+            ]);
         }
 
+        $allDay = $request->boolean('all_day', true);
+        $start = Carbon::parse($request->start_at);
+        $end = Carbon::parse($request->end_at);
+        if ($allDay) {
+            $start = $start->copy()->startOfDay();
+            $end = $end->copy()->startOfDay();
+            if ($end->lt($start)) {
+                $end = $start->copy();
+            }
+        } else {
+            if ($end->lt($start)) {
+                $end = $start->copy()->addHour();
+            }
+        }
+
+        $attrs = [
+            'student_id' => $studentId,
+            'title' => $request->title,
+            'description' => $request->description,
+            'start_at' => $start->format('Y-m-d H:i:s'),
+            'end_at' => $end->format('Y-m-d H:i:s'),
+            'all_day' => $allDay,
+            'reminder_eligible' => $request->boolean('reminder_eligible', false),
+        ];
+
+        if ($request->filled('id')) {
+            $row = StudentPersonalEvent::query()->where('student_id', $studentId)->whereKey((int) $request->id)->first();
+            if (! $row) {
+                return response()->json(['status' => 0, 'error' => 'Event not found.']);
+            }
+            $row->update($attrs);
+        } else {
+            StudentPersonalEvent::query()->create($attrs);
+        }
+
+        return response()->json([
+            'status' => 1,
+            'msg' => $request->filled('id') ? 'Personal event updated.' : 'Personal event saved.',
+            'redirect_url' => url('user/student/events'),
+        ]);
+    }
+
+    public function deleteStudentPersonalEvent(Request $request)
+    {
+        if (! session()->has('portal_user')) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 403);
+        }
+        if (! Schema::hasTable('student_personal_events')) {
+            return response()->json(['status' => 0, 'error' => 'Personal events are not available.']);
+        }
+
+        $validation = Validator::make($request->all(), [
+            'id' => 'required|integer|exists:student_personal_events,id',
+        ]);
+        if ($validation->fails()) {
+            return response()->json([
+                'status' => 0,
+                'error_array' => formatErrors($validation->errors()->toArray()),
+            ]);
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        $deleted = StudentPersonalEvent::query()
+            ->where('student_id', $studentId)
+            ->whereKey((int) $request->id)
+            ->delete();
+
+        if (! $deleted) {
+            return response()->json(['status' => 0, 'error' => 'Event not found.']);
+        }
+
+        return response()->json([
+            'status' => 1,
+            'msg' => 'Personal event deleted.',
+            'redirect_url' => url('user/student/events'),
+        ]);
+    }
+
+    /**
+     * @return array{mappedClassroomIds: array<int, int>, mappedBatchIds: array<int, int>, enrollmentPairs: list<array{classroom_id: int, batch_id: int}>}
+     */
+    private function getEnrollmentContextForStudentTeacher(int $studentId, int $teacherId): array
+    {
         $mappedRows = DB::table('student_classroom_map')
             ->where('teacher_id', $teacherId)
             ->where('student_id', $studentId)
@@ -764,26 +887,26 @@ class UserDashboardController extends Controller
 
         $mappedClassroomIds = $mappedRows
             ->pluck('classroom_id')
-            ->filter(fn($id) => $id !== null)
-            ->map(fn($id) => (int) $id)
+            ->filter(fn ($id) => $id !== null)
+            ->map(fn ($id) => (int) $id)
             ->unique()
             ->values()
             ->all();
 
         $mappedBatchIds = $mappedRows
             ->pluck('batch_id')
-            ->filter(fn($id) => $id !== null)
-            ->map(fn($id) => (int) $id)
+            ->filter(fn ($id) => $id !== null)
+            ->map(fn ($id) => (int) $id)
             ->unique()
             ->values()
             ->all();
 
         $legacyEnrollment = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
         if ($legacyEnrollment !== null) {
-            if (!in_array($legacyEnrollment['classroom_id'], $mappedClassroomIds, true)) {
+            if (! in_array($legacyEnrollment['classroom_id'], $mappedClassroomIds, true)) {
                 $mappedClassroomIds[] = $legacyEnrollment['classroom_id'];
             }
-            if ($legacyEnrollment['batch_id'] !== null && !in_array((int) $legacyEnrollment['batch_id'], $mappedBatchIds, true)) {
+            if ($legacyEnrollment['batch_id'] !== null && ! in_array((int) $legacyEnrollment['batch_id'], $mappedBatchIds, true)) {
                 $mappedBatchIds[] = (int) $legacyEnrollment['batch_id'];
             }
         }
@@ -794,93 +917,178 @@ class UserDashboardController extends Controller
             $cid = $row->classroom_id !== null ? (int) $row->classroom_id : 0;
             $bid = $row->batch_id !== null ? (int) $row->batch_id : 0;
             if ($cid > 0 && $bid > 0) {
-                $enrollmentPairs[$cid . ':' . $bid] = ['classroom_id' => $cid, 'batch_id' => $bid];
+                $enrollmentPairs[$cid.':'.$bid] = ['classroom_id' => $cid, 'batch_id' => $bid];
             }
         }
         if ($legacyEnrollment !== null) {
             $lc = (int) $legacyEnrollment['classroom_id'];
             $lb = $legacyEnrollment['batch_id'] !== null ? (int) $legacyEnrollment['batch_id'] : 0;
             if ($lc > 0 && $lb > 0) {
-                $enrollmentPairs[$lc . ':' . $lb] = ['classroom_id' => $lc, 'batch_id' => $lb];
+                $enrollmentPairs[$lc.':'.$lb] = ['classroom_id' => $lc, 'batch_id' => $lb];
             }
         }
         $enrollmentPairs = array_values($enrollmentPairs);
 
+        return [
+            'mappedClassroomIds' => $mappedClassroomIds,
+            'mappedBatchIds' => $mappedBatchIds,
+            'enrollmentPairs' => $enrollmentPairs,
+        ];
+    }
+
+    /**
+     * @param  Builder<Event>  $q
+     */
+    private function constrainEventsQueryToStudentEnrollment($q, int $studentId, int $teacherId): void
+    {
+        $ctx = $this->getEnrollmentContextForStudentTeacher($studentId, $teacherId);
+        $mappedClassroomIds = $ctx['mappedClassroomIds'];
+        $mappedBatchIds = $ctx['mappedBatchIds'];
+        $enrollmentPairs = $ctx['enrollmentPairs'];
         $hasAllClassroomsColumn = Schema::hasColumn('events', 'all_classrooms');
         $hasAllBatchesColumn = Schema::hasColumn('events', 'all_batches');
 
+        $q->where(function ($sub) use (
+            $mappedClassroomIds,
+            $mappedBatchIds,
+            $enrollmentPairs,
+            $hasAllClassroomsColumn,
+            $hasAllBatchesColumn
+        ) {
+            $sub->whereRaw('1 = 0');
+
+            if ($enrollmentPairs !== []) {
+                $sub->orWhere(function ($both) use ($enrollmentPairs) {
+                    $both->whereHas('classrooms')
+                        ->whereHas('batches')
+                        ->where(function ($inner) use ($enrollmentPairs) {
+                            $inner->whereRaw('1 = 0');
+                            foreach ($enrollmentPairs as $pair) {
+                                $inner->orWhere(function ($row) use ($pair) {
+                                    $cid = $pair['classroom_id'];
+                                    $bid = $pair['batch_id'];
+                                    $row->whereHas('classrooms', fn ($cq) => $cq->where('classrooms.id', $cid))
+                                        ->whereHas('batches', fn ($bq) => $bq->where('batches.id', $bid));
+                                });
+                            }
+                        });
+                });
+            }
+
+            if ($mappedClassroomIds !== []) {
+                $sub->orWhere(function ($classOnly) use ($mappedClassroomIds) {
+                    $classOnly->whereHas('classrooms', function ($cq) use ($mappedClassroomIds) {
+                        $cq->whereIn('classrooms.id', $mappedClassroomIds);
+                    })->whereDoesntHave('batches');
+                });
+            }
+
+            if ($mappedBatchIds !== []) {
+                $sub->orWhere(function ($batchOnly) use ($mappedBatchIds) {
+                    $batchOnly->whereHas('batches', function ($bq) use ($mappedBatchIds) {
+                        $bq->whereIn('batches.id', $mappedBatchIds);
+                    })->whereDoesntHave('classrooms');
+                });
+            }
+
+            $sub->orWhere(function ($wide) {
+                $wide->whereDoesntHave('classrooms')->whereDoesntHave('batches');
+            });
+
+            if ($hasAllClassroomsColumn || $hasAllBatchesColumn) {
+                $sub->orWhere(function ($allQ) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
+                    if ($hasAllClassroomsColumn) {
+                        $allQ->where('all_classrooms', 1);
+                    }
+                    if ($hasAllBatchesColumn) {
+                        $method = $hasAllClassroomsColumn ? 'orWhere' : 'where';
+                        $allQ->{$method}('all_batches', 1);
+                    }
+                });
+            }
+        });
+    }
+
+    private function teacherEventVisibleToStudent(Event $event, int $studentId, int $teacherId): bool
+    {
+        if ((int) $event->teacher_id !== $teacherId) {
+            return false;
+        }
+
+        return Event::query()
+            ->whereKey($event->id)
+            ->where('teacher_id', $teacherId)
+            ->where(function ($q) use ($studentId, $teacherId) {
+                $this->constrainEventsQueryToStudentEnrollment($q, $studentId, $teacherId);
+            })
+            ->exists();
+    }
+
+    /**
+     * Portal students who should see a teacher-scheduled event (reminders, etc.).
+     *
+     * @return list<int>
+     */
+    public function portalStudentIdsForTeacherEvent(Event $event): array
+    {
+        $teacherId = (int) $event->teacher_id;
+        if ($teacherId <= 0) {
+            return [];
+        }
+
+        $ids = DB::table('student_classroom_map')
+            ->where('teacher_id', $teacherId)
+            ->distinct()
+            ->pluck('student_id');
+
+        if (Schema::hasTable('student_teacher_map')) {
+            $ids = $ids->merge(
+                DB::table('student_teacher_map')->where('teacher_id', $teacherId)->pluck('student_id')
+            );
+        }
+
+        $out = [];
+        foreach ($ids->unique() as $sid) {
+            $sid = (int) $sid;
+            if ($sid <= 0) {
+                continue;
+            }
+            if ($this->teacherEventVisibleToStudent($event, $sid, $teacherId)) {
+                $out[] = $sid;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Read-only calendar payload for a student + teacher (same rules as student Events page).
+     *
+     * @return array{teacher: ?PortalUser, event_types: Collection, calendar_events: array<int, mixed>}|null
+     */
+    private function buildStudentEventsCalendarPayload(int $studentId, int $teacherId): ?array
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return null;
+        }
+
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
+        if (! $teacher) {
+            return null;
+        }
+
         $events = Event::with(['eventType', 'classrooms', 'batches'])
             ->where('teacher_id', $teacherId)
-            ->where(function ($q) use (
-                $mappedClassroomIds,
-                $mappedBatchIds,
-                $enrollmentPairs,
-                $hasAllClassroomsColumn,
-                $hasAllBatchesColumn
-            ) {
-                $q->whereRaw('1 = 0');
-
-                // Event targets specific classroom(s) AND batch(es): student must match a (classroom, batch) pair.
-                if ($enrollmentPairs !== []) {
-                    $q->orWhere(function ($both) use ($enrollmentPairs) {
-                        $both->whereHas('classrooms')
-                            ->whereHas('batches')
-                            ->where(function ($inner) use ($enrollmentPairs) {
-                                $inner->whereRaw('1 = 0');
-                                foreach ($enrollmentPairs as $pair) {
-                                    $inner->orWhere(function ($row) use ($pair) {
-                                        $cid = $pair['classroom_id'];
-                                        $bid = $pair['batch_id'];
-                                        $row->whereHas('classrooms', fn($cq) => $cq->where('classrooms.id', $cid))
-                                            ->whereHas('batches', fn($bq) => $bq->where('batches.id', $bid));
-                                    });
-                                }
-                            });
-                    });
-                }
-
-                // Classrooms only (no batch list on the event): any student in those classrooms.
-                if ($mappedClassroomIds !== []) {
-                    $q->orWhere(function ($classOnly) use ($mappedClassroomIds) {
-                        $classOnly->whereHas('classrooms', function ($cq) use ($mappedClassroomIds) {
-                            $cq->whereIn('classrooms.id', $mappedClassroomIds);
-                        })->whereDoesntHave('batches');
-                    });
-                }
-
-                // Batches only (no classroom list on the event): any student in those batches.
-                if ($mappedBatchIds !== []) {
-                    $q->orWhere(function ($batchOnly) use ($mappedBatchIds) {
-                        $batchOnly->whereHas('batches', function ($bq) use ($mappedBatchIds) {
-                            $bq->whereIn('batches.id', $mappedBatchIds);
-                        })->whereDoesntHave('classrooms');
-                    });
-                }
-
-                // No classroom/batch pivots: treat as broadcast for all students under this teacher.
-                $q->orWhere(function ($wide) {
-                    $wide->whereDoesntHave('classrooms')->whereDoesntHave('batches');
-                });
-
-                if ($hasAllClassroomsColumn || $hasAllBatchesColumn) {
-                    $q->orWhere(function ($allQ) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
-                        if ($hasAllClassroomsColumn) {
-                            $allQ->where('all_classrooms', 1);
-                        }
-                        if ($hasAllBatchesColumn) {
-                            $method = $hasAllClassroomsColumn ? 'orWhere' : 'where';
-                            $allQ->{$method}('all_batches', 1);
-                        }
-                    });
-                }
+            ->where(function ($q) use ($studentId, $teacherId) {
+                $this->constrainEventsQueryToStudentEnrollment($q, $studentId, $teacherId);
             })
             ->orderBy('start_date')
             ->get();
 
         $eventTypeIds = $events
             ->pluck('event_type_id')
-            ->map(fn($id) => (int) $id)
-            ->filter(fn($id) => $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
             ->unique()
             ->values()
             ->all();
@@ -892,36 +1100,24 @@ class UserDashboardController extends Controller
                 ->orderBy('title')
                 ->get(['id', 'title', 'color_code']);
 
-        $calendarEvents = $events->map(function ($event) use ($hasAllClassroomsColumn, $hasAllBatchesColumn) {
-            $ext = [
-                'calendar' => 'et' . (int) $event->event_type_id,
-                'event_type_id' => $event->event_type_id,
-                'event_type_title' => $event->eventType?->title,
-                'classrooms' => $event->classrooms->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
-                'batches' => $event->batches->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
-                'status' => (int) $event->status,
-                'description' => $event->description,
-                'color_code' => $event->eventType?->color_code,
-            ];
+        $calendarEvents = $events
+            ->map(fn ($event) => FullCalendarEventPayload::fromTeacherEvent($event, true))
+            ->values()
+            ->all();
 
-            if ($hasAllClassroomsColumn) {
-                $ext['all_classrooms'] = (int) ($event->getAttribute('all_classrooms') ?? 0);
-            }
-            if ($hasAllBatchesColumn) {
-                $ext['all_batches'] = (int) ($event->getAttribute('all_batches') ?? 0);
-            }
+        if (Schema::hasTable('student_personal_events')) {
+            $personalRows = StudentPersonalEvent::query()
+                ->where('student_id', $studentId)
+                ->orderBy('start_at')
+                ->get()
+                ->map(fn (StudentPersonalEvent $e) => FullCalendarEventPayload::fromStudentPersonalEvent($e))
+                ->all();
+            $calendarEvents = array_merge($calendarEvents, $personalRows);
+        }
 
-            $row = [
-                'id' => 'db-' . $event->id,
-                'title' => $event->title,
-                'start' => $event->start_date,
-                'end' => $event->end_date,
-                'allDay' => true,
-                'extendedProps' => $ext,
-            ];
-
-            return array_merge($row, $this->studentCalendarColorsForEventType($event->eventType));
-        })->values()->all();
+        usort($calendarEvents, function ($a, $b) {
+            return strcmp((string) ($a['start'] ?? ''), (string) ($b['start'] ?? ''));
+        });
 
         return [
             'teacher' => $teacher,
@@ -933,9 +1129,9 @@ class UserDashboardController extends Controller
     /**
      * Distinct teachers linked to a student (classroom map, else teacher map).
      *
-     * @return \Illuminate\Support\Collection<int, object{teacher_id: int, teacher_name: string, teacher_email: string|null}>
+     * @return Collection<int, object{teacher_id: int, teacher_name: string, teacher_email: string|null}>
      */
-    private function teachersForStudentId(int $studentId): \Illuminate\Support\Collection
+    private function teachersForStudentId(int $studentId): Collection
     {
         if ($studentId <= 0) {
             return collect();
@@ -955,7 +1151,7 @@ class UserDashboardController extends Controller
             return $fromMap;
         }
 
-        if (!Schema::hasTable('student_teacher_map')) {
+        if (! Schema::hasTable('student_teacher_map')) {
             return collect();
         }
 
@@ -973,7 +1169,7 @@ class UserDashboardController extends Controller
     /**
      * Parent Events: union of per-teacher student-visible events (same rules as student calendar per teacher).
      *
-     * @return array{event_types: \Illuminate\Support\Collection, calendar_events: array<int, mixed>}
+     * @return array{event_types: Collection, calendar_events: array<int, mixed>}
      */
     private function buildParentAggregatedStudentEventsPayload(int $studentId, string $studentDisplayName): array
     {
@@ -1048,7 +1244,7 @@ class UserDashboardController extends Controller
         }
 
         $parentId = (int) ($portalUser['id'] ?? 0);
-        if (!$this->parentOwnsStudent($parentId, $selectedStudentId)) {
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
             session()->forget('selected_student_id');
 
             return redirect('user/select-student');
@@ -1073,45 +1269,6 @@ class UserDashboardController extends Controller
     }
 
     /**
-     * @return array{backgroundColor: string, borderColor: string, textColor: string}
-     */
-    private function studentCalendarColorsForEventType(?EventType $eventType): array
-    {
-        $raw = $eventType && $eventType->color_code !== null ? trim((string) $eventType->color_code) : '';
-        $raw = preg_replace('/\s+/', '', $raw) ?? '';
-
-        if ($raw === '') {
-            $bg = '#696cff';
-        } elseif (preg_match('/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/i', $raw)) {
-            $hex = ltrim($raw, '#');
-            if (strlen($hex) === 3) {
-                $bg = sprintf('#%s%s%s%s%s%s', $hex[0], $hex[0], $hex[1], $hex[1], $hex[2], $hex[2]);
-            } else {
-                $bg = '#' . strtolower(substr($hex, 0, 6));
-            }
-        } elseif (preg_match('/^[a-z]+$/i', $raw)) {
-            $bg = strtolower($raw);
-        } else {
-            $bg = '#696cff';
-        }
-
-        $text = '#ffffff';
-        if (preg_match('/^#([0-9a-fA-F]{6})$/', $bg)) {
-            $r = hexdec(substr($bg, 1, 2));
-            $g = hexdec(substr($bg, 3, 2));
-            $b = hexdec(substr($bg, 5, 2));
-            $lum = ($r * 0.299 + $g * 0.587 + $b * 0.114) / 255;
-            $text = $lum > 0.65 ? '#212529' : '#ffffff';
-        }
-
-        return [
-            'backgroundColor' => $bg,
-            'borderColor' => $bg,
-            'textColor' => $text,
-        ];
-    }
-
-    /**
      * Older admin flows store one classroom (and optional batch) on portal_user. The student portal
      * primarily uses student_classroom_map; this bridges the two so legacy assignments still work.
      *
@@ -1124,7 +1281,7 @@ class UserDashboardController extends Controller
         }
 
         $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id', 'batch_id']);
-        if (!$student) {
+        if (! $student) {
             return null;
         }
 
@@ -1134,14 +1291,14 @@ class UserDashboardController extends Controller
         }
 
         $classroom = Classroom::query()->whereKey($classroomId)->first(['id', 'teacher_id']);
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             return null;
         }
 
         $batchId = (int) ($student->batch_id ?? 0);
         if ($batchId > 0) {
             $batch = Batch::query()->whereKey($batchId)->first(['id', 'classroom_id', 'teacher_id']);
-            if (!$batch || (int) $batch->classroom_id !== $classroomId || (int) $batch->teacher_id !== $teacherId) {
+            if (! $batch || (int) $batch->classroom_id !== $classroomId || (int) $batch->teacher_id !== $teacherId) {
                 $batchId = 0;
             }
         }
@@ -1155,9 +1312,9 @@ class UserDashboardController extends Controller
     /**
      * Classrooms for a student under one teacher: map rows plus legacy portal_user.classroom_id when missing.
      *
-     * @return \Illuminate\Support\Collection<int, object{id: int|string, name: string}>
+     * @return Collection<int, object{id: int|string, name: string}>
      */
-    private function mergedStudentClassroomsForTeacher(int $studentId, int $teacherId): \Illuminate\Support\Collection
+    private function mergedStudentClassroomsForTeacher(int $studentId, int $teacherId): Collection
     {
         if ($studentId <= 0 || $teacherId <= 0) {
             return collect();
@@ -1169,8 +1326,8 @@ class UserDashboardController extends Controller
             ->whereNotNull('classroom_id')
             ->distinct()
             ->pluck('classroom_id')
-            ->map(fn($id) => (int) $id)
-            ->filter(fn($id) => $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
             ->unique()
             ->values();
 
@@ -1181,25 +1338,25 @@ class UserDashboardController extends Controller
                 ->where('teacher_id', $teacherId)
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn($c) => (object) ['id' => $c->id, 'name' => (string) $c->name]);
+                ->map(fn ($c) => (object) ['id' => $c->id, 'name' => (string) $c->name]);
         }
 
         $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
-        if ($legacy !== null && !$rows->contains(fn($r) => (int) $r->id === $legacy['classroom_id'])) {
+        if ($legacy !== null && ! $rows->contains(fn ($r) => (int) $r->id === $legacy['classroom_id'])) {
             $name = DB::table('classrooms')->where('id', $legacy['classroom_id'])->whereNull('deleted_at')->value('name');
             if ($name !== null) {
                 $rows->push((object) ['id' => $legacy['classroom_id'], 'name' => (string) $name]);
             }
         }
 
-        return $rows->sortBy(fn($r) => strtolower((string) $r->name))->values();
+        return $rows->sortBy(fn ($r) => strtolower((string) $r->name))->values();
     }
 
     /**
      * When the session “selected teacher” has no classroom data but another teacher linked to the student does,
      * switch to that teacher so the portal matches student_classroom_map (fixes wrong default_teacher_id).
      *
-     * @return array{0: int, 1: \Illuminate\Support\Collection<int, object{id: int|string, name: string}>}
+     * @return array{0: int, 1: Collection<int, object{id: int|string, name: string}>}
      */
     private function alignStudentPortalTeacherWithEnrollments(int $studentId, int $teacherId): array
     {
@@ -1214,7 +1371,7 @@ class UserDashboardController extends Controller
             ->distinct()
             ->orderBy('teacher_id')
             ->pluck('teacher_id')
-            ->map(fn($id) => (int) $id)
+            ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
 
@@ -1222,7 +1379,7 @@ class UserDashboardController extends Controller
             if ($tid <= 0 || $tid === $teacherId) {
                 continue;
             }
-            if (!Schema::hasTable('student_teacher_map') || !DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()) {
+            if (! Schema::hasTable('student_teacher_map') || ! DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()) {
                 continue;
             }
             $try = $this->mergedStudentClassroomsForTeacher($studentId, $tid);
@@ -1256,7 +1413,7 @@ class UserDashboardController extends Controller
         }
 
         $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id']);
-        if (!$student || (int) ($student->classroom_id ?? 0) !== $classroomId) {
+        if (! $student || (int) ($student->classroom_id ?? 0) !== $classroomId) {
             return 0;
         }
 
@@ -1265,7 +1422,7 @@ class UserDashboardController extends Controller
             return 0;
         }
 
-        if (!Schema::hasTable('student_teacher_map')) {
+        if (! Schema::hasTable('student_teacher_map')) {
             return 0;
         }
 
@@ -1273,13 +1430,13 @@ class UserDashboardController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}> $mappedRows
-     * @return \Illuminate\Support\Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}>
+     * @param  Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}>  $mappedRows
+     * @return Collection<int, object{id: int|string, name: string, teacher_id: int|string, teacher_name: string}>
      */
-    private function mergeLegacyIntoParentClassroomList(int $studentId, \Illuminate\Support\Collection $mappedRows): \Illuminate\Support\Collection
+    private function mergeLegacyIntoParentClassroomList(int $studentId, Collection $mappedRows): Collection
     {
         $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id']);
-        if (!$student || !(int) ($student->classroom_id ?? 0)) {
+        if (! $student || ! (int) ($student->classroom_id ?? 0)) {
             return $mappedRows;
         }
 
@@ -1293,12 +1450,12 @@ class UserDashboardController extends Controller
             ->select(['c.id', 'c.name', 'c.teacher_id', 't.name as teacher_name'])
             ->first();
 
-        if (!$cRow) {
+        if (! $cRow) {
             return $mappedRows;
         }
 
         $tid = (int) $cRow->teacher_id;
-        $exists = $mappedRows->contains(fn($r) => (int) $r->id === $cid && (int) ($r->teacher_id ?? 0) === $tid);
+        $exists = $mappedRows->contains(fn ($r) => (int) $r->id === $cid && (int) ($r->teacher_id ?? 0) === $tid);
         if ($exists) {
             return $mappedRows;
         }
@@ -1306,7 +1463,7 @@ class UserDashboardController extends Controller
         $linked = DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()
             || DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists();
 
-        if (!$linked) {
+        if (! $linked) {
             return $mappedRows;
         }
 
@@ -1328,27 +1485,27 @@ class UserDashboardController extends Controller
     private function buildStudentClassroomShowPayload(int $studentId, int $teacherId, int $classroomId, Request $request, bool $showTeacherBatchManageLink): ?array
     {
         $hasAccess = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->exists();
-        if (!$hasAccess) {
+        if (! $hasAccess) {
             $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
             $hasAccess = $legacy !== null && (int) $legacy['classroom_id'] === $classroomId;
         }
 
-        if (!$hasAccess) {
+        if (! $hasAccess) {
             return null;
         }
 
         $classroom = Classroom::query()
             ->with([
-                'batches' => fn($q) => $q->orderBy('name'),
-                'batches.exams' => fn($q) => $q->orderByDesc('exam_date')->orderBy('exam_name'),
+                'batches' => fn ($q) => $q->orderBy('name'),
+                'batches.exams' => fn ($q) => $q->orderByDesc('exam_date')->orderBy('exam_name'),
             ])
             ->find($classroomId);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             return null;
         }
 
-        $myBatchIds = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->whereNotNull('batch_id')->pluck('batch_id')->map(fn($b) => (int) $b)->unique()->values();
+        $myBatchIds = DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $teacherId)->where('classroom_id', $classroomId)->whereNotNull('batch_id')->pluck('batch_id')->map(fn ($b) => (int) $b)->unique()->values();
         $legacyEnrollment = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
         if ($legacyEnrollment !== null && (int) $legacyEnrollment['classroom_id'] === $classroomId && $legacyEnrollment['batch_id'] !== null) {
             $myBatchIds = $myBatchIds->push((int) $legacyEnrollment['batch_id'])->unique()->values();
@@ -1356,13 +1513,13 @@ class UserDashboardController extends Controller
         if ($myBatchIds->isNotEmpty()) {
             $classroom->setRelation(
                 'batches',
-                $classroom->batches->filter(fn($batch) => $myBatchIds->contains((int) $batch->id))->values()
+                $classroom->batches->filter(fn ($batch) => $myBatchIds->contains((int) $batch->id))->values()
             );
         }
 
         $teacher = PortalUser::where('role', 1)->find($teacherId);
 
-        $examIds = $classroom->batches->flatMap(fn($b) => $b->exams->pluck('id'))->unique()->filter()->values();
+        $examIds = $classroom->batches->flatMap(fn ($b) => $b->exams->pluck('id'))->unique()->filter()->values();
         $marksByExamId = collect();
         if ($examIds->isNotEmpty()) {
             $marksByExamId = Mark::query()->where('student_id', $studentId)->whereIn('exam_id', $examIds)->get()->keyBy('exam_id');
@@ -1373,17 +1530,17 @@ class UserDashboardController extends Controller
 
         $absenceByExamId = collect();
         if (Schema::hasTable('mark_absences') && $examIds->isNotEmpty()) {
-            $absenceByExamId = MarkAbsence::query()->where('student_id', $studentId)->whereIn('exam_id', $examIds)->get()->keyBy(fn($r) => (int) $r->exam_id);
+            $absenceByExamId = MarkAbsence::query()->where('student_id', $studentId)->whereIn('exam_id', $examIds)->get()->keyBy(fn ($r) => (int) $r->exam_id);
         }
 
-        $batchIds = $classroom->batches->pluck('id')->map(fn($bid) => (int) $bid)->values();
+        $batchIds = $classroom->batches->pluck('id')->map(fn ($bid) => (int) $bid)->values();
         $countsByBatch = collect();
         if ($batchIds->isNotEmpty()) {
-            $countsByBatch = DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->where('scm.classroom_id', $classroomId)->whereIn('scm.batch_id', $batchIds)->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.batch_id', DB::raw('COUNT(DISTINCT scm.student_id) as c'))->groupBy('scm.batch_id')->get()->mapWithKeys(fn($r) => [(int) $r->batch_id => (int) $r->c]);
+            $countsByBatch = DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->where('scm.teacher_id', $teacherId)->where('scm.classroom_id', $classroomId)->whereIn('scm.batch_id', $batchIds)->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.batch_id', DB::raw('COUNT(DISTINCT scm.student_id) as c'))->groupBy('scm.batch_id')->get()->mapWithKeys(fn ($r) => [(int) $r->batch_id => (int) $r->c]);
         }
 
         $attendanceTableReady = Schema::hasTable('student_attendances');
-        $allClassroomBatchIds = $classroom->batches->pluck('id')->map(fn($x) => (int) $x)->values()->all();
+        $allClassroomBatchIds = $classroom->batches->pluck('id')->map(fn ($x) => (int) $x)->values()->all();
         $attendanceDateKeysByBatch = [];
         $attendanceStudentStatusByBatchDate = [];
         if ($attendanceTableReady && $allClassroomBatchIds !== []) {
@@ -1439,7 +1596,7 @@ class UserDashboardController extends Controller
             }
         }
 
-        $validBatchIds = $classroom->batches->pluck('id')->map(fn($x) => (int) $x)->all();
+        $validBatchIds = $classroom->batches->pluck('id')->map(fn ($x) => (int) $x)->all();
         $requestedBatch = (int) $request->query('batch', 0);
         $requestedExam = (int) $request->query('exam', 0);
 
@@ -1448,7 +1605,7 @@ class UserDashboardController extends Controller
             $defaultBatchId = $requestedBatch;
         } elseif ($requestedExam > 0) {
             foreach ($classroom->batches as $b) {
-                if ($b->exams->contains(fn($e) => (int) $e->id === $requestedExam)) {
+                if ($b->exams->contains(fn ($e) => (int) $e->id === $requestedExam)) {
                     $defaultBatchId = (int) $b->id;
                     break;
                 }
@@ -1468,8 +1625,8 @@ class UserDashboardController extends Controller
 
         $highlightExamId = null;
         if ($requestedExam > 0 && $defaultBatchId !== null) {
-            $activeBatch = $classroom->batches->firstWhere(fn($b) => (int) $b->id === (int) $defaultBatchId);
-            if ($activeBatch && $activeBatch->exams->contains(fn($e) => (int) $e->id === $requestedExam)) {
+            $activeBatch = $classroom->batches->firstWhere(fn ($b) => (int) $b->id === (int) $defaultBatchId);
+            if ($activeBatch && $activeBatch->exams->contains(fn ($e) => (int) $e->id === $requestedExam)) {
                 $highlightExamId = $requestedExam;
             }
         }
@@ -1492,7 +1649,7 @@ class UserDashboardController extends Controller
 
     public function studentClassroomShow(Request $request, $id)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -1520,7 +1677,7 @@ class UserDashboardController extends Controller
 
     private function resolveParentPortalUser(): ?array
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return null;
         }
         $portalUser = session('portal_user');
@@ -1568,14 +1725,14 @@ class UserDashboardController extends Controller
         if ($selectedStudentId <= 0) {
             return redirect('user/select-student');
         }
-        if (!$this->parentOwnsStudent($parentId, $selectedStudentId)) {
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
             session()->forget('selected_student_id');
 
             return redirect('user/select-student');
         }
 
         $student = PortalUser::where('role', 2)->find($selectedStudentId);
-        if (!$student) {
+        if (! $student) {
             session()->forget('selected_student_id');
 
             return redirect('user/select-student');
@@ -1596,10 +1753,10 @@ class UserDashboardController extends Controller
 
         $mappedRows = $this->mergeLegacyIntoParentClassroomList($selectedStudentId, $mappedRows);
 
-        $classroomIds = $mappedRows->pluck('id')->map(fn($id) => (int) $id)->unique()->values();
-        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
+        $classroomIds = $mappedRows->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
+        $batchCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('batches')->whereIn('classroom_id', $classroomIds)->select('classroom_id', DB::raw('COUNT(*) as total_batches'))->groupBy('classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_batches]);
 
-        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn($r) => [(int) $r->classroom_id => (int) $r->total_students]);
+        $studentCountsByClassroom = $classroomIds->isEmpty() ? collect() : DB::table('student_classroom_map as scm')->join('portal_user as pu', 'pu.id', '=', 'scm.student_id')->whereIn('scm.classroom_id', $classroomIds)->whereNotNull('scm.classroom_id')->where('pu.role', 2)->whereNull('pu.deleted_at')->select('scm.classroom_id', DB::raw('COUNT(DISTINCT scm.student_id) as total_students'))->groupBy('scm.classroom_id')->get()->mapWithKeys(fn ($r) => [(int) $r->classroom_id => (int) $r->total_students]);
 
         $parentClassrooms = $mappedRows->map(function ($row) use ($batchCountsByClassroom, $studentCountsByClassroom) {
             $cid = (int) $row->id;
@@ -1639,7 +1796,7 @@ class UserDashboardController extends Controller
         if ($selectedStudentId <= 0) {
             return redirect('user/select-student');
         }
-        if (!$this->parentOwnsStudent($parentId, $selectedStudentId)) {
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
             session()->forget('selected_student_id');
 
             return redirect('user/select-student');
@@ -1694,7 +1851,7 @@ class UserDashboardController extends Controller
         }
 
         $studentId = (int) ($portalUser['id'] ?? 0);
-        $isMapped = \App\Models\StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $teacherId)->exists();
+        $isMapped = StudentTeacherMap::where('student_id', $studentId)->where('teacher_id', $teacherId)->exists();
         if (! $isMapped) {
             return redirect('user/select-teacher');
         }
@@ -1711,7 +1868,7 @@ class UserDashboardController extends Controller
 
     public function selectStudent()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -1739,12 +1896,13 @@ class UserDashboardController extends Controller
         $data = [];
         $data['students'] = $children;
         $data['portal_user'] = $portalUser;
+
         return view('web.user.parent.select_student', $data);
     }
 
     public function accessStudent(Request $request)
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $parent = session('portal_user');
@@ -1771,12 +1929,12 @@ class UserDashboardController extends Controller
             })
             ->exists();
 
-        if (!$isMapped) {
+        if (! $isMapped) {
             return redirect('user/select-student');
         }
 
-        $student = \App\Models\PortalUser::where('role', 2)->find($studentId);
-        if (!$student) {
+        $student = PortalUser::where('role', 2)->find($studentId);
+        if (! $student) {
             return redirect('user/select-student');
         }
 
@@ -1784,7 +1942,7 @@ class UserDashboardController extends Controller
         session()->put('selected_student_id', $student->id);
 
         // Persist as parent's default student for future logins
-        $parentModel = \App\Models\PortalUser::where('role', 3)->find((int) ($parent['id'] ?? 0));
+        $parentModel = PortalUser::where('role', 3)->find((int) ($parent['id'] ?? 0));
         if ($parentModel) {
             $parentModel->default_student_id = $student->id;
             $parentModel->save();
@@ -1797,7 +1955,7 @@ class UserDashboardController extends Controller
 
     public function parentDashboard()
     {
-        if (!session()->has('portal_user')) {
+        if (! session()->has('portal_user')) {
             return redirect('login');
         }
         $portalUser = session('portal_user');
@@ -1818,8 +1976,8 @@ class UserDashboardController extends Controller
             return redirect('user/select-student');
         }
 
-        $student = \App\Models\PortalUser::where('role', 2)->find($selectedStudentId);
-        if (!$student) {
+        $student = PortalUser::where('role', 2)->find($selectedStudentId);
+        if (! $student) {
             session()->forget('selected_student_id');
 
             return redirect('user/select-student');
@@ -1873,7 +2031,7 @@ class UserDashboardController extends Controller
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['status' => 0]);
         }
 
@@ -1883,7 +2041,7 @@ class UserDashboardController extends Controller
         // ✅ ONLY allow user to delete THEIR OWN notification
         $row = DB::table('notifications')->where('id', $id)->where('notifiable_id', $user->id)->where('notifiable_type', $morph)->first();
 
-        if (!$row) {
+        if (! $row) {
             return response()->json(['status' => 0]);
         }
 

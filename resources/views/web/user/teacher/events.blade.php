@@ -153,6 +153,14 @@
                                         placeholder="End Date" />
                                     <span class="ajax-error" style="color: red;"></span>
                                 </div>
+                                <div class="mb-5 ajax-field">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input allDay-switch" type="checkbox"
+                                            id="teacherEventAllDay" checked />
+                                        <label class="form-check-label" for="teacherEventAllDay">All day</label>
+                                    </div>
+                                    <input type="hidden" name="all_day" id="eventAllDayHidden" value="1" />
+                                </div>
                                 <!-- Classrooms -->
                                 <div class="mb-4 ajax-field select2-primary">
                                     <label class="form-label" for="eventGuests">Add Classrooms</label>
@@ -343,6 +351,16 @@
                 }
             });
 
+            function syncTeacherAllDayHidden() {
+                var cb = document.getElementById('teacherEventAllDay');
+                var h = document.getElementById('eventAllDayHidden');
+                if (cb && h) {
+                    h.value = cb.checked ? '1' : '0';
+                }
+            }
+            $(document).on('change', '#teacherEventAllDay', syncTeacherAllDayHidden);
+            syncTeacherAllDayHidden();
+
             // =============================
             // AJAX SUBMIT
             // =============================
@@ -350,6 +368,7 @@
                 e.preventDefault();
 
                 clearAjaxErrors('#addEventSidebar');
+                syncTeacherAllDayHidden();
 
                 var $form = $('#eventForm');
                 var btn = $(this);

@@ -8,6 +8,7 @@ use App\Models\Classroom;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Exam;
+use App\Models\LeaveRequests;
 use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\ParentStudentMap;
@@ -16,20 +17,21 @@ use App\Models\StudentAttendance;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
-use App\Models\LeaveRequests;
-use App\Notifications\MarksUpdatedNotification;
 use App\Notifications\PortalNotification;
+use App\Support\FullCalendarEventPayload;
 use App\Support\PortalDatabaseNotify;
 use App\Support\StudentEnrollmentSync;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class UserTeacherController extends Controller
 {
@@ -38,9 +40,10 @@ class UserTeacherController extends Controller
         $portal = session('portal_user');
         $userId = (int) ($portal['id'] ?? 0);
         $role = (int) ($portal['role'] ?? 0);
-        if (!$userId || $role !== 1) {
+        if (! $userId || $role !== 1) {
             return [null, redirect('login')];
         }
+
         return [$userId, null];
     }
 
@@ -51,7 +54,7 @@ class UserTeacherController extends Controller
         $userId = (int) ($portal['id'] ?? 0);
         $role = (int) ($portal['role'] ?? 0);
 
-        if (!$userId || !in_array($role, [1, 2])) {
+        if (! $userId || ! in_array($role, [1, 2])) {
             return [null, null, redirect('login')]; // ✅ FIXED
         }
 
@@ -76,10 +79,10 @@ class UserTeacherController extends Controller
 
         // Placeholder data; integrate with actual attendance tables if available
         $data['filters'] = [
-            'classrooms' => \App\Models\Classroom::where('teacher_id', $teacherId)
+            'classrooms' => Classroom::where('teacher_id', $teacherId)
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'batches' => \App\Models\Batch::where('teacher_id', $teacherId)
+            'batches' => Batch::where('teacher_id', $teacherId)
                 ->orderBy('name')
                 ->get(['id', 'name']),
         ];
@@ -144,6 +147,7 @@ class UserTeacherController extends Controller
         $data['active_tab'] = 'teacher_batches';
         $data['teacher_id'] = $teacherId;
         $data['batches'] = Batch::where('teacher_id', $teacherId)->with('classroom')->orderBy('id', 'desc')->get();
+
         return view('web.user.teacher.batches', $data);
     }
 
@@ -159,7 +163,7 @@ class UserTeacherController extends Controller
         $data['active_tab'] = 'teacher_students';
         $data['teacher_id'] = $teacherId;
         $portal = session('portal_user', []);
-        $data['teacher_name'] = !empty($portal['name']) ? (string) $portal['name'] : (string) (PortalUser::whereKey($teacherId)->value('name') ?? 'Teacher');
+        $data['teacher_name'] = ! empty($portal['name']) ? (string) $portal['name'] : (string) (PortalUser::whereKey($teacherId)->value('name') ?? 'Teacher');
 
         $mainUrl = url('user/teacher/students');
         $url = [];
@@ -178,11 +182,11 @@ class UserTeacherController extends Controller
         $data['search'] = $search = trim((string) ($request->search ?? ''));
         if ($search !== '') {
             $students->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('email', 'like', '%' . $search . '%')
-                    ->orWhere('phone', 'like', '%' . $search . '%');
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%');
             });
-            $url[] = 'search=' . urlencode($search);
+            $url[] = 'search='.urlencode($search);
         }
 
         $data['classroom_id'] = $classroomId = (int) ($request->classroom_id ?? 0);
@@ -190,7 +194,7 @@ class UserTeacherController extends Controller
             $students->whereHas('studentClassroomMaps', static function ($q) use ($teacherId, $classroomId) {
                 $q->where('teacher_id', $teacherId)->where('classroom_id', $classroomId);
             });
-            $url[] = 'classroom_id=' . $classroomId;
+            $url[] = 'classroom_id='.$classroomId;
         }
 
         $data['batch_id'] = $batchId = (int) ($request->batch_id ?? 0);
@@ -198,7 +202,7 @@ class UserTeacherController extends Controller
             $students->whereHas('studentClassroomMaps', static function ($q) use ($teacherId, $batchId) {
                 $q->where('teacher_id', $teacherId)->where('batch_id', $batchId);
             });
-            $url[] = 'batch_id=' . $batchId;
+            $url[] = 'batch_id='.$batchId;
         }
 
         $data['page'] = $page = (int) ($request->page ?? 1);
@@ -210,7 +214,7 @@ class UserTeacherController extends Controller
             $perPage = 50;
         }
 
-        $data['url'] = $mainUrl . (count($url) ? '?' . implode('&', $url) : '');
+        $data['url'] = $mainUrl.(count($url) ? '?'.implode('&', $url) : '');
         $data['num_rows'] = (clone $students)->count('portal_user.id');
         $data['students'] = $students
             ->orderBy('id', 'desc')
@@ -240,13 +244,14 @@ class UserTeacherController extends Controller
         if ($validator->fails()) {
             return response()->json(['status' => 0, 'error_array' => $validator->errors()->toArray()]);
         }
-        $classroom = $request->id ? Classroom::where('teacher_id', $teacherId)->find($request->id) : new Classroom();
-        if (!$classroom) {
+        $classroom = $request->id ? Classroom::where('teacher_id', $teacherId)->find($request->id) : new Classroom;
+        if (! $classroom) {
             return response()->json(['status' => 0, 'error' => 'Classroom not found']);
         }
         $classroom->name = $request->name;
         $classroom->teacher_id = $teacherId;
         $classroom->save();
+
         return response()->json(['status' => 1, 'msg' => 'Saved', 'redirect_url' => url('user/teacher/classrooms')]);
     }
 
@@ -258,14 +263,15 @@ class UserTeacherController extends Controller
         }
 
         $id = $request->id;
-        if (!$id) {
+        if (! $id) {
             return response()->json(['status' => 0, 'error' => 'Invalid request']);
         }
         $classroom = Classroom::where('teacher_id', $teacherId)->find($id);
-        if (!$classroom) {
+        if (! $classroom) {
             return response()->json(['status' => 0, 'error' => 'Classroom not found']);
         }
         $classroom->delete();
+
         return response()->json(['status' => 1, 'msg' => 'Deleted', 'redirect_url' => url('user/teacher/classrooms')]);
     }
 
@@ -287,11 +293,11 @@ class UserTeacherController extends Controller
             return response()->json(['status' => 0, 'error_array' => $validator->errors()->toArray()]);
         }
         $classroom = Classroom::where('teacher_id', $teacherId)->find($request->classroom_id);
-        if (!$classroom) {
+        if (! $classroom) {
             return response()->json(['status' => 0, 'error' => 'Invalid classroom']);
         }
-        $batch = $request->id ? Batch::where('teacher_id', $teacherId)->find($request->id) : new Batch();
-        if (!$batch) {
+        $batch = $request->id ? Batch::where('teacher_id', $teacherId)->find($request->id) : new Batch;
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Batch not found']);
         }
         $batch->name = $request->name;
@@ -299,6 +305,7 @@ class UserTeacherController extends Controller
         $batch->teacher_id = $teacherId;
         $batch->status = $request->status;
         $batch->save();
+
         return response()->json(['status' => 1, 'msg' => 'Saved', 'redirect_url' => url('user/teacher/batches')]);
     }
 
@@ -310,14 +317,15 @@ class UserTeacherController extends Controller
         }
 
         $id = $request->id;
-        if (!$id) {
+        if (! $id) {
             return response()->json(['status' => 0, 'error' => 'Invalid request']);
         }
         $batch = Batch::where('teacher_id', $teacherId)->find($id);
-        if (!$batch) {
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Batch not found']);
         }
         $batch->delete();
+
         return response()->json(['status' => 1, 'msg' => 'Deleted', 'redirect_url' => url('user/teacher/batches')]);
     }
 
@@ -351,8 +359,8 @@ class UserTeacherController extends Controller
         }
 
         if ($id) {
-            $owned = PortalUser::where('role', 2)->whereHas('teachers', static fn($q) => $q->whereKey($teacherId))->whereKey($id)->exists();
-            if (!$owned) {
+            $owned = PortalUser::where('role', 2)->whereHas('teachers', static fn ($q) => $q->whereKey($teacherId))->whereKey($id)->exists();
+            if (! $owned) {
                 return response()->json(['status' => 0, 'error' => 'Student not found.']);
             }
         }
@@ -361,7 +369,7 @@ class UserTeacherController extends Controller
         try {
             if ($id) {
                 $student = PortalUser::where('role', 2)->find($id);
-                if (!$student) {
+                if (! $student) {
                     DB::rollBack();
 
                     return response()->json(['status' => 0, 'error' => 'Student not found']);
@@ -375,7 +383,7 @@ class UserTeacherController extends Controller
                     return response()->json(['status' => 0, 'error' => 'Email and phone belong to different students.']);
                 }
                 $student = $studentByEmail ?: $studentByPhone;
-                if (!$student) {
+                if (! $student) {
                     if (PortalUser::where('email', $request->email)->where('role', '!=', 2)->exists()) {
                         DB::rollBack();
 
@@ -386,7 +394,7 @@ class UserTeacherController extends Controller
 
                         return response()->json(['status' => 0, 'error' => 'Phone already used by another user type.']);
                     }
-                    $student = new PortalUser();
+                    $student = new PortalUser;
                     $plain = Str::random(8);
                     $student->password = Hash::make($plain);
                     $student->p = $plain;
@@ -422,7 +430,7 @@ class UserTeacherController extends Controller
                         $parent = $match;
                     }
                 }
-                if (!$parent && $parentPhone !== '') {
+                if (! $parent && $parentPhone !== '') {
                     $match = PortalUser::where('phone', $parentPhone)->first();
                     if ($match && (int) ($match->role ?? 0) !== 3) {
                         DB::rollBack();
@@ -433,11 +441,11 @@ class UserTeacherController extends Controller
                         $parent = $match;
                     }
                 }
-                if (!$parent && !empty($student->parent_id)) {
+                if (! $parent && ! empty($student->parent_id)) {
                     $parent = PortalUser::where('role', 3)->find((int) $student->parent_id);
                 }
-                if (!$parent) {
-                    $parent = new PortalUser();
+                if (! $parent) {
+                    $parent = new PortalUser;
                     $parentPlain = Str::random(8);
                     $parent->password = Hash::make($parentPlain);
                     $parent->p = $parentPlain;
@@ -470,7 +478,7 @@ class UserTeacherController extends Controller
                     $parent->phone = $parentPhone;
                 }
                 if ($parent->name === null || $parent->name === '') {
-                    $parent->name = 'Parent of ' . $student->name;
+                    $parent->name = 'Parent of '.$student->name;
                 }
                 $parent->save();
 
@@ -488,7 +496,7 @@ class UserTeacherController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
 
-            return response()->json(['status' => 0, 'error' => 'Unable to save student. ' . $e->getMessage()]);
+            return response()->json(['status' => 0, 'error' => 'Unable to save student. '.$e->getMessage()]);
         }
 
         return response()->json(['status' => 1, 'msg' => 'Saved', 'redirect_url' => url('user/teacher/students')]);
@@ -507,7 +515,7 @@ class UserTeacherController extends Controller
         }
 
         $student = PortalUser::where('role', 2)->find($studentId);
-        if (!$student || !$student->teachers()->whereKey($teacherId)->exists()) {
+        if (! $student || ! $student->teachers()->whereKey($teacherId)->exists()) {
             return response()->json(['status' => 0, 'error' => 'Student not found.']);
         }
 
@@ -518,14 +526,14 @@ class UserTeacherController extends Controller
         }
 
         [$ok, $err] = StudentEnrollmentSync::validatePairsForTeacher($teacherId, $pairs);
-        if (!$ok) {
+        if (! $ok) {
             return response()->json(['status' => 0, 'error' => $err]);
         }
 
         try {
             StudentEnrollmentSync::syncForTeacher($studentId, $teacherId, $pairs);
         } catch (\Throwable $e) {
-            return response()->json(['status' => 0, 'error' => 'Unable to save enrollments. ' . $e->getMessage()]);
+            return response()->json(['status' => 0, 'error' => 'Unable to save enrollments. '.$e->getMessage()]);
         }
 
         return response()->json([
@@ -548,7 +556,7 @@ class UserTeacherController extends Controller
         }
 
         $classroom = Classroom::where('teacher_id', $teacherId)->find($classroomId);
-        if (!$classroom) {
+        if (! $classroom) {
             return response()->json(['status' => 0, 'error' => 'Invalid classroom']);
         }
 
@@ -573,7 +581,7 @@ class UserTeacherController extends Controller
         }
 
         $batch = Batch::where('teacher_id', $teacherId)->find($batchId);
-        if (!$batch) {
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Invalid batch']);
         }
 
@@ -596,20 +604,21 @@ class UserTeacherController extends Controller
         $idInput = (string) ($request->id ?? '');
         $decodedId = base64_decode($idInput, true);
         $id = is_string($decodedId) && ctype_digit($decodedId) ? (int) $decodedId : (int) $idInput;
-        if (!$id) {
+        if (! $id) {
             return response()->json(['status' => 0, 'error' => 'Invalid request']);
         }
         $student = PortalUser::where('role', 2)->find($id);
-        if (!$student) {
+        if (! $student) {
             return response()->json(['status' => 0, 'error' => 'Student not found']);
         }
         StudentClassroomMap::where('student_id', $student->id)->where('teacher_id', $teacherId)->delete();
         StudentTeacherMap::where('student_id', $student->id)->where('teacher_id', $teacherId)->delete();
         $stillMapped = StudentTeacherMap::where('student_id', $student->id)->exists();
-        if (!$stillMapped) {
+        if (! $stillMapped) {
             ParentStudentMap::where('student_id', $student->id)->delete();
             $student->delete();
         }
+
         return response()->json(['status' => 1, 'msg' => 'Deleted', 'redirect_url' => url('user/teacher/students')]);
     }
 
@@ -638,7 +647,7 @@ class UserTeacherController extends Controller
                 ->whereRaw('LOWER(name) = ?', [strtolower($batchRaw)])
                 ->first();
 
-        if (!$classroom && $batch) {
+        if (! $classroom && $batch) {
             $classroom = Classroom::where('teacher_id', $teacherId)->find((int) $batch->classroom_id);
         }
         $classroomId = $classroom ? (int) $classroom->id : 0;
@@ -650,15 +659,15 @@ class UserTeacherController extends Controller
 
         $classroom = Classroom::where('teacher_id', $teacherId)->find($classroomId);
         $batch = Batch::where('teacher_id', $teacherId)->find($batchId);
-        if (!$classroom) {
+        if (! $classroom) {
             return ['error' => 'Classroom does not belong to your account.'];
         }
-        if (!$batch) {
+        if (! $batch) {
             return ['error' => 'Batch does not belong to your account.'];
         }
         if ((int) $batch->classroom_id !== (int) $classroom->id) {
             $classroom = Classroom::where('teacher_id', $teacherId)->find((int) $batch->classroom_id);
-            if (!$classroom) {
+            if (! $classroom) {
                 return ['error' => 'Batch is not linked to a valid classroom for your account.'];
             }
             $classroomId = (int) $classroom->id;
@@ -689,7 +698,7 @@ class UserTeacherController extends Controller
         $filename = 'student_bulk_sample.csv';
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
         return response()->stream(
@@ -721,18 +730,20 @@ class UserTeacherController extends Controller
 
         $realPath = $request->file('file')->getRealPath();
         $handle = @fopen($realPath, 'r');
-        if (!$handle) {
+        if (! $handle) {
             return response()->json(['status' => 0, 'error' => 'Unable to read uploaded file']);
         }
 
         $header = fgetcsv($handle);
-        if (!$header || !is_array($header)) {
+        if (! $header || ! is_array($header)) {
             fclose($handle);
+
             return response()->json(['status' => 0, 'error' => 'CSV file is empty']);
         }
 
         $normalize = static function ($value) {
             $normalized = strtolower(trim((string) $value));
+
             return preg_replace('/^\xEF\xBB\xBF/', '', $normalized) ?? $normalized;
         };
         $headerMap = [];
@@ -740,23 +751,24 @@ class UserTeacherController extends Controller
             $headerMap[$normalize($column)] = $index;
         }
 
-        if (isset($headerMap['classroom']) && !isset($headerMap['classroom_id'])) {
+        if (isset($headerMap['classroom']) && ! isset($headerMap['classroom_id'])) {
             $headerMap['classroom_id'] = $headerMap['classroom'];
         }
-        if (isset($headerMap['batch']) && !isset($headerMap['batch_id'])) {
+        if (isset($headerMap['batch']) && ! isset($headerMap['batch_id'])) {
             $headerMap['batch_id'] = $headerMap['batch'];
         }
 
         $requiredColumns = ['name', 'email', 'phone', 'classroom_id', 'batch_id'];
         $missing = [];
         foreach ($requiredColumns as $column) {
-            if (!array_key_exists($column, $headerMap)) {
+            if (! array_key_exists($column, $headerMap)) {
                 $missing[] = $column;
             }
         }
-        if (!empty($missing)) {
+        if (! empty($missing)) {
             fclose($handle);
-            return response()->json(['status' => 0, 'error' => 'Missing required columns: ' . implode(', ', $missing)]);
+
+            return response()->json(['status' => 0, 'error' => 'Missing required columns: '.implode(', ', $missing)]);
         }
 
         $created = 0;
@@ -767,7 +779,7 @@ class UserTeacherController extends Controller
 
         while (($row = fgetcsv($handle)) !== false) {
             $line++;
-            if (!is_array($row)) {
+            if (! is_array($row)) {
                 continue;
             }
 
@@ -786,23 +798,25 @@ class UserTeacherController extends Controller
 
             $r1 = $this->resolveBulkClassroomBatchPair($teacherId, $classroomRaw, $batchRaw);
             if (isset($r1['error'])) {
-                $errors[] = 'Row ' . $line . ': ' . $r1['error'];
+                $errors[] = 'Row '.$line.': '.$r1['error'];
                 $skipped++;
+
                 continue;
             }
             if (isset($r1['skip'])) {
-                $errors[] = 'Row ' . $line . ': classroom and batch are required (first pair).';
+                $errors[] = 'Row '.$line.': classroom and batch are required (first pair).';
                 $skipped++;
+
                 continue;
             }
 
             $pairsAssoc = [];
             $p1 = $r1['pair'];
-            $pairsAssoc[$p1['classroom_id'] . '-' . $p1['batch_id']] = $p1;
+            $pairsAssoc[$p1['classroom_id'].'-'.$p1['batch_id']] = $p1;
 
             foreach ([['classroom_2', 'batch_2'], ['classroom_3', 'batch_3']] as $cols) {
                 [$ck, $bk] = $cols;
-                if (!isset($headerMap[$ck]) || !isset($headerMap[$bk])) {
+                if (! isset($headerMap[$ck]) || ! isset($headerMap[$bk])) {
                     continue;
                 }
                 $cRaw = trim((string) ($row[$headerMap[$ck]] ?? ''));
@@ -812,20 +826,22 @@ class UserTeacherController extends Controller
                     continue;
                 }
                 if (isset($rx['error'])) {
-                    $errors[] = 'Row ' . $line . ' (' . $ck . '/' . $bk . '): ' . $rx['error'];
+                    $errors[] = 'Row '.$line.' ('.$ck.'/'.$bk.'): '.$rx['error'];
                     $skipped++;
+
                     continue 2;
                 }
                 $px = $rx['pair'];
-                $pairsAssoc[$px['classroom_id'] . '-' . $px['batch_id']] = $px;
+                $pairsAssoc[$px['classroom_id'].'-'.$px['batch_id']] = $px;
             }
 
             $pairs = array_values($pairsAssoc);
 
             [$pairsOk, $pairsErr] = StudentEnrollmentSync::validatePairsForTeacher($teacherId, $pairs);
-            if (!$pairsOk) {
-                $errors[] = 'Row ' . $line . ': ' . $pairsErr;
+            if (! $pairsOk) {
+                $errors[] = 'Row '.$line.': '.$pairsErr;
                 $skipped++;
+
                 continue;
             }
 
@@ -849,9 +865,9 @@ class UserTeacherController extends Controller
             ]);
             if ($rowValidator->fails()) {
                 $errors[] =
-                    'Row ' .
-                    $line .
-                    ': ' .
+                    'Row '.
+                    $line.
+                    ': '.
                     implode(
                         ' ',
                         array_map(static function ($msg) {
@@ -859,13 +875,15 @@ class UserTeacherController extends Controller
                         }, $rowValidator->errors()->toArray()),
                     );
                 $skipped++;
+
                 continue;
             }
 
             $conflictUser = PortalUser::withTrashed()->where('email', $email)->first();
             if ($conflictUser && (int) ($conflictUser->role ?? 0) !== 2) {
-                $errors[] = 'Row ' . $line . ': email already used by a non-student account.';
+                $errors[] = 'Row '.$line.': email already used by a non-student account.';
                 $skipped++;
+
                 continue;
             }
 
@@ -873,8 +891,9 @@ class UserTeacherController extends Controller
             if ($studentByEmail) {
                 $phoneTakenByOther = PortalUser::where('role', 2)->where('phone', $phone)->where('id', '!=', $studentByEmail->id)->exists();
                 if ($phoneTakenByOther) {
-                    $errors[] = 'Row ' . $line . ': phone already registered to another student.';
+                    $errors[] = 'Row '.$line.': phone already registered to another student.';
                     $skipped++;
+
                     continue;
                 }
 
@@ -901,19 +920,21 @@ class UserTeacherController extends Controller
                     StudentEnrollmentSync::syncForTeacher($studentByEmail->id, $teacherId, $pairs);
                     $updated++;
                 } catch (\Throwable $e) {
-                    $errors[] = 'Row ' . $line . ': failed to update student (' . $e->getMessage() . ')';
+                    $errors[] = 'Row '.$line.': failed to update student ('.$e->getMessage().')';
                     $skipped++;
+
                     continue;
                 }
                 $student = $studentByEmail;
             } else {
                 if (PortalUser::where('role', 2)->where('phone', $phone)->exists()) {
-                    $errors[] = 'Row ' . $line . ': phone already registered to another student.';
+                    $errors[] = 'Row '.$line.': phone already registered to another student.';
                     $skipped++;
+
                     continue;
                 }
 
-                $student = new PortalUser();
+                $student = new PortalUser;
                 $plain = Str::random(8);
                 $student->password = Hash::make($plain);
                 $student->p = $plain;
@@ -935,8 +956,9 @@ class UserTeacherController extends Controller
                     StudentEnrollmentSync::syncForTeacher($student->id, $teacherId, $pairs);
                     $created++;
                 } catch (\Throwable $e) {
-                    $errors[] = 'Row ' . $line . ': failed to insert (' . $e->getMessage() . ')';
+                    $errors[] = 'Row '.$line.': failed to insert ('.$e->getMessage().')';
                     $skipped++;
+
                     continue;
                 }
             }
@@ -944,23 +966,25 @@ class UserTeacherController extends Controller
             // Optional parent creation/link (role=3)
             if ($parentName !== '' || $parentEmail !== '' || $parentPhone !== '') {
                 if ($parentEmail !== '' && PortalUser::where('email', $parentEmail)->exists()) {
-                    $errors[] = 'Row ' . $line . ': parent email already exists.';
+                    $errors[] = 'Row '.$line.': parent email already exists.';
                     $skipped++;
+
                     continue;
                 }
                 if ($parentPhone !== '' && PortalUser::where('phone', $parentPhone)->exists()) {
-                    $errors[] = 'Row ' . $line . ': parent phone already exists.';
+                    $errors[] = 'Row '.$line.': parent phone already exists.';
                     $skipped++;
+
                     continue;
                 }
-                $parent = new PortalUser();
+                $parent = new PortalUser;
                 $pPlain = Str::random(8);
                 $parent->password = Hash::make($pPlain);
                 $parent->p = $pPlain;
                 $parent->is_password_changed = 0;
                 $parent->role = 3;
                 $parent->created_by = $teacherId;
-                $parent->name = $parentName !== '' ? $parentName : 'Parent of ' . $student->name;
+                $parent->name = $parentName !== '' ? $parentName : 'Parent of '.$student->name;
                 if ($parentEmail !== '') {
                     $parent->email = $parentEmail;
                 }
@@ -972,7 +996,7 @@ class UserTeacherController extends Controller
                     $student->parent_id = $parent->id;
                     $student->save();
                 } catch (\Throwable $e) {
-                    $errors[] = 'Row ' . $line . ': failed to create parent (' . $e->getMessage() . ')';
+                    $errors[] = 'Row '.$line.': failed to create parent ('.$e->getMessage().')';
                 }
             }
         }
@@ -981,6 +1005,7 @@ class UserTeacherController extends Controller
 
         $message = "Bulk upload completed. Created: {$created}, Updated: {$updated}, Skipped: {$skipped}.";
         $status = $created + $updated > 0 ? 1 : 0;
+
         return response()->json([
             'status' => $status,
             'msg' => $message,
@@ -1008,11 +1033,11 @@ class UserTeacherController extends Controller
         }
 
         $student = PortalUser::where('role', 2)
-            ->whereHas('teachers', static fn($q) => $q->whereKey($teacherId))
+            ->whereHas('teachers', static fn ($q) => $q->whereKey($teacherId))
             ->with(['classroom', 'batch.classroom', 'teachers'])
             ->find($decodedId);
 
-        if (!$student) {
+        if (! $student) {
             return redirect('user/teacher/students');
         }
 
@@ -1048,9 +1073,9 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        $classroom = Classroom::with(['batches' => fn($q) => $q->orderBy('name')])->find($id);
+        $classroom = Classroom::with(['batches' => fn ($q) => $q->orderBy('name')])->find($id);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             return redirect('user/teacher/classrooms');
         }
 
@@ -1068,7 +1093,7 @@ class UserTeacherController extends Controller
             $list = collect();
             foreach ($mapsByBatch->get($batch->id, collect()) as $map) {
                 $student = $studentsById->get($map->student_id);
-                if (!$student || isset($seen[$student->id])) {
+                if (! $student || isset($seen[$student->id])) {
                     continue;
                 }
                 $seen[$student->id] = true;
@@ -1077,10 +1102,10 @@ class UserTeacherController extends Controller
             $studentsByBatch[$batch->id] = $list->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
         }
 
-        $totalStudentsInClassroom = $mapRows->pluck('student_id')->unique()->filter(fn($sid) => $studentsById->has($sid))->count();
+        $totalStudentsInClassroom = $mapRows->pluck('student_id')->unique()->filter(fn ($sid) => $studentsById->has($sid))->count();
 
-        $batchIds = $classroom->batches->pluck('id')->map(fn($id) => (int) $id)->values();
-        $examsGrouped = $batchIds->isEmpty() ? collect() : Exam::query()->whereIn('batch_id', $batchIds)->orderBy('exam_date')->orderBy('id')->get()->groupBy(fn(Exam $e) => (int) $e->batch_id);
+        $batchIds = $classroom->batches->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $examsGrouped = $batchIds->isEmpty() ? collect() : Exam::query()->whereIn('batch_id', $batchIds)->orderBy('exam_date')->orderBy('id')->get()->groupBy(fn (Exam $e) => (int) $e->batch_id);
 
         $examsByBatch = [];
         foreach ($classroom->batches as $batch) {
@@ -1105,7 +1130,7 @@ class UserTeacherController extends Controller
         }
 
         $data = [];
-        $data['title'] = 'Classroom: ' . $classroom->name;
+        $data['title'] = 'Classroom: '.$classroom->name;
         $data['active_tab'] = 'teacher_classrooms';
         $data['classroom'] = $classroom;
         $data['students_by_batch'] = $studentsByBatch;
@@ -1126,7 +1151,7 @@ class UserTeacherController extends Controller
             $list = $studentsByBatch[$bid] ?? collect();
             $attendanceModalStudentsByBatch[$bid] = $list
                 ->map(
-                    static fn(PortalUser $s) => [
+                    static fn (PortalUser $s) => [
                         'id' => (int) $s->id,
                         'name' => (string) $s->name,
                     ],
@@ -1168,7 +1193,7 @@ class UserTeacherController extends Controller
         [$teacherId, $redirect] = $this->requireTeacher();
         if ($redirect) {
             $this->response['error'] = 'Unauthorized request';
-        } elseif (!Schema::hasTable('student_attendances')) {
+        } elseif (! Schema::hasTable('student_attendances')) {
             $this->response['error'] = 'Attendance is not available.';
         } else {
             $validation = Validator::make($request->all(), [
@@ -1179,10 +1204,10 @@ class UserTeacherController extends Controller
                 'return_classroom_id' => 'nullable|integer',
             ]);
 
-            if (!$validation->fails()) {
+            if (! $validation->fails()) {
                 $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
 
-                if (!$batch) {
+                if (! $batch) {
                     $this->response['error_array'] = formatErrors([
                         'batch_id' => ['Batch not found.'],
                     ]);
@@ -1193,14 +1218,14 @@ class UserTeacherController extends Controller
                             'batch_id' => ['This batch does not belong to that classroom.'],
                         ]);
                     } else {
-                        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(static fn($id) => (int) $id)->all();
+                        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(static fn ($id) => (int) $id)->all();
 
                         $allowedSet = array_fill_keys($allowedStudentIds, true);
-                        $date = \Carbon\Carbon::parse($request->date)->format('Y-m-d');
+                        $date = Carbon::parse($request->date)->format('Y-m-d');
                         $sid = (int) $request->student_id;
                         $status = (string) $request->attendance_status;
 
-                        if (!isset($allowedSet[$sid])) {
+                        if (! isset($allowedSet[$sid])) {
                             $this->response['error_array'] = formatErrors([
                                 'student_id' => ['This student is not in the selected batch.'],
                             ]);
@@ -1220,7 +1245,7 @@ class UserTeacherController extends Controller
 
                             $this->response['status'] = 1;
                             $this->response['msg'] = 'Attendance saved.';
-                            $this->response['redirect_url'] = url('user/teacher/classrooms/details/' . $batch->classroom_id);
+                            $this->response['redirect_url'] = url('user/teacher/classrooms/details/'.$batch->classroom_id);
                         }
                     }
                 }
@@ -1242,7 +1267,7 @@ class UserTeacherController extends Controller
             return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
         }
 
-        if (!Schema::hasTable('student_attendances')) {
+        if (! Schema::hasTable('student_attendances')) {
             return response()->json(['status' => 0, 'error' => 'Attendance is not available']);
         }
 
@@ -1259,20 +1284,20 @@ class UserTeacherController extends Controller
 
         $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Batch not found']);
         }
 
-        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(static fn($id) => (int) $id)->all();
+        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(static fn ($id) => (int) $id)->all();
 
         $allowedSet = array_fill_keys($allowedStudentIds, true);
-        $date = \Carbon\Carbon::parse($request->attendance_date)->format('Y-m-d');
+        $date = Carbon::parse($request->attendance_date)->format('Y-m-d');
         $statuses = $request->input('statuses', []);
 
         DB::transaction(function () use ($batch, $date, $statuses, $allowedSet) {
             foreach ($statuses as $studentId => $raw) {
                 $sid = (int) $studentId;
-                if (!isset($allowedSet[$sid])) {
+                if (! isset($allowedSet[$sid])) {
                     continue;
                 }
                 $v = $raw === null ? '' : trim((string) $raw);
@@ -1312,13 +1337,13 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        if (!Schema::hasTable('student_attendances')) {
+        if (! Schema::hasTable('student_attendances')) {
             abort(404, 'Attendance is not available.');
         }
 
-        $classroom = Classroom::with(['batches' => fn($q) => $q->orderBy('name')])->find($id);
+        $classroom = Classroom::with(['batches' => fn ($q) => $q->orderBy('name')])->find($id);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             abort(404);
         }
 
@@ -1329,7 +1354,7 @@ class UserTeacherController extends Controller
 
         $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey($batchId)->first();
 
-        if (!$batch) {
+        if (! $batch) {
             abort(404, 'Batch not found.');
         }
 
@@ -1342,7 +1367,7 @@ class UserTeacherController extends Controller
         $students = collect();
         foreach ($mapRows as $map) {
             $student = $studentsById->get($map->student_id);
-            if (!$student || isset($seen[$student->id])) {
+            if (! $student || isset($seen[$student->id])) {
                 continue;
             }
             $seen[$student->id] = true;
@@ -1354,7 +1379,7 @@ class UserTeacherController extends Controller
         $slugBatch = Str::slug($batch->name, '-') ?: 'batch';
 
         if ($request->isMethod('post')) {
-            $allowedDatesOrdered = StudentAttendance::query()->where('batch_id', $batch->id)->orderBy('date')->get()->pluck('date')->map(static fn($dt) => \Carbon\Carbon::parse($dt)->format('Y-m-d'))->unique()->values()->all();
+            $allowedDatesOrdered = StudentAttendance::query()->where('batch_id', $batch->id)->orderBy('date')->get()->pluck('date')->map(static fn ($dt) => Carbon::parse($dt)->format('Y-m-d'))->unique()->values()->all();
 
             if ($allowedDatesOrdered === []) {
                 abort(422, 'No attendance dates for this batch yet.');
@@ -1363,7 +1388,7 @@ class UserTeacherController extends Controller
             $allowedDateSet = array_fill_keys($allowedDatesOrdered, true);
 
             $datesInput = $request->input('attendance_dates', []);
-            if (!is_array($datesInput)) {
+            if (! is_array($datesInput)) {
                 $datesInput = $datesInput !== null && $datesInput !== '' ? [$datesInput] : [];
             }
 
@@ -1371,11 +1396,11 @@ class UserTeacherController extends Controller
             $picked = [];
             foreach ($datesInput as $raw) {
                 try {
-                    $d = \Carbon\Carbon::parse($raw)->format('Y-m-d');
+                    $d = Carbon::parse($raw)->format('Y-m-d');
                 } catch (\Throwable $e) {
                     continue;
                 }
-                if (isset($allowedDateSet[$d]) && !isset($picked[$d])) {
+                if (isset($allowedDateSet[$d]) && ! isset($picked[$d])) {
                     $picked[$d] = true;
                     $selectedDates[] = $d;
                 }
@@ -1384,10 +1409,10 @@ class UserTeacherController extends Controller
                 $selectedDates = $allowedDatesOrdered;
             }
 
-            $allowedStudentIdSet = array_fill_keys($students->pluck('id')->map(static fn($i) => (int) $i)->values()->all(), true);
+            $allowedStudentIdSet = array_fill_keys($students->pluck('id')->map(static fn ($i) => (int) $i)->values()->all(), true);
 
             $studentIdsInput = $request->input('student_ids', []);
-            if (!is_array($studentIdsInput)) {
+            if (! is_array($studentIdsInput)) {
                 $studentIdsInput = [];
             }
             $studentIdsOrdered = array_values(array_unique(array_map('intval', array_filter($studentIdsInput))));
@@ -1395,7 +1420,7 @@ class UserTeacherController extends Controller
                 abort(422, 'No students to export.');
             }
             foreach ($studentIdsOrdered as $sid) {
-                if (!isset($allowedStudentIdSet[$sid])) {
+                if (! isset($allowedStudentIdSet[$sid])) {
                     abort(422, 'Invalid student in export.');
                 }
             }
@@ -1420,13 +1445,13 @@ class UserTeacherController extends Controller
             });
             foreach ($attQuery->get(['student_id', 'date', 'attendance_status']) as $row) {
                 $d = $row->date->format('Y-m-d');
-                if (!isset($byDateSid[$d])) {
+                if (! isset($byDateSid[$d])) {
                     continue;
                 }
                 $byDateSid[$d][(int) $row->student_id] = (string) $row->attendance_status;
             }
 
-            $filename = $slugClass . '-' . $slugBatch . '-attendance-' . now()->format('Y-m-d') . '.csv';
+            $filename = $slugClass.'-'.$slugBatch.'-attendance-'.now()->format('Y-m-d').'.csv';
 
             return response()->streamDownload(
                 function () use ($classroom, $batch, $studentsExport, $selectedDates, $byDateSid) {
@@ -1435,7 +1460,7 @@ class UserTeacherController extends Controller
 
                     $header = ['#', 'Student name', 'Classroom', 'Batch'];
                     foreach ($selectedDates as $d) {
-                        $header[] = \Carbon\Carbon::parse($d)->format('j F Y');
+                        $header[] = Carbon::parse($d)->format('j F Y');
                     }
                     fputcsv($out, $header);
 
@@ -1465,17 +1490,17 @@ class UserTeacherController extends Controller
         }
 
         try {
-            $dateYmd = \Carbon\Carbon::parse($dateRaw)->format('Y-m-d');
+            $dateYmd = Carbon::parse($dateRaw)->format('Y-m-d');
         } catch (\Throwable $e) {
             abort(422, 'Invalid attendance_date.');
         }
 
         $statusBySid = StudentAttendance::query()->where('batch_id', $batch->id)->whereDate('date', $dateYmd)->get()->keyBy('student_id');
 
-        $filename = $slugClass . '-' . $slugBatch . '-attendance-' . $dateYmd . '.csv';
+        $filename = $slugClass.'-'.$slugBatch.'-attendance-'.$dateYmd.'.csv';
 
         return response()->streamDownload(
-            function () use ($classroom, $batch, $students, $dateYmd, $statusBySid) {
+            function () use ($classroom, $batch, $students, $statusBySid) {
                 $out = fopen('php://output', 'w');
                 fwrite($out, "\xEF\xBB\xBF");
 
@@ -1506,7 +1531,7 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        if (!Schema::hasTable('student_attendances')) {
+        if (! Schema::hasTable('student_attendances')) {
             return redirect()->back()->with('import_attendance_error', 'Attendance storage is not available.');
         }
 
@@ -1518,30 +1543,30 @@ class UserTeacherController extends Controller
 
         $classroom = Classroom::query()->find($id);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             return redirect()->back()->with('import_attendance_error', 'Classroom not found.');
         }
 
         $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey((int) $validated['batch_id'])->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return redirect()->back()->with('import_attendance_error', 'Batch not found.');
         }
 
         $file = $request->file('csv_file');
-        if (!$file || !$file->isValid()) {
+        if (! $file || ! $file->isValid()) {
             return redirect()->back()->with('import_attendance_error', 'Invalid upload file.');
         }
 
         $ext = strtolower((string) $file->getClientOriginalExtension());
-        if (!in_array($ext, ['csv', 'txt'], true)) {
+        if (! in_array($ext, ['csv', 'txt'], true)) {
             return redirect()->back()->with('import_attendance_error', 'File must be a .csv or .txt file.');
         }
 
-        $dateYmd = \Carbon\Carbon::parse($validated['attendance_date'])->format('Y-m-d');
+        $dateYmd = Carbon::parse($validated['attendance_date'])->format('Y-m-d');
 
         $path = $file->getRealPath();
-        if (!$path || !is_readable($path)) {
+        if (! $path || ! is_readable($path)) {
             return redirect()->back()->with('import_attendance_error', 'Could not read the uploaded file.');
         }
 
@@ -1571,7 +1596,7 @@ class UserTeacherController extends Controller
             $header = $line1;
         } else {
             $meta = trim((string) ($line1[4] ?? ''));
-            if (!preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $meta, $m) || $m[1] !== $dateYmd) {
+            if (! preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $meta, $m) || $m[1] !== $dateYmd) {
                 fclose($handle);
 
                 return redirect()->back()->with('import_attendance_error', 'This file does not match the selected date. Choose the same date you used for Download template, or download the template again.');
@@ -1594,7 +1619,7 @@ class UserTeacherController extends Controller
             return redirect()->back()->with('import_attendance_error', 'Unexpected header row. Download the template again (first row must be: #, Student name, Classroom, Batch, Status).');
         }
 
-        $allowedStudentIdSet = array_fill_keys(StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('classroom_id', $classroom->id)->where('batch_id', $batch->id)->pluck('student_id')->map(static fn($sid) => (int) $sid)->unique()->values()->all(), true);
+        $allowedStudentIdSet = array_fill_keys(StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('classroom_id', $classroom->id)->where('batch_id', $batch->id)->pluck('student_id')->map(static fn ($sid) => (int) $sid)->unique()->values()->all(), true);
 
         $studentsByLowerName = [];
         $allowedIds = array_keys($allowedStudentIdSet);
@@ -1603,14 +1628,13 @@ class UserTeacherController extends Controller
                 ->whereIn('id', $allowedIds)
                 ->where('role', 2)
                 ->whereNull('deleted_at')
-                ->get(['id', 'name'])
-            as $pu
+                ->get(['id', 'name']) as $pu
         ) {
             $nk = strtolower(trim((string) ($pu->name ?? '')));
             if ($nk === '') {
                 continue;
             }
-            if (!isset($studentsByLowerName[$nk])) {
+            if (! isset($studentsByLowerName[$nk])) {
                 $studentsByLowerName[$nk] = [];
             }
             $studentsByLowerName[$nk][] = (int) $pu->id;
@@ -1635,20 +1659,20 @@ class UserTeacherController extends Controller
                     $nameKey = strtolower($studentName);
                     $matches = $studentsByLowerName[$nameKey] ?? [];
                     if ($matches === []) {
-                        throw new \RuntimeException('Row ' . $lineNum . ': no student named "' . $studentName . '" in this batch.');
+                        throw new \RuntimeException('Row '.$lineNum.': no student named "'.$studentName.'" in this batch.');
                     }
                     if (count($matches) > 1) {
-                        throw new \RuntimeException('Row ' . $lineNum . ': more than one student named "' . $studentName . '" in this batch; names must be unique for this import format.');
+                        throw new \RuntimeException('Row '.$lineNum.': more than one student named "'.$studentName.'" in this batch; names must be unique for this import format.');
                     }
                     $studentId = (int) $matches[0];
-                    if (!isset($allowedStudentIdSet[$studentId])) {
-                        throw new \RuntimeException('Row ' . $lineNum . ': student is not in this batch.');
+                    if (! isset($allowedStudentIdSet[$studentId])) {
+                        throw new \RuntimeException('Row '.$lineNum.': student is not in this batch.');
                     }
 
                     $raw = trim((string) ($row[4] ?? ''));
                     $normalized = $this->normalizeAttendanceImportStatus($raw);
                     if ($normalized === false) {
-                        throw new \RuntimeException('Row ' . $lineNum . ': Status must be P, A, or L (or leave blank to clear).');
+                        throw new \RuntimeException('Row '.$lineNum.': Status must be P, A, or L (or leave blank to clear).');
                     }
 
                     if ($normalized === '') {
@@ -1679,7 +1703,7 @@ class UserTeacherController extends Controller
 
         return redirect()
             ->back()
-            ->with('import_attendance_success', 'Attendance import finished. ' . $importedRows . ' student row(s) saved for ' . $dateYmd . ' (' . $batch->name . ').');
+            ->with('import_attendance_success', 'Attendance import finished. '.$importedRows.' student row(s) saved for '.$dateYmd.' ('.$batch->name.').');
     }
 
     /**
@@ -1706,9 +1730,9 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        $classroom = Classroom::with(['batches' => fn($q) => $q->orderBy('name')])->find($id);
+        $classroom = Classroom::with(['batches' => fn ($q) => $q->orderBy('name')])->find($id);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             abort(404);
         }
 
@@ -1719,7 +1743,7 @@ class UserTeacherController extends Controller
 
         $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey($batchId)->first();
 
-        if (!$batch) {
+        if (! $batch) {
             abort(404);
         }
 
@@ -1732,7 +1756,7 @@ class UserTeacherController extends Controller
         $students = collect();
         foreach ($mapRows as $map) {
             $student = $studentsById->get($map->student_id);
-            if (!$student || isset($seen[$student->id])) {
+            if (! $student || isset($seen[$student->id])) {
                 continue;
             }
             $seen[$student->id] = true;
@@ -1740,7 +1764,7 @@ class UserTeacherController extends Controller
         }
         $students = $students->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
-        $allowedStudentIdSet = array_fill_keys($students->pluck('id')->map(fn($i) => (int) $i)->values()->all(), true);
+        $allowedStudentIdSet = array_fill_keys($students->pluck('id')->map(fn ($i) => (int) $i)->values()->all(), true);
 
         $allExams = Exam::query()->where('batch_id', $batch->id)->orderBy('exam_date')->orderBy('id')->get();
 
@@ -1748,7 +1772,7 @@ class UserTeacherController extends Controller
 
         if ($request->isMethod('post')) {
             $examIdsInput = $request->input('exam_ids', []);
-            if (!is_array($examIdsInput)) {
+            if (! is_array($examIdsInput)) {
                 $examIdsInput = [];
             }
             $examIdsOrdered = array_values(array_unique(array_map('intval', array_filter($examIdsInput))));
@@ -1756,7 +1780,7 @@ class UserTeacherController extends Controller
                 abort(422, 'Select at least one test to export.');
             }
             foreach ($examIdsOrdered as $eid) {
-                if (!$examsById->has($eid)) {
+                if (! $examsById->has($eid)) {
                     abort(422, 'Invalid test selection.');
                 }
             }
@@ -1766,7 +1790,7 @@ class UserTeacherController extends Controller
             }
 
             $studentIdsInput = $request->input('student_ids', []);
-            if (!is_array($studentIdsInput)) {
+            if (! is_array($studentIdsInput)) {
                 $studentIdsInput = [];
             }
             $studentIdsOrdered = array_values(array_unique(array_map('intval', array_filter($studentIdsInput))));
@@ -1774,7 +1798,7 @@ class UserTeacherController extends Controller
                 $students = collect();
             } else {
                 foreach ($studentIdsOrdered as $sid) {
-                    if (!isset($allowedStudentIdSet[$sid])) {
+                    if (! isset($allowedStudentIdSet[$sid])) {
                         abort(422, 'Invalid student in export.');
                     }
                 }
@@ -1789,13 +1813,13 @@ class UserTeacherController extends Controller
             }
         } else {
             $examIdsQuery = $request->query('exam_ids', []);
-            if (!is_array($examIdsQuery)) {
+            if (! is_array($examIdsQuery)) {
                 $examIdsQuery = $examIdsQuery !== null && $examIdsQuery !== '' ? [$examIdsQuery] : [];
             }
             $examIdsOrderedGet = array_values(array_unique(array_map('intval', array_filter($examIdsQuery))));
             if ($examIdsOrderedGet !== []) {
                 foreach ($examIdsOrderedGet as $eid) {
-                    if (!$examsById->has($eid)) {
+                    if (! $examsById->has($eid)) {
                         abort(422, 'Invalid test selection for export.');
                     }
                 }
@@ -1820,7 +1844,7 @@ class UserTeacherController extends Controller
 
         $slugClass = Str::slug($classroom->name, '-') ?: 'classroom';
         $slugBatch = Str::slug($batch->name, '-') ?: 'batch';
-        $filename = $slugClass . '-' . $slugBatch . '-marks-' . now()->format('Y-m-d') . '.csv';
+        $filename = $slugClass.'-'.$slugBatch.'-marks-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(
             function () use ($classroom, $batch, $students, $exams, $marksByExamStudent, $markAbsencesByExamStudent) {
@@ -1835,12 +1859,12 @@ class UserTeacherController extends Controller
                 $totalMaxMarks = 0;
                 foreach ($exams as $exam) {
                     $dateStr = optional($exam->exam_date)->format('j F Y') ?? '';
-                    $titlePart = trim($exam->exam_name . ($dateStr !== '' ? ' - ' . $dateStr : ''));
+                    $titlePart = trim($exam->exam_name.($dateStr !== '' ? ' - '.$dateStr : ''));
 
                     $examMax = is_numeric($exam->max_marks) ? $exam->max_marks : 0;
 
                     $metaTitle[] = $titlePart;
-                    $metaMax[] = 'maximum marks: ' . $examMax;
+                    $metaMax[] = 'maximum marks: '.$examMax;
 
                     $totalMaxMarks += $examMax;
                 }
@@ -1849,7 +1873,7 @@ class UserTeacherController extends Controller
                 $metaTitle[] = '';
 
                 // ✅ ADD TOTAL MAX IN SAME LINE
-                $metaMax[] = 'Total Max Marks: ' . $totalMaxMarks;
+                $metaMax[] = 'Total Max Marks: '.$totalMaxMarks;
 
                 fputcsv($out, $metaTitle);
                 fputcsv($out, $metaMax);
@@ -1919,7 +1943,7 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        if (!Schema::hasTable('marks')) {
+        if (! Schema::hasTable('marks')) {
             return redirect()->back()->with('import_marks_error', 'Marks table is not available.');
         }
 
@@ -1932,27 +1956,27 @@ class UserTeacherController extends Controller
 
         $classroom = Classroom::query()->find($id);
 
-        if (!$classroom || (int) $classroom->teacher_id !== $teacherId) {
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
             return redirect()->back()->with('import_marks_error', 'Classroom not found.');
         }
 
         $batch = Batch::query()->where('classroom_id', $classroom->id)->where('teacher_id', $teacherId)->whereKey((int) $validated['batch_id'])->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return redirect()->back()->with('import_marks_error', 'Batch not found.');
         }
 
         $file = $request->file('csv_file');
-        if (!$file || !$file->isValid()) {
+        if (! $file || ! $file->isValid()) {
             return redirect()->back()->with('import_marks_error', 'Invalid upload file.');
         }
 
         $ext = strtolower((string) $file->getClientOriginalExtension());
-        if (!in_array($ext, ['csv', 'txt'], true)) {
+        if (! in_array($ext, ['csv', 'txt'], true)) {
             return redirect()->back()->with('import_marks_error', 'File must be a .csv or .txt file.');
         }
 
-        $allowedStudentIdSet = array_fill_keys(StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('classroom_id', $classroom->id)->where('batch_id', $batch->id)->pluck('student_id')->map(fn($sid) => (int) $sid)->unique()->values()->all(), true);
+        $allowedStudentIdSet = array_fill_keys(StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('classroom_id', $classroom->id)->where('batch_id', $batch->id)->pluck('student_id')->map(fn ($sid) => (int) $sid)->unique()->values()->all(), true);
 
         $allExamsForBatch = Exam::query()->where('batch_id', $batch->id)->orderBy('exam_date')->orderBy('id')->get()->keyBy('id');
 
@@ -1961,7 +1985,7 @@ class UserTeacherController extends Controller
             return redirect()->back()->with('import_marks_error', 'Select at least one test to import marks for.');
         }
         foreach ($examIdsOrdered as $eid) {
-            if (!$allExamsForBatch->has($eid)) {
+            if (! $allExamsForBatch->has($eid)) {
                 return redirect()->back()->with('import_marks_error', 'One or more selected tests are not in this batch.');
             }
         }
@@ -1971,7 +1995,7 @@ class UserTeacherController extends Controller
         }
 
         $path = $file->getRealPath();
-        if (!$path || !is_readable($path)) {
+        if (! $path || ! is_readable($path)) {
             return redirect()->back()->with('import_marks_error', 'Could not read the uploaded file.');
         }
 
@@ -2022,7 +2046,7 @@ class UserTeacherController extends Controller
 
             return redirect()
                 ->back()
-                ->with('import_marks_error', 'This file does not match the template (expected at least ' . $firstMarkColIndex . ' fixed columns before marks). Download the template again.');
+                ->with('import_marks_error', 'This file does not match the template (expected at least '.$firstMarkColIndex.' fixed columns before marks). Download the template again.');
         }
 
         if (count($headerRow) > $expectedCols) {
@@ -2033,15 +2057,14 @@ class UserTeacherController extends Controller
 
         $studentsByEmail = [];
         $studentsByLowerName = [];
-        if (!$compactTemplate && $legacyTemplate) {
+        if (! $compactTemplate && $legacyTemplate) {
             $legacyIds = array_keys($allowedStudentIdSet);
             foreach (
                 PortalUser::query()
                     ->whereIn('id', $legacyIds)
                     ->where('role', 2)
                     ->whereNull('deleted_at')
-                    ->get(['id', 'email', 'name'])
-                as $pu
+                    ->get(['id', 'email', 'name']) as $pu
             ) {
                 $em = strtolower(trim((string) ($pu->email ?? '')));
                 if ($em !== '') {
@@ -2056,14 +2079,13 @@ class UserTeacherController extends Controller
                     ->whereIn('id', $allowedIds)
                     ->where('role', 2)
                     ->whereNull('deleted_at')
-                    ->get(['id', 'name'])
-                as $pu
+                    ->get(['id', 'name']) as $pu
             ) {
                 $nk = strtolower(trim((string) ($pu->name ?? '')));
                 if ($nk === '') {
                     continue;
                 }
-                if (!isset($studentsByLowerName[$nk])) {
+                if (! isset($studentsByLowerName[$nk])) {
                     $studentsByLowerName[$nk] = [];
                 }
                 $studentsByLowerName[$nk][] = (int) $pu->id;
@@ -2098,10 +2120,10 @@ class UserTeacherController extends Controller
                         $nameKey = strtolower($studentName);
                         $matches = $studentsByLowerName[$nameKey] ?? [];
                         if ($matches === []) {
-                            throw new \RuntimeException('Row ' . $lineNum . ': no student named "' . $studentName . '" in this batch.');
+                            throw new \RuntimeException('Row '.$lineNum.': no student named "'.$studentName.'" in this batch.');
                         }
                         if (count($matches) > 1) {
-                            throw new \RuntimeException('Row ' . $lineNum . ': more than one student named "' . $studentName . '" in this batch; names must be unique for this import format.');
+                            throw new \RuntimeException('Row '.$lineNum.': more than one student named "'.$studentName.'" in this batch; names must be unique for this import format.');
                         }
                         $studentId = (int) $matches[0];
                     } elseif ($legacyTemplate) {
@@ -2115,8 +2137,8 @@ class UserTeacherController extends Controller
                             continue;
                         }
                     }
-                    if (!isset($allowedStudentIdSet[$studentId])) {
-                        throw new \RuntimeException('Row ' . $lineNum . ': student ID ' . $studentId . ' is not in this batch.');
+                    if (! isset($allowedStudentIdSet[$studentId])) {
+                        throw new \RuntimeException('Row '.$lineNum.': student ID '.$studentId.' is not in this batch.');
                     }
 
                     $absencesReady = Schema::hasTable('mark_absences');
@@ -2127,11 +2149,11 @@ class UserTeacherController extends Controller
                         $raw = array_key_exists($colIndex, $row) ? trim((string) $row[$colIndex]) : '';
                         $maxMarksNumeric = is_numeric($exam->max_marks) ? (float) $exam->max_marks : null;
                         if ($raw !== '' && $maxMarksNumeric !== null && is_numeric($raw) && (float) $raw > $maxMarksNumeric) {
-                            throw new \RuntimeException('Row ' . $lineNum . ': marks for "' . $exam->exam_name . '" cannot exceed ' . $exam->max_marks . '.');
+                            throw new \RuntimeException('Row '.$lineNum.': marks for "'.$exam->exam_name.'" cannot exceed '.$exam->max_marks.'.');
                         }
 
-                        $stateCacheKey = (int) $exam->id . ':' . $studentId;
-                        if (!array_key_exists($stateCacheKey, $marksStateCache)) {
+                        $stateCacheKey = (int) $exam->id.':'.$studentId;
+                        if (! array_key_exists($stateCacheKey, $marksStateCache)) {
                             $marksStateCache[$stateCacheKey] = $this->readMarksNotificationStateForExamStudent((int) $exam->id, $studentId);
                         }
                         $oldState = $marksStateCache[$stateCacheKey];
@@ -2179,7 +2201,7 @@ class UserTeacherController extends Controller
                             if ($absencesReady) {
                                 MarkAbsence::query()->where('exam_id', $exam->id)->where('student_id', $studentId)->delete();
                             }
-                            $newState = 'n:' . $raw;
+                            $newState = 'n:'.$raw;
                             Mark::query()->updateOrCreate(
                                 [
                                     'exam_id' => $exam->id,
@@ -2221,7 +2243,7 @@ class UserTeacherController extends Controller
 
         return redirect()
             ->back()
-            ->with('import_marks_success', 'Import finished. ' . $importedRows . ' student row(s) processed for batch: ' . $batch->name . '.');
+            ->with('import_marks_success', 'Import finished. '.$importedRows.' student row(s) processed for batch: '.$batch->name.'.');
     }
 
     public function saveExam(Request $request)
@@ -2244,7 +2266,7 @@ class UserTeacherController extends Controller
 
         $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Batch not found']);
         }
 
@@ -2258,7 +2280,7 @@ class UserTeacherController extends Controller
         return response()->json([
             'status' => 1,
             'msg' => 'Test saved',
-            'redirect_url' => url('user/teacher/classrooms/details/' . $batch->classroom_id),
+            'redirect_url' => url('user/teacher/classrooms/details/'.$batch->classroom_id),
         ]);
     }
 
@@ -2270,7 +2292,7 @@ class UserTeacherController extends Controller
             return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
         }
 
-        if (!Schema::hasTable('marks')) {
+        if (! Schema::hasTable('marks')) {
             return response()->json(['status' => 0, 'error' => 'Marks table is not available']);
         }
 
@@ -2287,17 +2309,17 @@ class UserTeacherController extends Controller
 
         $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return response()->json(['status' => 0, 'error' => 'Batch not found']);
         }
 
         $exam = Exam::query()->whereKey((int) $request->exam_id)->where('batch_id', $batch->id)->first();
 
-        if (!$exam) {
+        if (! $exam) {
             return response()->json(['status' => 0, 'error' => 'Test not found']);
         }
 
-        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(fn($id) => (int) $id)->all();
+        $allowedStudentIds = StudentClassroomMap::query()->where('teacher_id', $teacherId)->where('batch_id', $batch->id)->pluck('student_id')->unique()->filter()->map(fn ($id) => (int) $id)->all();
 
         $allowedSet = array_fill_keys($allowedStudentIds, true);
 
@@ -2318,7 +2340,7 @@ class UserTeacherController extends Controller
 
         foreach ($marksInput as $studentId => $raw) {
             $studentId = (int) $studentId;
-            if (!isset($allowedSet[$studentId])) {
+            if (! isset($allowedSet[$studentId])) {
                 return response()->json(['status' => 0, 'error' => 'Invalid student for this batch']);
             }
 
@@ -2379,11 +2401,11 @@ class UserTeacherController extends Controller
             if ($maxMarksNumeric !== null && is_numeric($value) && (float) $value > $maxMarksNumeric) {
                 return response()->json([
                     'status' => 0,
-                    'error' => 'Marks cannot exceed maximum (' . $exam->max_marks . ') for ' . $exam->exam_name,
+                    'error' => 'Marks cannot exceed maximum ('.$exam->max_marks.') for '.$exam->exam_name,
                 ]);
             }
 
-            $newState = 'n:' . $value;
+            $newState = 'n:'.$value;
             Mark::query()->updateOrCreate(
                 [
                     'exam_id' => $exam->id,
@@ -2418,9 +2440,9 @@ class UserTeacherController extends Controller
      *
      * @return array<int, array<int, int|null>>
      */
-    protected static function markAbsenceModeMapForExamIds(\Illuminate\Support\Collection $examIds): array
+    protected static function markAbsenceModeMapForExamIds(Collection $examIds): array
     {
-        if (!Schema::hasTable('mark_absences') || $examIds->isEmpty()) {
+        if (! Schema::hasTable('mark_absences') || $examIds->isEmpty()) {
             return [];
         }
 
@@ -2464,15 +2486,15 @@ class UserTeacherController extends Controller
     /**
      * Set parent_name, parent_email, parent_phone on each student from parent_id or parent_student_map.
      *
-     * @param  \Illuminate\Support\Collection<int, PortalUser>  $students
+     * @param  Collection<int, PortalUser>  $students
      */
-    protected function hydrateParentFieldsForStudentCollection(\Illuminate\Support\Collection $students): void
+    protected function hydrateParentFieldsForStudentCollection(Collection $students): void
     {
         if ($students->isEmpty()) {
             return;
         }
 
-        $parentIds = $students->pluck('parent_id')->map(fn($id) => (int) $id)->filter()->unique()->values();
+        $parentIds = $students->pluck('parent_id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
         $parentsById = $parentIds->isEmpty() ? collect() : PortalUser::query()->whereIn('id', $parentIds)->where('role', 3)->whereNull('deleted_at')->get()->keyBy('id');
 
         $studentIds = $students->pluck('id');
@@ -2519,7 +2541,7 @@ class UserTeacherController extends Controller
             ->where('exam_id', $examId)
             ->where('student_id', $studentId)
             ->first(['marks']);
-        if (!$mark) {
+        if (! $mark) {
             return '';
         }
         if (Schema::hasTable('mark_absences')) {
@@ -2529,7 +2551,7 @@ class UserTeacherController extends Controller
             }
         }
 
-        return 'n:' . trim((string) ($mark->marks ?? ''));
+        return 'n:'.trim((string) ($mark->marks ?? ''));
     }
 
     /**
@@ -2555,15 +2577,15 @@ class UserTeacherController extends Controller
         }
         $out = [];
         foreach ($studentIds as $sid) {
-            if (!$byStudent->has($sid)) {
+            if (! $byStudent->has($sid)) {
                 $out[$sid] = '';
 
                 continue;
             }
-            if (!empty($absentStudentIds[$sid])) {
+            if (! empty($absentStudentIds[$sid])) {
                 $out[$sid] = 'absent';
             } else {
-                $out[$sid] = 'n:' . trim((string) ($byStudent->get($sid)->marks ?? ''));
+                $out[$sid] = 'n:'.trim((string) ($byStudent->get($sid)->marks ?? ''));
             }
         }
 
@@ -2590,7 +2612,7 @@ class UserTeacherController extends Controller
             ->where('role', 2)
             ->whereNull('deleted_at')
             ->first(['id', 'parent_id']);
-        if (!$student) {
+        if (! $student) {
             return [];
         }
         $legacyParentId = (int) ($student->parent_id ?? 0);
@@ -2618,11 +2640,11 @@ class UserTeacherController extends Controller
 
     protected function deliverMarksUpdatedNotifications(array $items, ?string $teacherName): void
     {
-        if (!Schema::hasTable('notifications') || $items === []) {
+        if (! Schema::hasTable('notifications') || $items === []) {
             return;
         }
 
-        $items = collect($items)->unique(fn($item) => (int) $item['student_id'] . ':' . (int) $item['exam_id'])->values()->all();
+        $items = collect($items)->unique(fn ($item) => (int) $item['student_id'].':'.(int) $item['exam_id'])->values()->all();
 
         foreach ($items as $item) {
             $studentId = (int) ($item['student_id'] ?? 0);
@@ -2634,13 +2656,13 @@ class UserTeacherController extends Controller
             $bid = (int) ($item['batch_id'] ?? 0) ?: null;
             $eid = (int) ($item['exam_id'] ?? 0) ?: null;
 
-            if ($studentId <= 0 || !$eid) {
+            if ($studentId <= 0 || ! $eid) {
                 continue;
             }
 
             $student = PortalUser::whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
 
-            if (!$student) {
+            if (! $student) {
                 continue;
             }
 
@@ -2651,7 +2673,7 @@ class UserTeacherController extends Controller
             // =========================
             $title = $isNewEntry ? 'New marks posted' : 'Marks updated';
 
-            $message = $tn . ' ' . ($isNewEntry ? 'posted' : 'updated') . ' your marks for "' . $examName . '": ' . $marksLabel . '.';
+            $message = $tn.' '.($isNewEntry ? 'posted' : 'updated').' your marks for "'.$examName.'": '.$marksLabel.'.';
 
             $student->notify(
                 new PortalNotification(
@@ -2674,7 +2696,7 @@ class UserTeacherController extends Controller
             foreach ($parentIds as $parentId) {
                 $parent = PortalUser::whereKey($parentId)->where('role', 3)->whereNull('deleted_at')->first();
 
-                if (!$parent) {
+                if (! $parent) {
                     continue;
                 }
 
@@ -2682,7 +2704,7 @@ class UserTeacherController extends Controller
 
                 $title = $isNewEntry ? 'New marks for your child' : 'Marks updated for your child';
 
-                $message = $tn . ' ' . ($isNewEntry ? 'posted' : 'updated') . ' ' . $childName . '\'s marks for "' . $examName . '": ' . $marksLabel . '.';
+                $message = $tn.' '.($isNewEntry ? 'posted' : 'updated').' '.$childName.'\'s marks for "'.$examName.'": '.$marksLabel.'.';
 
                 $parent->notify(
                     new PortalNotification($title, $message, 'marks', [
@@ -2698,7 +2720,7 @@ class UserTeacherController extends Controller
 
     protected function syncApprovedLeaveAttendance(LeaveRequests $leave, int $teacherId): void
     {
-        if (!Schema::hasTable('student_attendances')) {
+        if (! Schema::hasTable('student_attendances')) {
             return;
         }
 
@@ -2713,7 +2735,7 @@ class UserTeacherController extends Controller
             })
             ->first();
 
-        if (!$batch) {
+        if (! $batch) {
             return;
         }
 
@@ -2724,10 +2746,10 @@ class UserTeacherController extends Controller
             ->where('student_id', $studentId)
             ->exists();
 
-        if (!$mapped) {
+        if (! $mapped) {
             $student = PortalUser::query()->whereKey($studentId)->where('role', 2)->whereNull('deleted_at')->first();
             if (
-                !$student
+                ! $student
                 || (int) $student->classroom_id !== (int) $leave->classroom_id
                 || (int) $student->batch_id !== (int) $leave->batch_id
             ) {
@@ -2735,8 +2757,8 @@ class UserTeacherController extends Controller
             }
         }
 
-        $start = \Carbon\Carbon::parse((string) $leave->from_date)->startOfDay();
-        $end = \Carbon\Carbon::parse((string) $leave->to_date)->startOfDay();
+        $start = Carbon::parse((string) $leave->from_date)->startOfDay();
+        $end = Carbon::parse((string) $leave->to_date)->startOfDay();
         if ($end->lt($start)) {
             return;
         }
@@ -2768,7 +2790,7 @@ class UserTeacherController extends Controller
             ->where('role', 2)
             ->whereNull('deleted_at')
             ->first();
-        if (!$student) {
+        if (! $student) {
             return;
         }
 
@@ -2782,22 +2804,22 @@ class UserTeacherController extends Controller
             $teacherName = 'Your teacher';
         }
 
-        $fromDate = \Carbon\Carbon::parse((string) $leave->from_date)->format('d M Y');
-        $toDate = \Carbon\Carbon::parse((string) $leave->to_date)->format('d M Y');
-        $dateLabel = $fromDate === $toDate ? $fromDate : ($fromDate . ' to ' . $toDate);
+        $fromDate = Carbon::parse((string) $leave->from_date)->format('d M Y');
+        $toDate = Carbon::parse((string) $leave->to_date)->format('d M Y');
+        $dateLabel = $fromDate === $toDate ? $fromDate : ($fromDate.' to '.$toDate);
 
         if ($action === 'approve') {
             $title = 'Leave approved';
-            $message = $teacherName . ' approved your leave request for ' . $dateLabel . '.';
-            $parentMessage = $teacherName . ' approved ' . $studentName . '\'s leave request for ' . $dateLabel . '.';
+            $message = $teacherName.' approved your leave request for '.$dateLabel.'.';
+            $parentMessage = $teacherName.' approved '.$studentName.'\'s leave request for '.$dateLabel.'.';
         } else {
             $title = 'Leave rejected';
             $reason = trim((string) ($leave->reject_reason ?? ''));
-            $message = $teacherName . ' rejected your leave request for ' . $dateLabel . '.';
-            $parentMessage = $teacherName . ' rejected ' . $studentName . '\'s leave request for ' . $dateLabel . '.';
+            $message = $teacherName.' rejected your leave request for '.$dateLabel.'.';
+            $parentMessage = $teacherName.' rejected '.$studentName.'\'s leave request for '.$dateLabel.'.';
             if ($reason !== '') {
-                $message .= ' Reason: ' . $reason;
-                $parentMessage .= ' Reason: ' . $reason;
+                $message .= ' Reason: '.$reason;
+                $parentMessage .= ' Reason: '.$reason;
             }
         }
 
@@ -2871,36 +2893,13 @@ class UserTeacherController extends Controller
         if (Schema::hasTable('events')) {
             $events = Event::with(['eventType', 'classrooms', 'batches'])
                 ->where(function ($q) use ($teacherId) {
-                    $q->where('teacher_id', $teacherId)->orWhereHas('classrooms', fn($c) => $c->where('teacher_id', $teacherId))->orWhereHas('batches', fn($b) => $b->where('teacher_id', $teacherId));
+                    $q->where('teacher_id', $teacherId)->orWhereHas('classrooms', fn ($c) => $c->where('teacher_id', $teacherId))->orWhereHas('batches', fn ($b) => $b->where('teacher_id', $teacherId));
                 })
                 ->orderBy('start_date')
                 ->get();
 
             $data['calendar_events'] = $events
-                ->map(function ($event) {
-                    $row = [
-                        'id' => 'db-' . $event->id,
-                        'title' => $event->title,
-                        'start' => $event->start_date,
-                        'end' => $event->end_date,
-                        'allDay' => true,
-
-                        'extendedProps' => [
-                            'calendar' => 'et' . (int) $event->event_type_id,
-                            'event_type_id' => $event->event_type_id,
-
-                            // 🔥 REQUIRED FOR MULTI SELECT EDIT
-                            'classrooms' => $event->classrooms->pluck('id')->toArray(),
-                            'batches' => $event->batches->pluck('id')->toArray(),
-
-                            'status' => (int) $event->status,
-                            'description' => $event->description,
-                            'color_code' => $event->eventType?->color_code,
-                        ],
-                    ];
-
-                    return array_merge($row, $this->calendarColorsForEventType($event->eventType));
-                })
+                ->map(fn ($event) => FullCalendarEventPayload::fromTeacherEvent($event, false))
                 ->values()
                 ->toArray();
         }
@@ -2951,47 +2950,6 @@ class UserTeacherController extends Controller
         return false;
     }
 
-    /**
-     * Build FullCalendar color fields from event_types.color_code (e.g. #0000FF, 0000FF, #00F).
-     *
-     * @return array{backgroundColor: string, borderColor: string, textColor: string}
-     */
-    protected function calendarColorsForEventType(?EventType $eventType): array
-    {
-        $raw = $eventType && $eventType->color_code !== null ? trim((string) $eventType->color_code) : '';
-        $raw = preg_replace('/\s+/', '', $raw) ?? '';
-
-        if ($raw === '') {
-            $bg = '#696cff';
-        } elseif (preg_match('/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/i', $raw)) {
-            $hex = ltrim($raw, '#');
-            if (strlen($hex) === 3) {
-                $bg = sprintf('#%s%s%s%s%s%s', $hex[0], $hex[0], $hex[1], $hex[1], $hex[2], $hex[2]);
-            } else {
-                $bg = '#' . strtolower($hex);
-            }
-        } elseif (preg_match('/^[a-z]+$/i', $raw)) {
-            $bg = strtolower($raw);
-        } else {
-            $bg = '#696cff';
-        }
-
-        $text = '#ffffff';
-        if (preg_match('/^#([0-9a-fA-F]{6})$/', $bg)) {
-            $r = hexdec(substr($bg, 1, 2));
-            $g = hexdec(substr($bg, 3, 2));
-            $b = hexdec(substr($bg, 5, 2));
-            $lum = ($r * 0.299 + $g * 0.587 + $b * 0.114) / 255;
-            $text = $lum > 0.65 ? '#212529' : '#ffffff';
-        }
-
-        return [
-            'backgroundColor' => $bg,
-            'borderColor' => $bg,
-            'textColor' => $text,
-        ];
-    }
-
     public function saveEventType(Request $request)
     {
         [$teacherId, $redirect] = $this->requireTeacher();
@@ -3003,7 +2961,7 @@ class UserTeacherController extends Controller
             return;
         }
 
-        if (!Schema::hasTable('event_types')) {
+        if (! Schema::hasTable('event_types')) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Event types are not available.';
             echo json_encode($this->response);
@@ -3022,7 +2980,7 @@ class UserTeacherController extends Controller
             'status' => 'required|in:0,1',
         ]);
 
-        if (!$validation->fails()) {
+        if (! $validation->fails()) {
             $attrs = [
                 'title' => trim((string) $request->title),
                 'color_code' => $request->color_code !== null && trim((string) $request->color_code) !== '' ? trim((string) $request->color_code) : null,
@@ -3032,7 +2990,7 @@ class UserTeacherController extends Controller
                 $row = EventType::query()
                     ->where('teacher_id', $teacherId)
                     ->find((int) $request->id);
-                if (!$row) {
+                if (! $row) {
                     $this->response['status'] = 0;
                     $this->response['error'] = 'Event type not found.';
                     echo json_encode($this->response);
@@ -3067,7 +3025,7 @@ class UserTeacherController extends Controller
             return;
         }
 
-        if (!Schema::hasTable('event_types')) {
+        if (! Schema::hasTable('event_types')) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Event types are not available.';
             echo json_encode($this->response);
@@ -3139,13 +3097,29 @@ class UserTeacherController extends Controller
             ]);
         }
 
+        $allDay = $request->boolean('all_day', true);
+        $start = Carbon::parse($request->start_date);
+        $end = Carbon::parse($request->end_date);
+        if ($allDay) {
+            $start = $start->copy()->startOfDay();
+            $end = $end->copy()->startOfDay();
+            if ($end->lt($start)) {
+                $end = $start->copy();
+            }
+        } else {
+            if ($end->lt($start)) {
+                $end = $start->copy()->addHour();
+            }
+        }
+
         $attrs = [
             'teacher_id' => $teacherId,
             'event_type_id' => $request->event_type_id,
             'title' => $request->title,
             'description' => $request->description,
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date,
+            'start_date' => $start->format('Y-m-d H:i:s'),
+            'end_date' => $end->format('Y-m-d H:i:s'),
+            'all_day' => $allDay,
             'status' => $request->status ?? 0,
         ];
 
@@ -3223,7 +3197,7 @@ class UserTeacherController extends Controller
                     ->first();
 
                 if (! $leave) {
-                    throw new ModelNotFoundException();
+                    throw new ModelNotFoundException;
                 }
 
                 $st = strtolower(trim((string) ($leave->status ?? '')));
@@ -3276,6 +3250,4 @@ class UserTeacherController extends Controller
             'status' => $processedLeave?->status,
         ]);
     }
-
-    
 }

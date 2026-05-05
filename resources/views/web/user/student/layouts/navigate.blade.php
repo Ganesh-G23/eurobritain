@@ -153,6 +153,8 @@
                                         // ✅ BUILD URL
                                         if ($navType === 'leave') {
                                             $url = url('user/student/leave');
+                                        } elseif ($navType === 'event_reminder') {
+                                            $url = url('user/student/events');
                                         } elseif ($batchId && $examId && $classroomId) {
                                             $url = url(
                                                 'user/student/classroom/' .

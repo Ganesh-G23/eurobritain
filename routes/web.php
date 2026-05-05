@@ -3,19 +3,19 @@
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Admin\StudentController;
 use App\Http\Controllers\Admin\TeacherController;
 use App\Http\Controllers\CommonController;
 use App\Http\Controllers\Web\CustomerController;
 use App\Http\Controllers\Web\HomeController;
+use App\Http\Controllers\Web\LeaderBoardController;
 use App\Http\Controllers\Web\PortalPasswordResetController;
+use App\Http\Controllers\Web\StudentComplaintController;
+use App\Http\Controllers\Web\StudentLeaveRequestController;
+use App\Http\Controllers\Web\TimelineController;
 use App\Http\Controllers\Web\UserDashboardController;
 use App\Http\Controllers\Web\UserTeacherController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\StudentController;
-use App\Http\Controllers\Web\StudentLeaveRequestController;
-use App\Http\Controllers\Web\LeaderBoardController;
-use App\Http\Controllers\Web\StudentComplaintController;
-use App\Http\Controllers\Web\TimelineController;
 
 // Web Frontend Routes
 Route::get('/', [HomeController::class, 'index'])->name('web.home');
@@ -32,10 +32,10 @@ Route::get('/reset-password/{token}', [PortalPasswordResetController::class, 'sh
 Route::post('/reset-password', [PortalPasswordResetController::class, 'reset'])->name('web.password.update');
 
 // User (Portal) Panel Routes
-    Route::prefix('user')
-        ->middleware('portal.auth')
-        ->group(function () {
-        
+Route::prefix('user')
+    ->middleware('portal.auth')
+    ->group(function () {
+
         Route::get('/', function () {
             return redirect('user/dashboard');
         });
@@ -64,6 +64,8 @@ Route::post('/reset-password', [PortalPasswordResetController::class, 'reset'])-
             Route::get('/student/classrooms', [UserDashboardController::class, 'studentClassrooms']);
             Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
             Route::get('/student/events', [UserDashboardController::class, 'studentEvents']);
+            Route::post('/student/personal-events/save', [UserDashboardController::class, 'saveStudentPersonalEvent']);
+            Route::post('/student/personal-events/delete', [UserDashboardController::class, 'deleteStudentPersonalEvent']);
             Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
             Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
             Route::get('/student/leave', [StudentLeaveRequestController::class, 'index']);
@@ -131,10 +133,10 @@ Route::post('/reset-password', [PortalPasswordResetController::class, 'reset'])-
                 Route::post('/exams/marks/save', [UserTeacherController::class, 'saveExamMarksColumn']);
                 Route::post('/attendance/save-day', [UserTeacherController::class, 'saveBatchAttendanceDay']);
                 Route::post('/attendance/save-column', [UserTeacherController::class, 'saveAttendanceColumn']);
-        });
+            });
     });
 
-    Route::middleware('prevent-back')
+Route::middleware('prevent-back')
     ->prefix('admin')
     ->group(function () {
         Route::middleware('admin-auth')->group(function () {

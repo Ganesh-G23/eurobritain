@@ -172,7 +172,9 @@ document.addEventListener('DOMContentLoaded', function () {
         monthSelectorType: 'static',
         static: true,
         enableTime: true,
-        altFormat: 'Y-m-dTH:i:S',
+        time_24hr: true,
+        dateFormat: 'Y-m-d H:i',
+        altFormat: 'Y-m-d H:i',
         onReady: function (selectedDates, dateStr, instance) {
           if (instance.isMobile) {
             instance.mobileInput.setAttribute('step', null);
@@ -187,7 +189,9 @@ document.addEventListener('DOMContentLoaded', function () {
         monthSelectorType: 'static',
         static: true,
         enableTime: true,
-        altFormat: 'Y-m-dTH:i:S',
+        time_24hr: true,
+        dateFormat: 'Y-m-d H:i',
+        altFormat: 'Y-m-d H:i',
         onReady: function (selectedDates, dateStr, instance) {
           if (instance.isMobile) {
             instance.mobileInput.setAttribute('step', null);
@@ -344,6 +348,14 @@ document.addEventListener('DOMContentLoaded', function () {
       if (eventDescription) {
         eventDescription.value = ext.description != null ? String(ext.description) : '';
       }
+      var teacherAllDayCb = document.getElementById('teacherEventAllDay');
+      var teacherAllDayHidden = document.getElementById('eventAllDayHidden');
+      if (teacherAllDayCb && teacherAllDayHidden) {
+        var adv = ext.all_day;
+        var isAD = !(adv === false || adv === 0 || adv === '0');
+        teacherAllDayCb.checked = isAD;
+        teacherAllDayHidden.value = isAD ? '1' : '0';
+      }
     }
 
     // Event click function
@@ -372,16 +384,31 @@ document.addEventListener('DOMContentLoaded', function () {
       if (eventTitle) {
         eventTitle.value = eventToUpdate.title;
       }
-      if (typeof start !== 'undefined' && start) {
-        start.setDate(eventToUpdate.start, true, 'Y-m-d');
+      if (typeof start !== 'undefined' && start && eventToUpdate.start) {
+        var sdt =
+          eventToUpdate.start instanceof Date ? eventToUpdate.start : new Date(eventToUpdate.start);
+        if (!isNaN(sdt.getTime())) {
+          start.setDate(sdt, true);
+        }
       }
       if (allDaySwitch) {
         eventToUpdate.allDay === true ? (allDaySwitch.checked = true) : (allDaySwitch.checked = false);
       }
+      var teacherAllDayHiddenClick = document.getElementById('eventAllDayHidden');
+      if (teacherAllDayHiddenClick && allDaySwitch && document.getElementById('teacherEventAllDay')) {
+        teacherAllDayHiddenClick.value = allDaySwitch.checked ? '1' : '0';
+      }
       if (typeof end !== 'undefined' && end) {
-        eventToUpdate.end !== null
-          ? end.setDate(eventToUpdate.end, true, 'Y-m-d')
-          : end.setDate(eventToUpdate.start, true, 'Y-m-d');
+        var edt = null;
+        if (eventToUpdate.end !== null && eventToUpdate.end !== undefined) {
+          edt = eventToUpdate.end instanceof Date ? eventToUpdate.end : new Date(eventToUpdate.end);
+        } else if (eventToUpdate.start) {
+          edt =
+            eventToUpdate.start instanceof Date ? eventToUpdate.start : new Date(eventToUpdate.start);
+        }
+        if (edt && !isNaN(edt.getTime())) {
+          end.setDate(edt, true);
+        }
       }
       if (eventLabel.length && eventToUpdate.extendedProps) {
         if (eventToUpdate.extendedProps.event_type_id != null && eventToUpdate.extendedProps.event_type_id !== '') {
@@ -493,14 +520,40 @@ document.addEventListener('DOMContentLoaded', function () {
           viewEventStudentRow.classList.add('d-none');
         }
       }
-      if (viewEventNotes) {
-        viewEventNotes.textContent =
-          eventObj && ext.description != null && String(ext.description).trim() !== ''
-            ? String(ext.description)
-            : 'No notes';
+      var viewDescSection = document.getElementById('viewEventDescriptionSection');
+      var viewDescNotes = document.getElementById('viewEventNotes');
+      var descText =
+        eventObj && ext.description != null && String(ext.description).trim() !== ''
+          ? String(ext.description)
+          : '';
+      if (viewDescSection && viewDescNotes) {
+        if (descText !== '') {
+          viewDescSection.classList.remove('d-none');
+          viewDescNotes.textContent = descText;
+        } else {
+          viewDescSection.classList.add('d-none');
+          viewDescNotes.textContent = '';
+        }
+      } else if (viewEventNotes) {
+        viewEventNotes.textContent = descText !== '' ? descText : 'No notes';
+      }
+      var personalToolbar = document.getElementById('viewEventPersonalActions');
+      if (personalToolbar) {
+        if (ext.source === 'personal' && ext.student_personal_event_id != null) {
+          personalToolbar.classList.remove('d-none');
+          personalToolbar.classList.add('d-flex');
+          personalToolbar.setAttribute('data-personal-id', String(ext.student_personal_event_id));
+        } else {
+          personalToolbar.classList.add('d-none');
+          personalToolbar.classList.remove('d-flex');
+          personalToolbar.removeAttribute('data-personal-id');
+        }
       }
       if (viewEventEditBtn) {
         viewEventEditBtn.disabled = !eventObj;
+      }
+      if (typeof window !== 'undefined') {
+        window.__portalLastViewedFcEvent = eventObj || null;
       }
       if (bsViewEventSidebar) {
         bsViewEventSidebar.show();
@@ -994,7 +1047,15 @@ document.addEventListener('DOMContentLoaded', function () {
         eventLocation.value = '';
       }
       if (allDaySwitch) {
-        allDaySwitch.checked = false;
+        if (document.getElementById('eventAllDayHidden')) {
+          allDaySwitch.checked = true;
+          var rh = document.getElementById('eventAllDayHidden');
+          if (rh) {
+            rh.value = '1';
+          }
+        } else {
+          allDaySwitch.checked = false;
+        }
       }
       const allClassroomsToggle = document.getElementById('allClassroomsSwitch');
       const allBatchesToggle = document.getElementById('allBatchesSwitch');

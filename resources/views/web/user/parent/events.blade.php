@@ -58,6 +58,17 @@
                         </div>
 
                         <div class="app-calendar-events-filter text-heading">
+                            <div class="form-check form-check-info mb-3 ms-2">
+                                <input class="form-check-input input-filter" type="checkbox" id="filter-parent-personal"
+                                    data-value="personal" checked />
+                                <label class="form-check-label d-flex align-items-center gap-2"
+                                    for="filter-parent-personal">
+                                    <span class="badge badge-dot me-0 flex-shrink-0"
+                                        style="background-color: #0dcaf0 !important; border: 1px solid #0dcaf0;"
+                                        aria-hidden="true"></span>
+                                    <span>Personal</span>
+                                </label>
+                            </div>
                             @php
                                 $filterStyleClasses = [
                                     'form-check-danger',
@@ -135,10 +146,10 @@
                                     <label class="form-label mb-1">Student</label>
                                     <div class="form-control bg-label-secondary" id="viewEventStudent">-</div>
                                 </div>
-                                <div class="mb-4">
-                                    <label class="form-label mb-1">Notes</label>
+                                <div class="mb-4 d-none" id="viewEventDescriptionSection">
+                                    <label class="form-label mb-1">Description</label>
                                     <div class="form-control bg-label-secondary" id="viewEventNotes"
-                                        style="min-height: 84px;">No notes</div>
+                                        style="min-height: 84px; white-space: pre-wrap;"></div>
                                 </div>
                             </div>
                         </div>
