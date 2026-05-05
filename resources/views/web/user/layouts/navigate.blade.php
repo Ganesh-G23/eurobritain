@@ -335,7 +335,9 @@
                                             $navMessage = $navData['message'] ?? '';
                                             $navType = $navData['type'] ?? '';
                                             $teacherLeaveUrl =
-                                                $navType === 'leave' ? url('user/teacher/students/leave') : 'javascript:void(0)';
+                                                $navType === 'leave'
+                                                    ? url('user/teacher/students/leave')
+                                                    : 'javascript:void(0)';
                                         @endphp
 
                                         <li class="list-group-item list-group-item-action dropdown-notifications-item">
@@ -344,14 +346,16 @@
                                                     class="d-flex flex-grow-1 min-w-0 text-reset text-decoration-none py-2 ps-3 pe-2">
                                                     <div class="flex-shrink-0 me-3">
                                                         <div class="avatar">
-                                                            <span class="avatar-initial rounded-circle bg-label-success">
+                                                            <span
+                                                                class="avatar-initial rounded-circle bg-label-success">
                                                                 <i class="icon-base ti tabler-clipboard-check"></i>
                                                             </span>
                                                         </div>
                                                     </div>
                                                     <div class="flex-grow-1 min-w-0">
                                                         <h6 class="mb-1 small">{{ $navTitle }}</h6>
-                                                        <small class="mb-1 d-block text-body">{{ $navMessage }}</small>
+                                                        <small
+                                                            class="mb-1 d-block text-body">{{ $navMessage }}</small>
                                                         <small class="text-body-secondary">
                                                             {{ $navNotification->created_at }}
                                                         </small>
@@ -360,7 +364,8 @@
                                                 <div class="flex-shrink-0 dropdown-notifications-actions pt-2 pe-2">
                                                     <a href="javascript:void(0)" class="dropdown-notifications-read"
                                                         title="Mark as read"><span class="badge badge-dot"></span></a>
-                                                    <a href="javascript:void(0)" class="dropdown-notifications-archive"
+                                                    <a href="javascript:void(0)"
+                                                        class="dropdown-notifications-archive"
                                                         data-id="{{ $navNotification->id }}">
                                                         <span class="icon-base ti tabler-x"></span>
                                                     </a>
@@ -391,7 +396,8 @@
                                                         <span class="badge badge-dot"></span>
                                                     </a>
                                                     <!-- ✅ NO data-id here -->
-                                                    <a href="javascript:void(0)" class="dropdown-notifications-archive">
+                                                    <a href="javascript:void(0)"
+                                                        class="dropdown-notifications-archive">
                                                         <span class="icon-base ti tabler-x"></span>
                                                     </a>
                                                 </div>
@@ -527,32 +533,48 @@
                     </a>
                 </li>
 
-                <li class="menu-item {{ $active_tab === 'teacher_students' ? 'active' : '' }}">
-                    <a href="{{ url('user/teacher/students') }}" class="menu-link">
-                        <i class="menu-icon icon-base ti tabler-users"></i>
+                <li class="menu-item {{ in_array($active_tab, ['teacher_students', 'student_leave']) ? 'active open' : '' }}">
+                    <a href="javascript:void(0)" class="menu-link menu-toggle">
+                        <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>
                         <div data-i18n="Students">Students</div>
                     </a>
+                    <ul class="menu-sub">
+                        <li class="menu-item {{ $active_tab === 'teacher_students' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/students') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-user-circle"></i>
+                                <div data-i18n="Student List">Student List</div>
+                            </a>
+                        </li>
+                        <li class="menu-item {{ $active_tab === 'student_leave' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/students/leave') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-layout-distribute-vertical"></i>
+                                <div data-i18n="Student Leave">Student Leave</div>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
-                <li class="menu-item {{ $active_tab === 'events' ? 'active' : '' }}">
-                    <a href="{{ url('user/teacher/events') }}" class="menu-link">
+                <li class="menu-item {{ in_array($active_tab, ['event_types', 'events']) ? 'active open' : '' }}">
+                    <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-calendar"></i>
                         <div data-i18n="Events">Events</div>
                     </a>
+                    <ul class="menu-sub">
+                        <li class="menu-item {{ $active_tab === 'event_types' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/event_types') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-menu-2"></i>
+                                <div data-i18n="Types">Types</div>
+                            </a>
+                        </li>
+                        <li class="menu-item {{ $active_tab === 'events' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/events') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-calendar"></i>
+                                <div data-i18n="Events">Events</div>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
-                <li class="menu-item {{ $active_tab === 'event_types' ? 'active' : '' }}">
-                    <a href="{{ url('user/teacher/event_types') }}" class="menu-link">
-                        <i class="menu-icon icon-base ti tabler-calendar"></i>
-                        <div data-i18n="Event Types">Event Types</div>
-                    </a>
-                </li>
-                <li class="menu-item {{ $active_tab === 'student_leave' ? 'active' : '' }}">
-                    <a href="{{ url('user/teacher/students/leave') }}" class="menu-link">
-                        <i class="menu-icon icon-base ti tabler-calendar-off"></i>
-                        <div data-i18n="Student Leave">Student Leave</div>
-                    </a>
-                </li>
                 <li class="menu-item {{ $active_tab === 'leaderboard' ? 'active' : '' }}">
                     <a href="{{ url('user/teacher/leaderboard') }}" class="menu-link">
                         <i class="menu-icon icon-base ti tabler-calendar"></i>

@@ -2864,7 +2864,7 @@ class UserTeacherController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'classroom_id']);
 
-        $data['event_types'] = EventType::orderBy('title')->get(['id', 'title', 'color_code']);
+        $data['event_types'] = EventType::where('status', 1)->where('teacher_id', $teacherId)->orderBy('title')->get(['id', 'title', 'color_code', 'status']);
 
         $data['calendar_events'] = [];
 
@@ -2910,7 +2910,7 @@ class UserTeacherController extends Controller
 
     public function eventTypes()
     {
-        [, $redirect] = $this->requireTeacher();
+        [$teacherId, $redirect] = $this->requireTeacher();
         if ($redirect) {
             return $redirect;
         }
@@ -2921,9 +2921,10 @@ class UserTeacherController extends Controller
             'event_types' => collect(),
         ];
         if (Schema::hasTable('event_types')) {
-            $data['event_types'] = EventType::query()
+            $q = EventType::query()->where('teacher_id', $teacherId);
+            $data['event_types'] = $q
                 ->orderBy('title')
-                ->get(['id', 'title', 'color_code', 'created_at']);
+                ->get(['id', 'title', 'color_code', 'created_at', 'status']);
         }
 
         return view('web.user.teacher.event_types', $data);
@@ -3011,18 +3012,26 @@ class UserTeacherController extends Controller
         }
 
         $validation = Validator::make($request->all(), [
-            'id' => 'nullable|integer|exists:event_types,id',
+            'id' => [
+                'nullable',
+                'integer',
+                Rule::exists('event_types', 'id')->where('teacher_id', $teacherId),
+            ],
             'title' => 'required|string|max:255',
             'color_code' => 'nullable|string|max:32',
+            'status' => 'required|in:0,1',
         ]);
 
         if (!$validation->fails()) {
             $attrs = [
                 'title' => trim((string) $request->title),
                 'color_code' => $request->color_code !== null && trim((string) $request->color_code) !== '' ? trim((string) $request->color_code) : null,
+                'status' => $request->status,
             ];
             if ($request->filled('id')) {
-                $row = EventType::query()->find((int) $request->id);
+                $row = EventType::query()
+                    ->where('teacher_id', $teacherId)
+                    ->find((int) $request->id);
                 if (!$row) {
                     $this->response['status'] = 0;
                     $this->response['error'] = 'Event type not found.';
@@ -3034,7 +3043,7 @@ class UserTeacherController extends Controller
                 $row->save();
                 $this->response['msg'] = 'Event type updated.';
             } else {
-                EventType::query()->create($attrs);
+                EventType::query()->create(array_merge($attrs, ['teacher_id' => $teacherId]));
                 $this->response['msg'] = 'Event type saved.';
             }
             $this->response['status'] = 1;
@@ -3067,7 +3076,11 @@ class UserTeacherController extends Controller
         }
 
         $validation = Validator::make($request->all(), [
-            'id' => 'required|integer|exists:event_types,id',
+            'id' => [
+                'required',
+                'integer',
+                Rule::exists('event_types', 'id')->where('teacher_id', $teacherId),
+            ],
         ]);
 
         if ($validation->fails()) {
@@ -3079,7 +3092,7 @@ class UserTeacherController extends Controller
         }
 
         $id = (int) $request->id;
-        if (Schema::hasTable('events') && Event::query()->where('event_type_id', $id)->exists()) {
+        if (Schema::hasTable('events') && Event::query()->where('event_type_id', $id)->where('teacher_id', $teacherId)->exists()) {
             $this->response['status'] = 0;
             $this->response['error'] = 'This type is used by one or more events. Remove or reassign those events first.';
             echo json_encode($this->response);
@@ -3087,7 +3100,7 @@ class UserTeacherController extends Controller
             return;
         }
 
-        EventType::query()->whereKey($id)->delete();
+        EventType::query()->whereKey($id)->where('teacher_id', $teacherId)->delete();
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Event type deleted.';
@@ -3105,7 +3118,11 @@ class UserTeacherController extends Controller
 
         $validation = Validator::make($request->all(), [
             'event_id' => 'nullable|integer|exists:events,id',
-            'event_type_id' => 'required|integer|exists:event_types,id',
+            'event_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('event_types', 'id')->where('teacher_id', $teacherId),
+            ],
             'title' => 'required',
             'start_date' => 'required|date',
             'end_date' => 'required|date',
