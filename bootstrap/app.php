@@ -6,8 +6,10 @@ use App\Http\Middleware\EnsurePortalAuthenticated;
 use App\Http\Middleware\EnsurePortalParent;
 use App\Http\Middleware\EnsurePortalStudent;
 use App\Http\Middleware\EnsurePortalTeacher;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\PortalRememberFromCookie;
 use App\Http\Middleware\PreventBackHistory;
+use App\Http\Middleware\RedirectIfAdminMustChangePassword;
 use App\Http\Middleware\SyncPortalSessionUser;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -28,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'prevent-back' => PreventBackHistory::class,
             'admin-auth' => AdminAuth::class,
             'admin-all' => AdminAll::class,
+            'admin.super' => EnsureSuperAdmin::class,
+            'admin.must_change_password' => RedirectIfAdminMustChangePassword::class,
             'portal.auth' => EnsurePortalAuthenticated::class,
             'portal.teacher' => EnsurePortalTeacher::class,
             'portal.student' => EnsurePortalStudent::class,

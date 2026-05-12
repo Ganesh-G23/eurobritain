@@ -10,7 +10,7 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url('admin/security') }}"><i class="icon-base ti tabler-lock me-1"></i>
-                            Change Password</a>
+                            Security</a>
                     </li>
                 </ul>
                 <div class="card mb-4">
@@ -18,31 +18,38 @@
                     <div class="card-body">
                         <form id="ajax-form" method="POST" action="{{ url('admin/profile/save_profile') }}">
                             @csrf
-                            <input type="hidden" name="id" value="{{ $details->id }}" />
                             <div class="col-12 ajax-msg"></div>
                             <div class="row">
                                 <div class="mb-3 col-md-6 ajax-field">
-                                    <label for="name" class="form-label">Name</label>
+                                    <label for="name" class="form-label">Visible name</label>
                                     <input class="form-control" type="text" id="name" name="name"
                                         value="{{ $details->name }}" autofocus />
                                     <span class="ajax-error"></span>
                                 </div>
                                 <div class="mb-3 col-md-6 ajax-field">
-                                    <label for="email" class="form-label">Email</label>
-                                    <input class="form-control" type="text" id="email" name="email"
-                                        value="{{ $details->email }}" placeholder="john.doe@example.com" />
+                                    <label for="email" class="form-label">Sign-in email</label>
+                                    <input class="form-control" type="email" id="email" name="email"
+                                        value="{{ $details->email }}" placeholder="john.doe@example.com" autocomplete="email" />
                                     <span class="ajax-error"></span>
                                 </div>
                                 <div class="mb-3 col-md-6 ajax-field">
-                                    <label class="form-label" for="phoneNumber">Phone Number</label>
+                                    <label class="form-label" for="recovery_email">Recovery email</label>
+                                    <input type="email" id="recovery_email" name="recovery_email" class="form-control"
+                                        value="{{ $details->recovery_email }}"
+                                        placeholder="Used for account recovery and required before 2FA" autocomplete="email" />
+                                    <span class="ajax-error"></span>
+                                    <p class="form-text small mb-0">Add a recovery address before you can require email codes at sign-in.</p>
+                                </div>
+                                <div class="mb-3 col-md-6 ajax-field">
+                                    <label class="form-label" for="phoneNumber">Phone number</label>
                                     <input type="text" id="phoneNumber" name="phone" class="form-control"
-                                            placeholder="202 555 0111" value="{{ $details->phone }}" />
+                                        placeholder="202 555 0111" value="{{ $details->phone }}" />
                                     <span class="ajax-error"></span>
                                 </div>
 
                             </div>
                             <div class="mt-2">
-                                <button type="submit" class="btn btn-primary me-2">Save</button>
+                                <button type="submit" class="btn btn-primary me-2 submit-button">Save</button>
                                 <button type="reset" class="btn btn-label-secondary">Cancel</button>
                             </div>
                         </form>
@@ -61,15 +68,14 @@
 
         const _this = $(this);
 
-        _this.find('.submit-button').attr('disabled', 'disabled');
-        _this.find('.submit-button').text('Saving...');
+        const saveBtn = _this.find('.submit-button');
+        saveBtn.prop('disabled', true).text('Saving...');
 
         const url = _this.attr('action');
         const data = _this.serializeArray();
 
         $.post(url, data, function(res) {
-            _this.find('.submit-button').removeAttr('disabled');
-            _this.find('.submit-button').text('Save');
+            saveBtn.prop('disabled', false).text('Save');
 
             processAjaxResponse(res, 1000);
         }, 'json');

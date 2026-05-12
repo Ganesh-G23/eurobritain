@@ -17,7 +17,10 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <form method="GET" action="{{ url('admin/student') }}" class="mb-4">
+                        @php
+                            $filterTeacherId = (int) ($teacher_id ?? 0);
+                        @endphp
+                        <form method="GET" action="{{ url('admin/student') }}" class="mb-4" id="student-list-filters">
                             <div class="row g-3 align-items-end">
                                 <div class="col-lg-3 col-md-6">
                                     <label class="form-label">Search</label>
@@ -26,35 +29,45 @@
                                 </div>
                                 <div class="col-lg-2 col-md-6">
                                     <label class="form-label">Teacher</label>
-                                    <select name="teacher_id" class="form-select">
+                                    <select name="teacher_id" id="student-list-filter-teacher" class="form-select">
                                         <option value="">All teachers</option>
                                         @foreach ($teachers ?? [] as $t)
                                             <option value="{{ $t->id }}"
-                                                {{ (int) ($teacher_id ?? 0) === (int) $t->id ? 'selected' : '' }}>
+                                                {{ $filterTeacherId === (int) $t->id ? 'selected' : '' }}>
                                                 {{ $t->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
                                 <div class="col-lg-2 col-md-6">
                                     <label class="form-label">Classroom</label>
-                                    <select name="classroom_id" class="form-select">
-                                        <option value="">All classrooms</option>
-                                        @foreach ($classrooms ?? [] as $c)
-                                            <option value="{{ $c->id }}"
-                                                {{ (int) ($classroom_id ?? 0) === (int) $c->id ? 'selected' : '' }}>
-                                                {{ $c->name }}</option>
-                                        @endforeach
+                                    <select name="classroom_id" id="student-list-filter-classroom" class="form-select"
+                                        @if ($filterTeacherId <= 0) disabled title="Select a teacher first to filter by classroom" @endif>
+                                        @if ($filterTeacherId <= 0)
+                                            <option value="">Select a teacher first</option>
+                                        @else
+                                            <option value="">All classrooms</option>
+                                            @foreach ($classrooms ?? [] as $c)
+                                                <option value="{{ $c->id }}"
+                                                    {{ (int) ($classroom_id ?? 0) === (int) $c->id ? 'selected' : '' }}>
+                                                    {{ $c->name }}</option>
+                                            @endforeach
+                                        @endif
                                     </select>
                                 </div>
                                 <div class="col-lg-2 col-md-6">
                                     <label class="form-label">Batch</label>
-                                    <select name="batch_id" class="form-select">
-                                        <option value="">All batches</option>
-                                        @foreach ($batches ?? [] as $b)
-                                            <option value="{{ $b->id }}"
-                                                {{ (int) ($batch_id ?? 0) === (int) $b->id ? 'selected' : '' }}>
-                                                {{ $b->name }}</option>
-                                        @endforeach
+                                    <select name="batch_id" id="student-list-filter-batch" class="form-select"
+                                        @if ($filterTeacherId <= 0) disabled title="Select a teacher first to filter by batch" @endif>
+                                        @if ($filterTeacherId <= 0)
+                                            <option value="">Select a teacher first</option>
+                                        @else
+                                            <option value="">All batches</option>
+                                            @foreach ($batches ?? [] as $b)
+                                                <option value="{{ $b->id }}"
+                                                    {{ (int) ($batch_id ?? 0) === (int) $b->id ? 'selected' : '' }}>
+                                                    {{ $b->name }}</option>
+                                            @endforeach
+                                        @endif
                                     </select>
                                 </div>
                                 <div class="col-lg-3 col-md-12 d-flex flex-wrap gap-2">
@@ -99,14 +112,22 @@
                                                 $batchCount = $student->batch_id ? 1 : 0;
                                                 $enrollmentTeacher = $student->teachers->first();
                                             }
-                                            $mapsForEnrollment = $enrollmentTeacher
-                                                ? $maps->where('teacher_id', $enrollmentTeacher->id)->map(static function ($m) {
+                                            $enrollmentTeachersList = $student->teachers
+                                                ->map(static fn ($t) => ['id' => (int) $t->id, 'name' => (string) $t->name])
+                                                ->values();
+                                            $enrollmentMapsByTeacher = $student->teachers
+                                                ->map(static function ($t) use ($maps) {
                                                     return [
-                                                        'classroom_id' => (int) $m->classroom_id,
-                                                        'batch_id' => (int) $m->batch_id,
+                                                        'teacher_id' => (int) $t->id,
+                                                        'maps' => $maps->where('teacher_id', $t->id)->map(static function ($m) {
+                                                            return [
+                                                                'classroom_id' => (int) $m->classroom_id,
+                                                                'batch_id' => (int) $m->batch_id,
+                                                            ];
+                                                        })->values()->all(),
                                                     ];
-                                                })->values()
-                                                : collect();
+                                                })
+                                                ->values();
                                         @endphp
                                         <tr>
                                             <td>{{ $key + 1 }}</td>
@@ -123,7 +144,8 @@
                                                             class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments-list"
                                                             data-student-id="{{ base64_encode($student->id) }}"
                                                             data-teacher-id="{{ $enrollmentTeacher->id }}"
-                                                            data-maps='@json($mapsForEnrollment)'
+                                                            data-teachers='@json($enrollmentTeachersList)'
+                                                            data-maps-by-teacher='@json($enrollmentMapsByTeacher)'
                                                             title="Classrooms &amp; batches">
                                                             <i class="icon-base ti tabler-school"></i>
                                                         </button>
@@ -195,8 +217,14 @@
                         <input type="hidden" name="student_id" id="list_enr_student_id" value="">
                         <input type="hidden" name="teacher_id" id="list_enr_teacher_id" value="">
                         <input type="hidden" name="return_student_list" value="1">
-                        <p class="text-body-secondary small">One row per classroom and batch for this teacher. The first row
-                            sets the student’s primary classroom and batch for display.</p>
+                        <div class="mb-3">
+                            <label class="form-label" for="list_enr_teacher_select">Teacher</label>
+                            <select id="list_enr_teacher_select" class="form-select" autocomplete="off"></select>
+                            <p class="form-text small mb-0">Select the teacher first. Classrooms and batches shown are only
+                                for that teacher.</p>
+                        </div>
+                        <p class="text-body-secondary small">One row per classroom and batch for the selected teacher. The
+                            first row sets the student’s primary classroom and batch for display.</p>
                         <div id="student-list-enrollment-rows" class="mb-3"></div>
                         <button type="button" class="btn btn-sm btn-label-primary" id="student-list-add-enrollment-row">
                             <i class="icon-base ti tabler-plus me-1"></i> Add row
@@ -293,9 +321,76 @@
         }
 
         $(document).ready(function() {
+            $('#student-list-filter-teacher').on('change', function() {
+                $('#student-list-filter-classroom').val('');
+                $('#student-list-filter-batch').val('');
+            });
+
             const enrollmentOptionsUrl = "{{ url('admin/student/enrollment-options') }}";
             let listEnrClassrooms = [];
             let listEnrBatches = [];
+            let listEnrMapsByTeacher = [];
+
+            function getListMapsForTeacher(teacherId) {
+                const t = String(teacherId);
+                const hit = (listEnrMapsByTeacher || []).find(function(row) {
+                    return String(row.teacher_id) === t;
+                });
+                return hit && hit.maps ? hit.maps : [];
+            }
+
+            function showStudentListEnrollmentModal() {
+                const modalEl = document.getElementById('studentListEnrollmentsModal');
+                if (modalEl && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    $('#studentListEnrollmentsModal').modal('show');
+                }
+            }
+
+            function loadListEnrollmentUI(teacherId, shouldShowModal) {
+                const tid = parseInt(teacherId, 10) || 0;
+                if (!tid) {
+                    return;
+                }
+                $('#list_enr_teacher_id').val(tid);
+                $('#student-list-enrollment-rows').html(
+                    '<p class="small text-muted mb-0">Loading…</p>');
+                $.get(enrollmentOptionsUrl, {
+                    teacher_id: tid
+                }, function(res) {
+                    if (res.status != 1) {
+                        alert(res.error || 'Could not load classrooms.');
+                        $('#student-list-enrollment-rows').empty();
+                        return;
+                    }
+                    listEnrClassrooms = res.data.classrooms || [];
+                    listEnrBatches = res.data.batches || [];
+                    const parsed = getListMapsForTeacher(tid);
+                    $('#student-list-enrollment-rows').empty();
+                    if (!listEnrClassrooms.length) {
+                        $('#student-list-enrollment-rows').html(
+                            '<div class="alert alert-warning mb-0">This teacher has no classrooms yet. Add them from the teacher page.</div>'
+                        );
+                    } else if (parsed && parsed.length) {
+                        parsed.forEach(function(m) {
+                            appendListEnrollmentRow(m.classroom_id, m.batch_id);
+                        });
+                    } else {
+                        appendListEnrollmentRow('', '');
+                    }
+                    if (shouldShowModal) {
+                        showStudentListEnrollmentModal();
+                    }
+                }, 'json');
+            }
+
+            $('#list_enr_teacher_select').on('change.listEnr', function() {
+                const tid = $(this).val();
+                if (tid) {
+                    loadListEnrollmentUI(tid, false);
+                }
+            });
 
             function loadListBatchesIntoSelect($batchSelect, classroomId, selectedBatchId, done) {
                 selectedBatchId = selectedBatchId || '';
@@ -349,48 +444,31 @@
 
             $(document).on('click', '.open-student-enrollments-list', function() {
                 const studentId = $(this).data('student-id');
-                const teacherId = $(this).data('teacher-id');
-                let maps = $(this).attr('data-maps');
-                let parsed = [];
+                const defaultTeacherId = $(this).data('teacher-id');
+                let teachers = [];
                 try {
-                    parsed = maps ? JSON.parse(maps) : [];
+                    teachers = JSON.parse($(this).attr('data-teachers') || '[]');
                 } catch (e) {
-                    parsed = [];
+                    teachers = [];
+                }
+                try {
+                    listEnrMapsByTeacher = JSON.parse($(this).attr('data-maps-by-teacher') || '[]');
+                } catch (e) {
+                    listEnrMapsByTeacher = [];
                 }
                 $('#list_enr_student_id').val(studentId);
-                $('#list_enr_teacher_id').val(teacherId);
                 clearAjaxErrors('#studentListEnrollmentsModal');
-                $('#student-list-enrollment-rows').html(
-                    '<p class="small text-muted mb-0">Loading…</p>');
-                $.get(enrollmentOptionsUrl, {
-                    teacher_id: teacherId
-                }, function(res) {
-                    if (res.status != 1) {
-                        alert(res.error || 'Could not load classrooms.');
-                        $('#student-list-enrollment-rows').empty();
-                        return;
-                    }
-                    listEnrClassrooms = res.data.classrooms || [];
-                    listEnrBatches = res.data.batches || [];
-                    $('#student-list-enrollment-rows').empty();
-                    if (!listEnrClassrooms.length) {
-                        $('#student-list-enrollment-rows').html(
-                            '<div class="alert alert-warning mb-0">This teacher has no classrooms yet. Add them from the teacher page.</div>'
-                        );
-                    } else if (parsed && parsed.length) {
-                        parsed.forEach(function(m) {
-                            appendListEnrollmentRow(m.classroom_id, m.batch_id);
-                        });
-                    } else {
-                        appendListEnrollmentRow('', '');
-                    }
-                    const modalEl = document.getElementById('studentListEnrollmentsModal');
-                    if (modalEl && window.bootstrap && window.bootstrap.Modal) {
-                        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                    } else {
-                        $('#studentListEnrollmentsModal').modal('show');
-                    }
-                }, 'json');
+
+                const $sel = $('#list_enr_teacher_select').empty();
+                teachers.forEach(function(t) {
+                    $sel.append($('<option/>').attr('value', t.id).text(t.name));
+                });
+                $sel.val(String(defaultTeacherId));
+                if (!$sel.val() && teachers.length) {
+                    $sel.val(String(teachers[0].id));
+                }
+                const tidToLoad = parseInt($sel.val(), 10) || parseInt(defaultTeacherId, 10);
+                loadListEnrollmentUI(tidToLoad, true);
             });
 
             $(document).on('change', '#studentListEnrollmentsModal .list-enr-classroom', function() {

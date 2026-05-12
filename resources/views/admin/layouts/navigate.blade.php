@@ -1,6 +1,7 @@
 @php
 $sub_active_tab = $sub_active_tab ?? "";
 $active_tab = $active_tab ?? "";
+$adminLevel = (int) data_get(session('admin'), 'user_level', 0);
 @endphp
 <!-- Dashboards -->
 <li class="menu-item {{ $active_tab == 'dashboard' ? 'active' : '' }}">
@@ -25,6 +26,15 @@ $active_tab = $active_tab ?? "";
     </a>
 </li>
 
+@if ($adminLevel === 1)
+    <li class="menu-item {{ $active_tab == 'admins' ? 'active' : '' }}">
+        <a href="{{ url('admin/admins') }}" class="menu-link">
+            <i class="menu-icon icon-base ti tabler-users-group"></i>
+            <div data-i18n="Administrators">Administrators</div>
+        </a>
+    </li>
+@endif
+
 <!-- Forms & Tables -->
 <li class="menu-header small">
     <span class="menu-header-text" data-i18n="Settings">Settings</span>
@@ -40,7 +50,7 @@ $active_tab = $active_tab ?? "";
 <li class="menu-item {{ $active_tab == 'security' ? 'active' : '' }}">
     <a href="{{ url('admin/security') }}" class="menu-link {{ $active_tab == 'security' ? 'active' : '' }}">
         <i class="menu-icon icon-base ti tabler-lock"></i>
-        <div data-i18n="Change Password">Change Password</div>
+        <div data-i18n="Security">Security</div>
     </a>
 </li>
 

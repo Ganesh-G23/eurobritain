@@ -47,37 +47,50 @@
                                             @csrf
                                             <input type="hidden" name="role" id="login-role" value="teacher">
                                             <div class="form-group mb-3 ajax-msg"></div>
-                                            <div class="form-group mb-3 ajax-field">
-                                                <input type="text" class="form-control" id="email"
-                                                    placeholder="Email" name="email">
-                                                <span class="ajax-error text-danger small"></span>
-                                            </div>
-                                            <div class="form-group mb-3 ajax-field">
-                                                <div class="password-wrapper">
-                                                    <input type="password" id="password" placeholder="Enter password"
-                                                        class="form-control" name="password">
+                                            <div id="login-credentials">
+                                                <div class="form-group mb-3 ajax-field">
+                                                    <input type="text" class="form-control" id="email"
+                                                        placeholder="Email" name="email">
+                                                    <span class="ajax-error text-danger small"></span>
+                                                </div>
+                                                <div class="form-group mb-3 ajax-field">
+                                                    <div class="password-wrapper">
+                                                        <input type="password" id="password" placeholder="Enter password"
+                                                            class="form-control" name="password">
 
-                                                    <img id="togglePassword"
-                                                        src="https://img.icons8.com/ios-glyphs/30/000000/visible.png"
-                                                        alt="show">
+                                                        <img id="togglePassword"
+                                                            src="https://img.icons8.com/ios-glyphs/30/000000/visible.png"
+                                                            alt="show">
+                                                    </div>
+                                                    <span class="ajax-error text-danger small"></span>
                                                 </div>
-                                                <span class="ajax-error text-danger small"></span>
+                                                <div
+                                                    class="form-group mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                                    <div class="d-flex align-items-center">
+                                                        <input type="checkbox" id="remember_me" name="remember" value="1"
+                                                            class="me-2">
+                                                        <label class="mb-0" for="remember_me">Remember me</label>
+                                                    </div>
+                                                    <a href="{{ url('forgot-password') }}">Forgot password?</a>
+                                                </div>
+                                                <div class="form-group mb-3 ajax-field">
+                                                    <div class="d-flex align-items-start">
+                                                        <input type="checkbox" id="terms" name="terms" class="me-2 mt-1">
+                                                        <label class="mb-0" for="terms">I agree to the <a href="/">terms & conditions and privacy policy</a></label>
+                                                    </div>
+                                                    <span class="ajax-error text-danger small"></span>
+                                                </div>
                                             </div>
-                                            <div
-                                                class="form-group mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                                <div class="d-flex align-items-center">
-                                                    <input type="checkbox" id="remember_me" name="remember" value="1"
-                                                        class="me-2">
-                                                    <label class="mb-0" for="remember_me">Remember me</label>
+                                            <div id="otp-panel" class="d-none">
+                                                <p class="small text-muted mb-3">We sent a 6-digit code to your email. Enter it below to finish signing in.</p>
+                                                <div class="form-group mb-3 ajax-field">
+                                                    <input type="text" class="form-control" id="login-otp" name="otp"
+                                                        placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+                                                    <span class="ajax-error text-danger small" id="otp-ajax-error"></span>
                                                 </div>
-                                                <a href="{{ url('forgot-password') }}">Forgot password?</a>
-                                            </div>
-                                            <div class="form-group mb-3 ajax-field">
-                                                <div class="d-flex align-items-start">
-                                                    <input type="checkbox" id="terms" name="terms" class="me-2 mt-1">
-                                                    <label class="mb-0" for="terms">I agree to the <a href="/">terms & conditions and privacy policy</a></label>
-                                                </div>
-                                                <span class="ajax-error text-danger small"></span>
+                                                <input type="hidden" name="pending_token" id="login-pending-token" value="">
+                                                <button type="button" id="otp-verify-btn" class="btn-main w-100 mb-2">Verify code</button>
+                                                <button type="button" id="otp-cancel-btn" class="back-btn w-100">Back to password</button>
                                             </div>
                                             <!--  <div class="form-group mb-3 float-start w-100 text-box"> <span class="text_continue bg-card px-2 text-muted-foreground text-uppercase text-center">Or continue with</span> </div>-->
                                             <!--<div class="form-group mb-3 float-start w-100">
@@ -128,6 +141,15 @@
 
         function handleAjaxResponse(res) {
             if (res.status == 1) {
+                if (res.requires_otp && res.pending_token) {
+                    $('#login-pending-token').val(res.pending_token);
+                    $('#login-credentials').addClass('d-none');
+                    $('#otp-panel').removeClass('d-none');
+                    $('#login-otp').val('').focus();
+                    $('#otp-ajax-error').text('');
+                    $('#login-form .ajax-msg').html('<div class="alert alert-info">' + (res.msg || 'Check your email for the code.') + '</div>');
+                    return;
+                }
                 if (res.redirect_url) {
                     window.location.href = res.redirect_url;
                     return;
@@ -152,6 +174,10 @@
 
         $(document).on('submit', '#login-form', function(e) {
             e.preventDefault();
+            if (!$('#otp-panel').hasClass('d-none')) {
+                document.getElementById('otp-verify-btn')?.click();
+                return;
+            }
             clearAjaxErrors();
 
             const _this = $(this);
@@ -161,6 +187,45 @@
                 _this.find('.submit-button').removeAttr('disabled').text('Submit');
                 handleAjaxResponse(res);
             }, 'json');
+        });
+
+        document.getElementById('otp-cancel-btn')?.addEventListener('click', function() {
+            $('#otp-panel').addClass('d-none');
+            $('#login-credentials').removeClass('d-none');
+            $('#login-pending-token').val('');
+            $('#login-otp').val('');
+            $('#otp-ajax-error').text('');
+            $('#login-form .ajax-msg').html('');
+        });
+
+        document.getElementById('otp-verify-btn')?.addEventListener('click', function() {
+            const token = $('#login-pending-token').val();
+            const otp = ($('#login-otp').val() || '').trim();
+            $('#otp-ajax-error').text('');
+            $('#login-form .ajax-msg').html('');
+            if (!token || otp.length !== 6) {
+                $('#otp-ajax-error').text('Enter the 6-digit code from your email.');
+                return;
+            }
+            const btn = $(this);
+            btn.prop('disabled', true).text('Verifying...');
+            $.post('{{ route('web.login.verify-otp') }}', {
+                _token: $('input[name="_token"]', '#login-form').val(),
+                pending_token: token,
+                otp: otp
+            }, function(res) {
+                btn.prop('disabled', false).text('Verify code');
+                if (res.status == 1 && res.redirect_url) {
+                    window.location.href = res.redirect_url;
+                    return;
+                }
+                if (res.error) {
+                    $('#login-form .ajax-msg').html('<div class="alert alert-danger">' + res.error + '</div>');
+                }
+            }, 'json').fail(function() {
+                btn.prop('disabled', false).text('Verify code');
+                $('#login-form .ajax-msg').html('<div class="alert alert-danger">Something went wrong. Please try again.</div>');
+            });
         });
 
         function showStep(index) {

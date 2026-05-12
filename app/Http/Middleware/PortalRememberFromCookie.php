@@ -6,6 +6,7 @@ use App\Models\PortalUser;
 use App\Support\PortalSession;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
 class PortalRememberFromCookie
@@ -19,10 +20,14 @@ class PortalRememberFromCookie
             if (is_string($token) && $token !== '') {
                 $user = PortalUser::where('remember_token', $token)->first();
                 if ($user) {
-                    $role = (int) ($user->role ?? 0);
-                    PortalSession::forgetOtherRoleBuckets($role);
-                    PortalSession::putRoleUser($role, $user->toArray());
-                    session()->put('show_teacher_password_popup', (int) ($user->is_password_changed ?? 0) === 0 ? 1 : 0);
+                    if ($user->email_two_factor_enabled) {
+                        Cookie::queue(Cookie::forget(self::COOKIE_NAME));
+                    } else {
+                        $role = (int) ($user->role ?? 0);
+                        PortalSession::forgetOtherRoleBuckets($role);
+                        PortalSession::putRoleUser($role, $user->toArray());
+                        session()->put('show_teacher_password_popup', (int) ($user->is_password_changed ?? 0) === 0 ? 1 : 0);
+                    }
                 }
             }
         }

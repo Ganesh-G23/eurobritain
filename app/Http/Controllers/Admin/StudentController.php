@@ -5,21 +5,21 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Classroom;
-use App\Models\PortalUser;
-use Illuminate\Http\Request;
-use App\Models\StudentClassroomMap;
-use App\Models\StudentTeacherMap;
-use App\Models\ParentStudentMap;
-use Illuminate\Support\Collection;
 use App\Models\Exam;
 use App\Models\Mark;
+use App\Models\ParentStudentMap;
+use App\Models\PortalUser;
 use App\Models\StudentAttendance;
+use App\Models\StudentClassroomMap;
+use App\Models\StudentTeacherMap;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class StudentController extends Controller
 {
-    function list(Request $request)
+    public function list(Request $request)
     {
         $mainUrl = url('admin/student');
 
@@ -27,6 +27,12 @@ class StudentController extends Controller
         $teacherId = (int) ($request->teacher_id ?? 0);
         $classroomId = (int) ($request->classroom_id ?? 0);
         $batchId = (int) ($request->batch_id ?? 0);
+
+        if ($teacherId <= 0) {
+            $classroomId = 0;
+            $batchId = 0;
+        }
+
         $page = max(1, (int) ($request->page ?? 1));
         $perPage = max(1, min(200, (int) ($request->per_page ?? 50)));
 
@@ -38,9 +44,9 @@ class StudentController extends Controller
         if ($search !== '') {
             $studentList->where(function ($query) use ($search) {
                 $query
-                    ->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('email', 'like', '%' . $search . '%')
-                    ->orWhere('phone', 'like', '%' . $search . '%');
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%');
             });
         }
 
@@ -73,7 +79,7 @@ class StudentController extends Controller
                 'classroom_id' => $classroomId > 0 ? $classroomId : null,
                 'batch_id' => $batchId > 0 ? $batchId : null,
             ],
-            static fn($v) => $v !== null && $v !== '',
+            static fn ($v) => $v !== null && $v !== '',
         );
 
         $numRows = (clone $studentList)->count();
@@ -87,19 +93,23 @@ class StudentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $classroomsQuery = Classroom::query()->orderBy('name');
         if ($teacherId > 0) {
-            $classroomsQuery->where('teacher_id', $teacherId);
-        }
-        $classrooms = $classroomsQuery->get(['id', 'name', 'teacher_id']);
+            $classrooms = Classroom::query()
+                ->where('teacher_id', $teacherId)
+                ->orderBy('name')
+                ->get(['id', 'name', 'teacher_id']);
 
-        $batchesQuery = Batch::query()->with('classroom')->orderBy('name');
-        if ($classroomId > 0) {
-            $batchesQuery->where('classroom_id', $classroomId);
-        } elseif ($teacherId > 0) {
-            $batchesQuery->where('teacher_id', $teacherId);
+            $batchesQuery = Batch::query()->with('classroom')->orderBy('name');
+            if ($classroomId > 0) {
+                $batchesQuery->where('classroom_id', $classroomId);
+            } else {
+                $batchesQuery->where('teacher_id', $teacherId);
+            }
+            $batches = $batchesQuery->get(['id', 'name', 'classroom_id', 'teacher_id']);
+        } else {
+            $classrooms = collect();
+            $batches = collect();
         }
-        $batches = $batchesQuery->get(['id', 'name', 'classroom_id', 'teacher_id']);
 
         return view('admin.student.list', [
             'title' => 'Students',
@@ -119,7 +129,7 @@ class StudentController extends Controller
         ]);
     }
 
-    function deleteStudent(Request $request)
+    public function deleteStudent(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
 
@@ -147,7 +157,7 @@ class StudentController extends Controller
         echo json_encode($this->response);
     }
 
-    function add(Request $request)
+    public function add(Request $request)
     {
         $teachers = PortalUser::where('role', 1)
             ->orderBy('name')
@@ -160,15 +170,15 @@ class StudentController extends Controller
         ]);
     }
 
-    function edit(Request $request)
+    public function edit(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
-        if (!$id) {
+        if (! $id) {
             return redirect('admin/student');
         }
 
         $student = PortalUser::where('role', 2)->with('teachers')->find($id);
-        if (!$student) {
+        if (! $student) {
             return redirect('admin/student');
         }
 
@@ -178,7 +188,7 @@ class StudentController extends Controller
         $defaultTeacherId = (int) ($student->teachers->first()->id ?? 0);
 
         $parentRow = null;
-        if (!empty($student->parent_id)) {
+        if (! empty($student->parent_id)) {
             $parentRow = PortalUser::where('role', 3)->find((int) $student->parent_id);
         }
 
@@ -192,7 +202,7 @@ class StudentController extends Controller
         ]);
     }
 
-    function enrollmentOptions(Request $request)
+    public function enrollmentOptions(Request $request)
     {
         $teacherId = (int) ($request->teacher_id ?? 0);
         if ($teacherId < 1) {
@@ -203,7 +213,7 @@ class StudentController extends Controller
             return;
         }
 
-        if (!PortalUser::where('role', 1)->whereKey($teacherId)->exists()) {
+        if (! PortalUser::where('role', 1)->whereKey($teacherId)->exists()) {
             $this->response['status'] = 0;
             $this->response['error'] = 'Teacher not found.';
             echo json_encode($this->response);
@@ -226,10 +236,11 @@ class StudentController extends Controller
         echo json_encode($this->response);
     }
 
-    function form(Request $request)
+    public function form(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
-        $student = $id ? PortalUser::where('role', 2)->find($id) : new PortalUser();
+        $student = $id ? PortalUser::where('role', 2)->find($id) : new PortalUser;
+
         return view('admin.student.form', [
             'title' => 'Student',
             'active_tab' => 'student',
@@ -237,14 +248,14 @@ class StudentController extends Controller
         ]);
     }
 
-    function view(Request $request)
+    public function view(Request $request)
     {
         $id = $request->id ? base64_decode($request->id) : null;
         $portalUser = PortalUser::with(['teachers', 'classroom', 'batch', 'studentClassroomMaps.classroom', 'studentClassroomMaps.batch'])
             ->where('role', 2)
             ->find($id);
 
-        if (!$portalUser) {
+        if (! $portalUser) {
             return redirect('admin/student');
         }
 
@@ -255,8 +266,8 @@ class StudentController extends Controller
         $currentBatchIdsForStudent = $viewBatches
             ->pluck('id')
             ->merge($portalUser->batch_id ? [(int) $portalUser->batch_id] : [])
-            ->map(static fn($id) => (int) $id)
-            ->filter(static fn($id) => $id > 0)
+            ->map(static fn ($id) => (int) $id)
+            ->filter(static fn ($id) => $id > 0)
             ->unique()
             ->values();
 
@@ -322,10 +333,10 @@ class StudentController extends Controller
             }
         }
 
-        if ($student->classroom_id && $student->classroom && !$classroomsKeyed->has($student->classroom_id)) {
+        if ($student->classroom_id && $student->classroom && ! $classroomsKeyed->has($student->classroom_id)) {
             $classroomsKeyed->put($student->classroom->id, $student->classroom);
         }
-        if ($student->batch_id && $student->batch && !$batchesKeyed->has($student->batch_id)) {
+        if ($student->batch_id && $student->batch && ! $batchesKeyed->has($student->batch_id)) {
             $student->batch->loadMissing('classroom');
             $batchesKeyed->put($student->batch->id, $student->batch);
         }
@@ -354,7 +365,7 @@ class StudentController extends Controller
             $ids = $ids->merge(StudentAttendance::query()->where('student_id', $studentId)->pluck('batch_id'));
         }
 
-        return $ids->map(static fn($id) => (int) $id)->filter(static fn($id) => $id > 0)->unique()->values();
+        return $ids->map(static fn ($id) => (int) $id)->filter(static fn ($id) => $id > 0)->unique()->values();
     }
 
     /**
@@ -362,5 +373,4 @@ class StudentController extends Controller
      *
      * @return Collection<int, object>
      */
-    
 }

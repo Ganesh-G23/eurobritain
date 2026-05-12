@@ -92,37 +92,54 @@
                         <img src="{{ url('public/admin_theme/assets/img/logo.png') }}" alt="logo" style="max-height: 60px;">
                     </div>
                     <h4 class="mb-1">Welcome to {{ config('app.name') }}!</h4>
-                    <p class="mb-6">Please sign-in to your account</p>
+                    <p class="mb-6" id="login-step-title">Please sign-in to your account</p>
 
                     <form id="login-form" class="mb-6" action="{{ url('admin/verify_login') }}" method="POST">
                         @csrf
                         <div class="mb-3 ajax-msg"></div>
-                        <div class="mb-6 ajax-field">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="text" class="form-control" id="email" name="email"
-                                placeholder="Enter your email" autofocus />
-                            <span class="ajax-error"></span>
-                        </div>
-                        <div class="mb-6 form-password-toggle ajax-field">
-                            <label class="form-label" for="password">Password</label>
-                            <div class="input-group input-group-merge">
-                                <input type="password" id="password" class="form-control" name="password"
-                                    placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
-                                    aria-describedby="password" />
-                                <span class="input-group-text cursor-pointer"><i
-                                        class="icon-base ti tabler-eye-off"></i></span>
+                        <div id="login-credentials">
+                            <div class="mb-6 ajax-field">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="text" class="form-control" id="email" name="email"
+                                    placeholder="Enter your email" autofocus autocomplete="username" />
+                                <span class="ajax-error"></span>
                             </div>
-                            <span class="ajax-error"></span>
-                        </div>
-                        <div class="my-8">
-                            <div class="d-flex justify-content-between">
-                                <div class="form-check mb-0 ms-2">
-                                    <input class="form-check-input" type="checkbox" id="remember-me" />
-                                    <label class="form-check-label" for="remember-me"> Remember Me </label>
+                            <div class="mb-6 form-password-toggle ajax-field">
+                                <label class="form-label" for="password">Password</label>
+                                <div class="input-group input-group-merge">
+                                    <input type="password" id="password" class="form-control" name="password"
+                                        placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
+                                        aria-describedby="password" autocomplete="current-password" />
+                                    <span class="input-group-text cursor-pointer"><i
+                                            class="icon-base ti tabler-eye-off"></i></span>
+                                </div>
+                                <span class="ajax-error"></span>
+                            </div>
+                            <div class="my-8">
+                                <div class="d-flex justify-content-between">
+                                    <div class="form-check mb-0 ms-2">
+                                        <input class="form-check-input" type="checkbox" id="remember-me" />
+                                        <label class="form-check-label" for="remember-me"> Remember Me </label>
+                                    </div>
                                 </div>
                             </div>
+                            <button type="submit" class="btn btn-primary d-grid w-100 submit-button">Sign in</button>
                         </div>
-                        <button type="submit" class="btn btn-primary d-grid w-100 submit-button">Sign in</button>
+                        <div id="login-otp-panel" class="d-none">
+                            <p class="small text-body-secondary mb-3">We sent a 6-digit code to your email. Enter it below
+                                to finish signing in.</p>
+                            <div class="mb-3 ajax-field">
+                                <label class="form-label" for="admin-login-otp">Verification code</label>
+                                <input type="text" class="form-control" id="admin-login-otp" maxlength="6"
+                                    inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" />
+                                <span class="ajax-error" id="admin-otp-ajax-error"></span>
+                            </div>
+                            <input type="hidden" id="admin-login-pending-token" value="" />
+                            <button type="button" class="btn btn-primary d-grid w-100 mb-2" id="admin-otp-verify-btn">Verify
+                                code</button>
+                            <button type="button" class="btn btn-label-secondary d-grid w-100" id="admin-otp-back-btn">Back
+                                to password</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -168,23 +185,70 @@
     <script src="{{ url('public/admin_theme/assets/js/pages-auth.js') }}"></script>
     <script src="{{ url('public/admin_theme/custom/custom.js') }}"></script>
     <script>
+        function adminLoginShowOtpStep(pendingToken) {
+            $('#login-credentials').addClass('d-none');
+            $('#login-otp-panel').removeClass('d-none');
+            $('#admin-login-pending-token').val(pendingToken);
+            $('#login-step-title').text('Enter your verification code');
+            $('#admin-login-otp').val('').focus();
+        }
+
+        function adminLoginShowPasswordStep() {
+            $('#login-otp-panel').addClass('d-none');
+            $('#login-credentials').removeClass('d-none');
+            $('#admin-login-pending-token').val('');
+            $('#login-step-title').text('Please sign-in to your account');
+            clearAjaxErrors();
+        }
+
         $(document).ready(function() {
             $(document).on('submit', '#login-form', function(e) {
+                if (!$('#login-otp-panel').hasClass('d-none')) {
+                    e.preventDefault();
+                    return;
+                }
                 e.preventDefault();
                 clearAjaxErrors();
                 const _this = $(this);
-                _this.find('.submit-button').attr('disabled', 'disabled');
-                _this.find('.submit-button').text('Please wait...');
+                const btn = _this.find('.submit-button');
+                btn.attr('disabled', 'disabled');
+                btn.text('Please wait...');
 
-                let url = $(this).attr('action');
-                let data = $(this).serializeArray();
+                const url = _this.attr('action');
+                const data = _this.serializeArray();
 
                 $.post(url, data, function(res) {
-                    _this.find('.submit-button').removeAttr('disabled');
-                    _this.find('.submit-button').text('Sign in');
-                    processAjaxResponse(res, 1000);
-                }, 'json')
-            })
+                    btn.removeAttr('disabled');
+                    btn.text('Sign in');
+                    if (res.status == 1 && res.requires_otp && res.pending_token) {
+                        adminLoginShowOtpStep(res.pending_token);
+                        $('.ajax-msg').html('<div class="alert alert-success" role="alert">' + (res.msg ||
+                            '') + '</div>');
+                    } else {
+                        processAjaxResponse(res, 1000);
+                    }
+                }, 'json');
+            });
+
+            $('#admin-otp-verify-btn').on('click', function() {
+                clearAjaxErrors();
+                const token = $('#admin-login-pending-token').val();
+                const otp = $('#admin-login-otp').val().trim();
+                const btn = $(this);
+                btn.prop('disabled', true).text('Verifying...');
+                $.post('{{ url('admin/verify_login_otp') }}', {
+                    _token: '{{ csrf_token() }}',
+                    pending_token: token,
+                    otp: otp
+                }, function(res) {
+                    btn.prop('disabled', false).text('Verify code');
+                    processAjaxResponse(res, 800);
+                }, 'json');
+            });
+
+            $('#admin-otp-back-btn').on('click', function() {
+                adminLoginShowPasswordStep();
+            });
         })
     </script>
 </body>

@@ -298,6 +298,78 @@ class UserDashboardController extends Controller
         echo json_encode($this->response);
     }
 
+    public function saveEmailTwoFactor(Request $request)
+    {
+        if (! session()->has('portal_user')) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unauthorized request';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $portalUser = session('portal_user');
+        $role = (int) ($portalUser['role'] ?? 0);
+        if (! in_array($role, [1, 2], true)) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Email sign-in codes are only available for teachers and students.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $validation = Validator::make($request->all(), [
+            'current_password' => 'required|string',
+        ]);
+
+        if ($validation->fails()) {
+            $this->response['status'] = 0;
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $user = PortalUser::find((int) ($portalUser['id'] ?? 0));
+        if (! $user) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'User not found';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $isValidCurrentPassword = Hash::check($request->current_password, (string) $user->password)
+            || (string) ($user->p ?? '') === $request->current_password;
+        if (! $isValidCurrentPassword) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Current password is incorrect.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $enabled = $request->boolean('email_two_factor_enabled');
+        if ($enabled && ! filled($user->email)) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Add an email address to your profile before enabling email sign-in codes.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $user->email_two_factor_enabled = $enabled;
+        $user->save();
+
+        PortalSession::updateRoleUserArray($role, $user->toArray());
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = $enabled
+            ? 'Email verification on sign-in is enabled.'
+            : 'Email verification on sign-in is disabled.';
+        echo json_encode($this->response);
+    }
+
     public function saveTeacherSettings(Request $request)
     {
         if (! session()->has('portal_user')) {

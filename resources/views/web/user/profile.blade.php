@@ -63,6 +63,31 @@
                     </form>
                 </div>
             </div>
+
+            <div class="card mb-4">
+                <h5 class="card-header">Email sign-in verification</h5>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">When enabled, we email you a one-time code each time you sign in with your password.</p>
+                    <form id="two-factor-form" method="POST" action="{{ url('user/profile/email-two-factor') }}">
+                        @csrf
+                        <div class="col-12 two-factor-ajax-msg"></div>
+                        <input type="hidden" name="email_two_factor_enabled" value="0">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="email_two_factor_enabled"
+                                name="email_two_factor_enabled" value="1"
+                                {{ $details->email_two_factor_enabled ? 'checked' : '' }}>
+                            <label class="form-check-label" for="email_two_factor_enabled">Require email verification code when I sign in</label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="two_factor_current_password" class="form-label">Current password (required to change this setting)</label>
+                            <input type="password" class="form-control" id="two_factor_current_password" name="current_password"
+                                autocomplete="current-password" required>
+                            <span class="text-danger small two-factor-field-error" data-for="current_password"></span>
+                        </div>
+                        <button type="submit" class="btn btn-primary two-factor-submit">Save</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -84,6 +109,29 @@
             _this.find('.submit-button').removeAttr('disabled');
             _this.find('.submit-button').text('Save changes');
             processAjaxResponse(res, 1000);
+        }, 'json');
+    });
+
+    $(document).on('submit', '#two-factor-form', function(e) {
+        e.preventDefault();
+        const _this = $(this);
+        _this.find('.two-factor-ajax-msg').html('');
+        _this.find('.two-factor-field-error').text('');
+        _this.find('.two-factor-submit').prop('disabled', true).text('Saving...');
+        $.post(_this.attr('action'), _this.serialize(), function(res) {
+            _this.find('.two-factor-submit').prop('disabled', false).text('Save');
+            if (res.status == 1) {
+                _this.find('.two-factor-ajax-msg').html('<div class="alert alert-success">' + (res.msg || 'Saved') + '</div>');
+                return;
+            }
+            if (res.error_array) {
+                Object.keys(res.error_array).forEach(function(key) {
+                    _this.find('.two-factor-field-error[data-for="' + key + '"]').text(res.error_array[key]);
+                });
+            }
+            if (res.error) {
+                _this.find('.two-factor-ajax-msg').html('<div class="alert alert-danger">' + res.error + '</div>');
+            }
         }, 'json');
     });
 </script>

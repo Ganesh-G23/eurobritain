@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProfileController;
@@ -23,7 +24,12 @@ Route::get('/about', [HomeController::class, 'about'])->name('web.about');
 Route::get('/services', [HomeController::class, 'services'])->name('web.services');
 Route::get('/contact', [HomeController::class, 'contact'])->name('web.contact');
 Route::get('/login', [HomeController::class, 'login'])->name('web.login');
-Route::post('/login', [CustomerController::class, 'login'])->name('web.login.submit');
+Route::post('/login', [CustomerController::class, 'login'])
+    ->middleware('throttle:5,1')
+    ->name('web.login.submit');
+Route::post('/login/verify-otp', [CustomerController::class, 'verifyLoginOtp'])
+    ->middleware('throttle:10,1')
+    ->name('web.login.verify-otp');
 Route::get('/sign-up', [HomeController::class, 'register'])->name('web.register');
 
 Route::get('/forgot-password', [PortalPasswordResetController::class, 'showForgotPasswordForm'])->name('web.password.request');
@@ -43,6 +49,7 @@ Route::prefix('user')
         Route::get('/profile', [UserDashboardController::class, 'profile']);
         // Route::get('/profile/settings', [UserDashboardController::class, 'teacherProfileSettings']);
         Route::post('/profile/save_profile', [UserDashboardController::class, 'saveProfile']);
+        Route::post('/profile/email-two-factor', [UserDashboardController::class, 'saveEmailTwoFactor']);
 
         Route::get('/profile/settings', [UserDashboardController::class, 'teacherProfileSettings']);
         Route::post('/profile/save_teacher_settings', [UserDashboardController::class, 'saveTeacherSettings']);
@@ -141,14 +148,18 @@ Route::middleware('prevent-back')
     ->group(function () {
         Route::middleware('admin-auth')->group(function () {
             Route::get('login', [AuthController::class, 'login'])->name('login');
-            Route::post('verify_login', [AuthController::class, 'verifyLogin']);
+            Route::post('verify_login', [AuthController::class, 'verifyLogin'])
+                ->middleware('throttle:5,1');
+            Route::post('verify_login_otp', [AuthController::class, 'verifyLoginOtp'])
+                ->middleware('throttle:10,1');
         });
 
-        Route::middleware('admin-all')->group(function () {
+        Route::middleware(['admin-all', 'admin.must_change_password'])->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('dashboard', [DashboardController::class, 'index']);
             Route::get('profile', [ProfileController::class, 'index']);
             Route::post('profile/save_profile', [ProfileController::class, 'save_profile']);
+            Route::post('profile/email-two-factor', [ProfileController::class, 'saveEmailTwoFactor']);
             Route::get('security', [ProfileController::class, 'security']);
             Route::post('security/save_change_password', [ProfileController::class, 'save_change_password']);
             Route::get('logout', [DashboardController::class, 'logout']);
@@ -190,6 +201,13 @@ Route::middleware('prevent-back')
             // Admin bulk student upload/sample
             Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);
             Route::post('teacher/students/bulk-upload', [TeacherController::class, 'bulkUploadStudents']);
+
+            Route::middleware('admin.super')->group(function () {
+                Route::get('admins', [AdminUserController::class, 'index']);
+                Route::post('admins', [AdminUserController::class, 'store']);
+                Route::get('admins/bulk-sample', [AdminUserController::class, 'downloadBulkSample']);
+                Route::post('admins/bulk-upload', [AdminUserController::class, 'bulkUpload']);
+            });
         });
 
         Route::prefix('common')->group(function () {

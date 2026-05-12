@@ -31,6 +31,11 @@ class PortalUser extends Model
         'default_teacher_id',
         'default_student_id',
         'remember_token',
+        'email_two_factor_enabled',
+    ];
+
+    protected $casts = [
+        'email_two_factor_enabled' => 'boolean',
     ];
 
     protected $hidden = [
