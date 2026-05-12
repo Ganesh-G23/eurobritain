@@ -144,23 +144,20 @@
                                 aria-label="Close"></button>
                         </div>
                         <div class="offcanvas-body">
-                            <form id="studentPersonalEventForm" class="pt-0">
+                            <form id="studentPersonalEventForm" class="pt-0" novalidate>
                                 @csrf
                                 <input type="hidden" name="id" id="personalEventId" value="" />
                                 <div class="mb-3">
                                     <label class="form-label" for="personalEventTitle">Title</label>
-                                    <input type="text" class="form-control" name="title" id="personalEventTitle"
-                                        required />
+                                    <input type="text" class="form-control" name="title" id="personalEventTitle" />
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label" for="personalEventStart">Start</label>
-                                    <input type="text" class="form-control" name="start_at" id="personalEventStart"
-                                        required />
+                                    <input type="text" class="form-control" name="start_at" id="personalEventStart" />
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label" for="personalEventEnd">End</label>
-                                    <input type="text" class="form-control" name="end_at" id="personalEventEnd"
-                                        required />
+                                    <input type="text" class="form-control" name="end_at" id="personalEventEnd" />
                                 </div>
                                 <div class="mb-3">
                                     <div class="form-check form-switch">
@@ -364,6 +361,15 @@
                 var errEl = document.getElementById('personalEventFormError');
                 errEl.classList.add('d-none');
                 var btn = document.getElementById('personalEventSaveBtn');
+                var titleEl = document.getElementById('personalEventTitle');
+                var t = titleEl && titleEl.value ? titleEl.value.trim() : '';
+                var startVal = pStart && pStart.value ? pStart.value.trim() : '';
+                var endVal = pEnd && pEnd.value ? pEnd.value.trim() : '';
+                if (!t || !startVal || !endVal) {
+                    errEl.textContent = 'Please enter a title, start, and end.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
                 btn.disabled = true;
                 var fd = new FormData(document.getElementById('studentPersonalEventForm'));
                 fetch(saveUrl, {

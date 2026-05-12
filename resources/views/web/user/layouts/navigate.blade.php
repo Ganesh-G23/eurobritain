@@ -593,6 +593,12 @@
                         <div data-i18n="Timeline">Timeline</div>
                     </a>
                 </li>
+                <li class="menu-item {{ $active_tab === 'fees' ? 'active' : '' }}">
+                    <a href="{{ url('user/teacher/fees/list') }}" class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-calendar-dollar"></i>
+                        <div data-i18n="Fees">Fees</div>
+                    </a>
+                </li>
                 <li
                     class="menu-item {{ in_array($active_tab, ['profile', 'security', 'teacher_settings']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
@@ -658,6 +664,14 @@
                         <div data-i18n="Complaints">Complaints</div>
                     </a>
                 </li>
+                @if ($portalRole === 3)
+                    <li class="menu-item {{ $active_tab === 'fees' ? 'active' : '' }}">
+                        <a href="{{ url('user/parent/fees') }}" class="menu-link">
+                            <i class="menu-icon icon-base ti tabler-calendar-dollar"></i>
+                            <div data-i18n="Fees">Fees</div>
+                        </a>
+                    </li>
+                @endif
                 <li class="menu-item {{ in_array($active_tab, ['profile', 'security']) ? 'active open' : '' }}">
                     <a href="javascript:void(0)" class="menu-link menu-toggle">
                         <i class="menu-icon icon-base ti tabler-layout-sidebar"></i>

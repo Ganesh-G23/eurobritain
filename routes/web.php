@@ -13,6 +13,7 @@ use App\Http\Controllers\Web\LeaderBoardController;
 use App\Http\Controllers\Web\PortalPasswordResetController;
 use App\Http\Controllers\Web\StudentComplaintController;
 use App\Http\Controllers\Web\StudentLeaveRequestController;
+use App\Http\Controllers\Web\FeesController;
 use App\Http\Controllers\Web\TimelineController;
 use App\Http\Controllers\Web\UserDashboardController;
 use App\Http\Controllers\Web\UserTeacherController;
@@ -94,6 +95,7 @@ Route::prefix('user')
             Route::get('/parent/leave', [UserDashboardController::class, 'studentLeave']);
             Route::get('/parent/complaints', [StudentComplaintController::class, 'parentComplaints']);
             Route::post('/parent/complaints/store', [StudentComplaintController::class, 'store']);
+            Route::get('/parent/fees', [FeesController::class, 'parentFeesList']);
         });
 
         // User-side Teacher management (logged-in teacher) - original simple routes
@@ -119,6 +121,10 @@ Route::prefix('user')
                 Route::get('/timelines/edit/{id}', [TimelineController::class, 'edit']);
                 Route::post('/timelines/store', [TimelineController::class, 'store']);
                 Route::get('/timelines/list', [TimelineController::class, 'timelineList']);
+                Route::get('/fees', [FeesController::class, 'fees']);
+                Route::get('/fees/edit/{id}', [FeesController::class, 'edit']);
+                Route::post('/fees/store', [FeesController::class, 'store']);
+                Route::get('/fees/list', [FeesController::class, 'feesList']);
                 // CRUD
                 Route::post('/classrooms/save', [UserTeacherController::class, 'saveClassroom']);
                 Route::post('/classrooms/delete', [UserTeacherController::class, 'deleteClassroom']);
