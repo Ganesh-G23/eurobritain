@@ -13,11 +13,13 @@ use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\PortalUser;
 use App\Models\StudentAttendance;
+use App\Models\StudentClassroomMap;
 use App\Models\StudentPersonalEvent;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
 use App\Support\FullCalendarEventPayload;
 use App\Support\PortalSession;
+use App\Notifications\PortalNotification;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -707,6 +709,38 @@ class UserDashboardController extends Controller
         ];
 
         return view('web.user.student.dashboard', $data);
+    }
+
+    public function studentProgress()
+    {
+        if (! session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return redirect('user/dashboard');
+        }
+        $teacherId = (int) (session('selected_teacher_id') ?? 0);
+        if ($teacherId <= 0) {
+            return redirect('user/select-teacher');
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
+
+        $data = [];
+        $data['title'] = 'Progress';
+        $data['active_tab'] = 'student_progress';
+        $data['teacher'] = $teacher;
+        $data['dashboard_progress_by_classroom'] = $this->buildStudentTeacherProgressByClassroom($studentId, $teacherId);
+        $data['stats'] = [
+            'totalClasses' => 0,
+            'attendanceRate' => 0,
+            'reportsAvailable' => 0,
+        ];
+
+        return view('web.user.student.progress', $data);
     }
 
     public function studentClassrooms()
@@ -1982,24 +2016,23 @@ class UserDashboardController extends Controller
 
     public function parentDashboard()
     {
-        if (! session()->has('portal_user')) {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null) {
             return redirect('login');
         }
-        $portalUser = session('portal_user');
         if ((int) ($portalUser['role'] ?? 0) !== 3) {
-            $parentBucket = session(PortalSession::KEY_PARENT);
-            if (is_array($parentBucket) && (int) ($parentBucket['role'] ?? 0) === 3) {
-                session()->put(PortalSession::KEY_ACTIVE_CONTEXT, 3);
-                session()->put('portal_user', $parentBucket);
-                session()->forget('teacher');
-                session()->forget('student');
-                $portalUser = $parentBucket;
-            } else {
-                return redirect('login');
-            }
+            return redirect('login');
         }
+
         $selectedStudentId = (int) (session('selected_student_id') ?? 0);
         if ($selectedStudentId <= 0) {
+            return redirect('user/select-student');
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            session()->forget('selected_student_id');
+
             return redirect('user/select-student');
         }
 
@@ -2009,8 +2042,6 @@ class UserDashboardController extends Controller
 
             return redirect('user/select-student');
         }
-
-        $parentId = (int) ($portalUser['id'] ?? 0);
 
         $parentStudentCount =
             (int) (DB::table('portal_user as s')
@@ -2029,6 +2060,11 @@ class UserDashboardController extends Controller
 
         $studentBatchCount = (int) (DB::table('student_classroom_map')->where('student_id', $selectedStudentId)->whereNotNull('batch_id')->selectRaw('COUNT(DISTINCT batch_id) as c')->value('c') ?? 0);
 
+        $classroomBatchRows = $this->parentStudentClassroomBatchRows($selectedStudentId);
+        $batchIdsForStudent = $this->allEnrolledBatchIdsForStudent($selectedStudentId);
+        $overview = $this->buildParentStudentDashboardOverview($selectedStudentId, $batchIdsForStudent);
+        $recentGradedExams = $this->parentStudentRecentGradedExams($selectedStudentId, $batchIdsForStudent, 10);
+
         $data = [];
         $data['title'] = 'Parent Dashboard';
         $data['active_tab'] = 'dashboard';
@@ -2036,8 +2072,49 @@ class UserDashboardController extends Controller
         $data['parent_student_count'] = $parentStudentCount;
         $data['student_classroom_count'] = $studentClassroomCount;
         $data['student_batch_count'] = $studentBatchCount;
+        $data['parent_classroom_batch_rows'] = $classroomBatchRows;
+        $data['parent_student_overview'] = $overview;
+        $data['parent_recent_graded_exams'] = $recentGradedExams;
 
         return view('web.user.parent.dashboard', $data);
+    }
+
+    public function parentProgress()
+    {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null) {
+            return redirect('login');
+        }
+        if ((int) ($portalUser['role'] ?? 0) !== 3) {
+            return redirect('login');
+        }
+
+        $selectedStudentId = (int) (session('selected_student_id') ?? 0);
+        if ($selectedStudentId <= 0) {
+            return redirect('user/select-student');
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        $student = PortalUser::where('role', 2)->find($selectedStudentId);
+        if (! $student) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        $data = [];
+        $data['title'] = 'Progress';
+        $data['active_tab'] = 'progress';
+        $data['student'] = $student;
+        $data['dashboard_progress_by_classroom'] = $this->buildParentStudentProgressByClassroom($selectedStudentId);
+
+        return view('web.user.parent.progress', $data);
     }
 
     public function delete(Request $request)
@@ -2106,10 +2183,10 @@ class UserDashboardController extends Controller
 
     public function studentLeave()
     {
-        if (! session()->has('portal_user')) {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null) {
             return redirect('login');
         }
-        $portalUser = session('portal_user');
         if ((int) ($portalUser['role'] ?? 0) !== 3) {
             return redirect('user/dashboard');
         }
@@ -2119,41 +2196,195 @@ class UserDashboardController extends Controller
             return redirect('login');
         }
 
-        $childIds = DB::table('portal_user as s')
-            ->leftJoin('parent_student_map as psm', function ($join) use ($parentId) {
-                $join->on('psm.student_id', '=', 's.id')->where('psm.parent_id', '=', $parentId);
-            })
-            ->where('s.role', 2)
-            ->whereNull('s.deleted_at')
-            ->where(function ($q) use ($parentId) {
-                $q->where('s.parent_id', $parentId)->orWhereNotNull('psm.id');
-            })
-            ->pluck('s.id')
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
+        $selectedStudentId = (int) (session('selected_student_id') ?? 0);
+        if ($selectedStudentId <= 0) {
+            return redirect('user/select-student');
+        }
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            session()->forget('selected_student_id');
 
-        $studentLeaveRequests = collect();
-        if ($childIds->isNotEmpty()) {
-            $studentLeaveRequests = LeaveRequests::query()
-                ->with(['student', 'classroom', 'batch'])
-                ->whereIn('student_id', $childIds)
-                ->orderByDesc('id')
-                ->get();
+            return redirect('user/select-student');
         }
 
-        return view('web.user.parent.student_leave', [
+        $student = PortalUser::where('role', 2)->find($selectedStudentId);
+        if (! $student) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        $studentLeaveRequests = LeaveRequests::query()
+            ->with(['student', 'classroom', 'batch'])
+            ->where('student_id', $selectedStudentId)
+            ->orderByDesc('id')
+            ->get();
+
+        return view('web.user.parent.student_leave_list', [
             'title' => 'Student leave requests',
             'active_tab' => 'leave',
+            'student' => $student,
             'student_leave_requests' => $studentLeaveRequests,
         ]);
+    }
+
+    public function parentLeaveRequest()
+    {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null) {
+            return redirect('login');
+        }
+        if ((int) ($portalUser['role'] ?? 0) !== 3) {
+            return redirect('user/dashboard');
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        if ($parentId < 1) {
+            return redirect('login');
+        }
+
+        $selectedStudentId = (int) (session('selected_student_id') ?? 0);
+        if ($selectedStudentId <= 0) {
+            return redirect('user/select-student');
+        }
+        if (! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        $student = PortalUser::where('role', 2)->with('studentClassroomMaps')->find($selectedStudentId);
+        if (! $student) {
+            session()->forget('selected_student_id');
+
+            return redirect('user/select-student');
+        }
+
+        $batchIds = $student->studentClassroomMaps->pluck('batch_id')->unique()->filter()->values();
+        if ($batchIds->isNotEmpty()) {
+            $batches = Batch::whereIn('id', $batchIds)->orderBy('name')->get();
+            $classrooms = Classroom::whereIn('id', $batches->pluck('classroom_id')->unique()->filter()->values())->orderBy('name')->get();
+        } else {
+            $teacherIds = $student->teachers()->pluck('portal_user.id');
+            $classrooms = Classroom::whereIn('teacher_id', $teacherIds)->get();
+            $batches = Batch::whereIn('classroom_id', $classrooms->pluck('id'))->get();
+        }
+
+        return view('web.user.parent.student_leave_request', [
+            'title' => 'Request leave',
+            'active_tab' => 'leave',
+            'student' => $student,
+            'classrooms' => $classrooms,
+            'batches' => $batches,
+        ]);
+    }
+
+    public function parentLeaveStore(Request $request)
+    {
+        $portalUser = $this->resolveParentPortalUser();
+        if ($portalUser === null || (int) ($portalUser['role'] ?? 0) !== 3) {
+            $this->response['error'] = 'Unauthorized';
+
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $parentId = (int) ($portalUser['id'] ?? 0);
+        $selectedStudentId = (int) (session('selected_student_id') ?? 0);
+        if ($parentId < 1 || $selectedStudentId <= 0 || ! $this->parentOwnsStudent($parentId, $selectedStudentId)) {
+            $this->response['error'] = 'Invalid student selection';
+
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $student = PortalUser::find($selectedStudentId);
+        if (! $student || (int) ($student->role ?? 0) !== 2) {
+            $this->response['error'] = 'Student not found';
+
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $validation = Validator::make($request->all(), [
+            'classroom_id' => 'required',
+            'batch_id' => 'required',
+            'from_date' => 'required',
+            'to_date' => 'required',
+            'reason' => 'required',
+        ]);
+
+        if (! $validation->fails()) {
+            $teacherId = 0;
+            $map = StudentClassroomMap::where('student_id', $student->id)
+                ->where('classroom_id', $request->classroom_id)
+                ->where('batch_id', $request->batch_id)
+                ->first();
+            if ($map) {
+                $teacherId = (int) $map->teacher_id;
+            } elseif ((int) $student->classroom_id === (int) $request->classroom_id && (int) $student->batch_id === (int) $request->batch_id) {
+                $teacherId = (int) ($student->default_teacher_id ?? Classroom::whereKey($request->classroom_id)->value('teacher_id') ?? 0);
+            }
+            if ($teacherId < 1) {
+                $teacherId = (int) ($student->teachers()->first()->id ?? 0);
+            }
+
+            $leaveRequest = new LeaveRequests();
+            $leaveRequest->student_id = $student->id;
+            $leaveRequest->teacher_id = $teacherId;
+            $leaveRequest->classroom_id = $request->classroom_id;
+            $leaveRequest->batch_id = $request->batch_id;
+            $leaveRequest->from_date = $request->from_date;
+            $leaveRequest->to_date = $request->to_date;
+            $leaveRequest->reason = $request->reason;
+            $leaveRequest->status = 'pending';
+            $leaveRequest->save();
+
+            if (Schema::hasTable('notifications') && $teacherId > 0) {
+                $teacher = PortalUser::query()
+                    ->whereKey($teacherId)
+                    ->where('role', 1)
+                    ->whereNull('deleted_at')
+                    ->first();
+                if ($teacher) {
+                    $studentName = trim((string) ($student->name ?? ''));
+                    if ($studentName === '') {
+                        $studentName = 'A student';
+                    }
+                    $fromDate = Carbon::parse((string) $leaveRequest->from_date)->format('d M Y');
+                    $toDate = Carbon::parse((string) $leaveRequest->to_date)->format('d M Y');
+                    $dateLabel = $fromDate === $toDate ? $fromDate : ($fromDate.' to '.$toDate);
+                    $title = 'New leave request';
+                    $message = $studentName.' submitted a leave request for '.$dateLabel.'.';
+                    $teacher->notify(new PortalNotification($title, $message, 'leave', [
+                        'leave_request_id' => (int) $leaveRequest->id,
+                        'student_id' => (int) $leaveRequest->student_id,
+                        'teacher_id' => (int) $teacherId,
+                        'classroom_id' => (int) $leaveRequest->classroom_id,
+                        'batch_id' => (int) $leaveRequest->batch_id,
+                        'from_date' => (string) $leaveRequest->from_date,
+                        'to_date' => (string) $leaveRequest->to_date,
+                        'status' => 'pending',
+                    ]));
+                }
+            }
+
+            $this->response['status'] = 1;
+            $this->response['msg'] = 'Leave request sent';
+            $this->response['redirect_url'] = url('user/parent/leave');
+        } else {
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+        }
+
+        echo json_encode($this->response);
     }
 
     /**
      * Batches the student is enrolled in for a teacher (student_classroom_map, with legacy fallback).
      *
-     * @return Collection<int, object{batch_id: int, batch_name: string, classroom_name: string}>
+     * @return Collection<int, object{batch_id: int, batch_name: string, classroom_id: int, classroom_name: string}>
      */
     private function studentTeacherEnrolledBatchRows(int $studentId, int $teacherId): Collection
     {
@@ -2167,6 +2398,7 @@ class UserDashboardController extends Controller
             ->select([
                 'b.id as batch_id',
                 'b.name as batch_name',
+                'c.id as classroom_id',
                 'c.name as classroom_name',
             ])
             ->distinct()
@@ -2186,6 +2418,7 @@ class UserDashboardController extends Controller
                         ->select([
                             'b.id as batch_id',
                             'b.name as batch_name',
+                            'c.id as classroom_id',
                             'c.name as classroom_name',
                         ])
                         ->get();
@@ -2198,6 +2431,7 @@ class UserDashboardController extends Controller
                         ->select([
                             'b.id as batch_id',
                             'b.name as batch_name',
+                            'c.id as classroom_id',
                             'c.name as classroom_name',
                         ])
                         ->orderBy('c.name')
@@ -2208,6 +2442,645 @@ class UserDashboardController extends Controller
         }
 
         return $batchRows;
+    }
+
+    /**
+     * Distinct batch ids the student is enrolled in (all teachers), including legacy portal_user.batch_id when valid.
+     *
+     * @return array<int, int>
+     */
+    private function allEnrolledBatchIdsForStudent(int $studentId): array
+    {
+        if ($studentId <= 0) {
+            return [];
+        }
+
+        $ids = DB::table('student_classroom_map')
+            ->where('student_id', $studentId)
+            ->whereNotNull('batch_id')
+            ->distinct()
+            ->pluck('batch_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['batch_id', 'classroom_id']);
+        if ($student && (int) ($student->batch_id ?? 0) > 0 && (int) ($student->classroom_id ?? 0) > 0) {
+            $bid = (int) $student->batch_id;
+            $cid = (int) $student->classroom_id;
+            $batchOk = Batch::query()->whereKey($bid)->whereNull('deleted_at')->where('classroom_id', $cid)->exists();
+            if ($batchOk) {
+                $ids->push($bid);
+            }
+        }
+
+        return $ids->unique()->values()->all();
+    }
+
+    /**
+     * Classroom / batch rows for the selected student (for parent dashboard summary).
+     *
+     * @return Collection<int, object{classroom_id: int, classroom_name: string, batch_id: int|null, batch_name: string|null, teacher_id: int, teacher_name: string}>
+     */
+    private function parentStudentClassroomBatchRows(int $studentId): Collection
+    {
+        if ($studentId <= 0) {
+            return collect();
+        }
+
+        $rows = DB::table('student_classroom_map as scm')
+            ->join('classrooms as c', 'c.id', '=', 'scm.classroom_id')
+            ->join('portal_user as t', 't.id', '=', 'scm.teacher_id')
+            ->leftJoin('batches as b', 'b.id', '=', 'scm.batch_id')
+            ->where('scm.student_id', $studentId)
+            ->whereNotNull('scm.classroom_id')
+            ->where('t.role', 1)
+            ->whereNull('t.deleted_at')
+            ->whereNull('c.deleted_at')
+            ->select([
+                'c.id as classroom_id',
+                'c.name as classroom_name',
+                'scm.batch_id',
+                'b.name as batch_name',
+                'scm.teacher_id',
+                't.name as teacher_name',
+            ])
+            ->orderBy('c.name')
+            ->orderBy('b.name')
+            ->get();
+
+        $uniq = $rows->unique(fn ($r) => (int) $r->classroom_id.'|'.(int) ($r->batch_id ?? 0).'|'.(int) $r->teacher_id)->values();
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id', 'batch_id']);
+        if ($student && (int) ($student->classroom_id ?? 0) > 0) {
+            $cid = (int) $student->classroom_id;
+            $bid = (int) ($student->batch_id ?? 0);
+            $cRow = DB::table('classrooms as c')
+                ->join('portal_user as t', 't.id', '=', 'c.teacher_id')
+                ->where('c.id', $cid)
+                ->whereNull('c.deleted_at')
+                ->where('t.role', 1)
+                ->whereNull('t.deleted_at')
+                ->select(['c.name as classroom_name', 'c.teacher_id', 't.name as teacher_name'])
+                ->first();
+            if ($cRow) {
+                $tid = (int) $cRow->teacher_id;
+                $linked = DB::table('student_teacher_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists()
+                    || DB::table('student_classroom_map')->where('student_id', $studentId)->where('teacher_id', $tid)->exists();
+                if ($linked) {
+                    $bName = $bid > 0 ? DB::table('batches')->where('id', $bid)->whereNull('deleted_at')->value('name') : null;
+                    $exists = $uniq->contains(fn ($r) => (int) $r->classroom_id === $cid
+                        && (int) ($r->batch_id ?? 0) === $bid
+                        && (int) $r->teacher_id === $tid);
+                    if (! $exists) {
+                        $uniq->push((object) [
+                            'classroom_id' => $cid,
+                            'classroom_name' => (string) $cRow->classroom_name,
+                            'batch_id' => $bid > 0 ? $bid : null,
+                            'batch_name' => $bName !== null ? (string) $bName : null,
+                            'teacher_id' => $tid,
+                            'teacher_name' => (string) $cRow->teacher_name,
+                        ]);
+                    }
+                }
+            }
+        }
+
+        return $uniq->sortBy(fn ($r) => strtolower((string) $r->classroom_name))->values();
+    }
+
+    /**
+     * Recent exams with numeric marks for the parent dashboard.
+     *
+     * @param  array<int, int>  $batchIds
+     * @return Collection<int, object{exam_name: string, marks: float, max_marks: float, pct: float, classroom_name: string, batch_name: string, exam_date: string|null}>
+     */
+    private function parentStudentRecentGradedExams(int $studentId, array $batchIds, int $limit = 10): Collection
+    {
+        if ($studentId <= 0 || $batchIds === [] || ! Schema::hasTable('exams') || ! Schema::hasTable('marks')) {
+            return collect();
+        }
+
+        $exams = Exam::query()
+            ->whereIn('batch_id', $batchIds)
+            ->with(['batch.classroom'])
+            ->orderByDesc('exam_date')
+            ->orderByDesc('id')
+            ->get(['id', 'batch_id', 'exam_name', 'max_marks', 'exam_date']);
+
+        if ($exams->isEmpty()) {
+            return collect();
+        }
+
+        $examIds = $exams->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $marksByExamId = Mark::query()
+            ->where('student_id', $studentId)
+            ->whereIn('exam_id', $examIds)
+            ->get()
+            ->keyBy(fn ($r) => (int) $r->exam_id);
+
+        $out = collect();
+        foreach ($exams as $exam) {
+            $eid = (int) $exam->id;
+            $markRow = $marksByExamId->get($eid);
+            if ($markRow === null) {
+                continue;
+            }
+            $raw = trim((string) $markRow->marks);
+            if ($raw === '' || ! is_numeric($raw)) {
+                continue;
+            }
+            $max = (float) ($exam->max_marks ?? 0);
+            if ($max <= 0) {
+                continue;
+            }
+            $got = (float) $raw;
+            if ($got < 0) {
+                $got = 0;
+            }
+            if ($got > $max) {
+                $got = $max;
+            }
+            $batch = $exam->batch;
+            $classroom = $batch?->classroom;
+            $out->push((object) [
+                'exam_name' => (string) ($exam->exam_name ?? ''),
+                'marks' => $got,
+                'max_marks' => $max,
+                'pct' => round(100 * $got / $max, 1),
+                'classroom_name' => (string) ($classroom->name ?? ''),
+                'batch_name' => (string) ($batch->name ?? ''),
+                'exam_date' => $exam->exam_date ? $exam->exam_date->format('Y-m-d') : null,
+            ]);
+            if ($out->count() >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per-exam progress rows and overall totals for a student in the given batches (matches dashboard mark aggregation rules).
+     *
+     * @param  array<int, int>  $batchIds
+     * @return array{
+     *   exams: list<array<string, mixed>>,
+     *   included_marks_scored: float,
+     *   included_marks_possible: float,
+     *   included_exam_count: int,
+     *   overall_pct: float|null
+     * }
+     */
+    private function buildExamProgressSnapshotForStudentBatches(int $studentId, array $batchIds, ?int $defaultTeacherIdForSettings): array
+    {
+        $empty = [
+            'exams' => [],
+            'included_marks_scored' => 0.0,
+            'included_marks_possible' => 0.0,
+            'included_exam_count' => 0,
+            'overall_pct' => null,
+        ];
+        if ($studentId <= 0 || $batchIds === [] || ! Schema::hasTable('exams') || ! Schema::hasTable('marks')) {
+            return $empty;
+        }
+        $batchIds = array_values(array_unique(array_values(array_filter($batchIds, fn ($id) => (int) $id > 0))));
+        if ($batchIds === []) {
+            return $empty;
+        }
+
+        $batchTeacherIdByBatchId = collect();
+        if ($defaultTeacherIdForSettings === null) {
+            $batchTeacherIdByBatchId = DB::table('batches as b')
+                ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                ->whereIn('b.id', $batchIds)
+                ->whereNull('b.deleted_at')
+                ->pluck('c.teacher_id', 'b.id');
+        }
+
+        $exams = Exam::query()
+            ->whereIn('batch_id', $batchIds)
+            ->with(['batch:id,name'])
+            ->orderByRaw('CASE WHEN exam_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('exam_date')
+            ->orderBy('id')
+            ->get(['id', 'batch_id', 'exam_name', 'max_marks', 'exam_date']);
+
+        if ($exams->isEmpty()) {
+            return $empty;
+        }
+
+        $examIds = $exams->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $marksByExamId = Mark::query()
+            ->where('student_id', $studentId)
+            ->whereIn('exam_id', $examIds)
+            ->get()
+            ->keyBy(fn ($r) => (int) $r->exam_id);
+
+        $teacherMarkDisplayCache = [];
+        if ($defaultTeacherIdForSettings !== null && $defaultTeacherIdForSettings > 0) {
+            $teacherSettingRow = TeacherSetting::query()->where('teacher_id', $defaultTeacherIdForSettings)->first();
+            $teacherMarkDisplayCache[$defaultTeacherIdForSettings] = self::normalizeAbsentDisplaySettingForStudent((int) ($teacherSettingRow?->count_setting ?? TeacherSetting::COUNT_AS_ZERO));
+        }
+
+        $absenceByExamId = collect();
+        if (Schema::hasTable('mark_absences')) {
+            $absenceByExamId = MarkAbsence::query()
+                ->where('student_id', $studentId)
+                ->whereIn('exam_id', $examIds)
+                ->get()
+                ->keyBy(fn ($r) => (int) $r->exam_id);
+        }
+
+        $sumMax = 0.0;
+        $sumGot = 0.0;
+        $included = 0;
+        $examRows = [];
+
+        foreach ($exams as $exam) {
+            $eid = (int) $exam->id;
+            $max = (float) ($exam->max_marks ?? 0);
+            if ($max <= 0) {
+                continue;
+            }
+
+            $batchId = (int) $exam->batch_id;
+            $teacherIdForExam = (int) ($defaultTeacherIdForSettings ?? 0);
+            if ($teacherIdForExam <= 0) {
+                $teacherIdForExam = (int) ($batchTeacherIdByBatchId[$batchId] ?? 0);
+            }
+            if ($teacherIdForExam > 0 && ! isset($teacherMarkDisplayCache[$teacherIdForExam])) {
+                $teacherSettingRow = TeacherSetting::query()->where('teacher_id', $teacherIdForExam)->first();
+                $teacherMarkDisplayCache[$teacherIdForExam] = self::normalizeAbsentDisplaySettingForStudent((int) ($teacherSettingRow?->count_setting ?? TeacherSetting::COUNT_AS_ZERO));
+            }
+            $teacherMarkDisplaySetting = $teacherMarkDisplayCache[$teacherIdForExam] ?? self::normalizeAbsentDisplaySettingForStudent(TeacherSetting::COUNT_AS_ZERO);
+
+            $batch = $exam->batch;
+            $batchName = (string) ($batch->name ?? '');
+
+            $examDateStr = $exam->exam_date ? $exam->exam_date->format('Y-m-d') : null;
+
+            $isAbsent = $absenceByExamId->has($eid);
+            if ($isAbsent) {
+                $absRow = $absenceByExamId->get($eid);
+                $storedMode = null;
+                if ($absRow && Schema::hasColumn('mark_absences', 'value') && $absRow->value !== null && $absRow->value !== '') {
+                    $storedMode = (int) $absRow->value;
+                }
+                $effectiveMode = self::normalizeAbsentDisplaySettingForStudent($storedMode ?? $teacherMarkDisplaySetting);
+                if ($effectiveMode === TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE) {
+                    $examRows[] = [
+                        'exam_id' => $eid,
+                        'exam_name' => (string) ($exam->exam_name ?? ''),
+                        'exam_date' => $examDateStr,
+                        'batch_name' => $batchName,
+                        'max_marks' => $max,
+                        'marks_obtained' => null,
+                        'pct' => null,
+                        'status' => 'absent_excluded',
+                        'chart_pct' => null,
+                    ];
+
+                    continue;
+                }
+                $sumMax += $max;
+                $included++;
+                $examRows[] = [
+                    'exam_id' => $eid,
+                    'exam_name' => (string) ($exam->exam_name ?? ''),
+                    'exam_date' => $examDateStr,
+                    'batch_name' => $batchName,
+                    'max_marks' => $max,
+                    'marks_obtained' => 0.0,
+                    'pct' => 0.0,
+                    'status' => 'absent_zero',
+                    'chart_pct' => 0.0,
+                ];
+
+                continue;
+            }
+
+            $markRow = $marksByExamId->get($eid);
+            $raw = $markRow !== null ? trim((string) $markRow->marks) : '';
+            if ($raw === '' || ! is_numeric($raw)) {
+                $examRows[] = [
+                    'exam_id' => $eid,
+                    'exam_name' => (string) ($exam->exam_name ?? ''),
+                    'exam_date' => $examDateStr,
+                    'batch_name' => $batchName,
+                    'max_marks' => $max,
+                    'marks_obtained' => null,
+                    'pct' => null,
+                    'status' => 'pending',
+                    'chart_pct' => null,
+                ];
+
+                continue;
+            }
+
+            $got = (float) $raw;
+            if ($got < 0) {
+                $got = 0;
+            }
+            if ($got > $max) {
+                $got = $max;
+            }
+            $pct = round(100 * $got / $max, 1);
+            $sumMax += $max;
+            $sumGot += $got;
+            $included++;
+            $examRows[] = [
+                'exam_id' => $eid,
+                'exam_name' => (string) ($exam->exam_name ?? ''),
+                'exam_date' => $examDateStr,
+                'batch_name' => $batchName,
+                'max_marks' => $max,
+                'marks_obtained' => $got,
+                'pct' => $pct,
+                'status' => 'graded',
+                'chart_pct' => (float) $pct,
+            ];
+        }
+
+        $overallPct = null;
+        if ($sumMax > 0) {
+            $overallPct = round(100 * $sumGot / $sumMax, 1);
+        }
+
+        return [
+            'exams' => $examRows,
+            'included_marks_scored' => round($sumGot, 2),
+            'included_marks_possible' => round($sumMax, 2),
+            'included_exam_count' => $included,
+            'overall_pct' => $overallPct,
+        ];
+    }
+
+    /**
+     * @return list<array{classroom_id: int, classroom_name: string, exams: list<array<string, mixed>>, included_marks_scored: float, included_marks_possible: float, included_exam_count: int, overall_pct: float|null}>
+     */
+    private function buildStudentTeacherProgressByClassroom(int $studentId, int $teacherId): array
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return [];
+        }
+        $batchRows = $this->studentTeacherEnrolledBatchRows($studentId, $teacherId);
+        if ($batchRows->isEmpty()) {
+            return [];
+        }
+        $by = $batchRows->groupBy(fn ($r) => (int) ($r->classroom_id ?? 0));
+        $out = [];
+        foreach ($by as $cid => $rows) {
+            $cid = (int) $cid;
+            if ($cid <= 0) {
+                continue;
+            }
+            $batchIds = $rows->pluck('batch_id')->map(fn ($x) => (int) $x)->unique()->filter()->values()->all();
+            $classroomName = (string) ($rows->first()->classroom_name ?? '');
+            $snap = $this->buildExamProgressSnapshotForStudentBatches($studentId, $batchIds, $teacherId);
+            $out[] = array_merge([
+                'classroom_id' => $cid,
+                'classroom_name' => $classroomName,
+            ], $snap);
+        }
+        usort($out, fn ($a, $b) => strcasecmp((string) $a['classroom_name'], (string) $b['classroom_name']));
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{classroom_id: int, classroom_name: string, exams: list<array<string, mixed>>, included_marks_scored: float, included_marks_possible: float, included_exam_count: int, overall_pct: float|null}>
+     */
+    private function buildParentStudentProgressByClassroom(int $studentId): array
+    {
+        if ($studentId <= 0) {
+            return [];
+        }
+        $metaRows = $this->parentStudentClassroomBatchRows($studentId);
+        if ($metaRows->isEmpty()) {
+            return [];
+        }
+        $byClassroomId = $metaRows->groupBy(fn ($r) => (int) $r->classroom_id);
+        $out = [];
+        foreach ($byClassroomId as $cid => $group) {
+            $cid = (int) $cid;
+            if ($cid <= 0) {
+                continue;
+            }
+            $batchIds = DB::table('student_classroom_map')
+                ->where('student_id', $studentId)
+                ->where('classroom_id', $cid)
+                ->whereNotNull('batch_id')
+                ->pluck('batch_id')
+                ->map(fn ($x) => (int) $x)
+                ->unique()
+                ->filter(fn ($x) => $x > 0)
+                ->values();
+
+            $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id', 'batch_id']);
+            if ($student && (int) ($student->classroom_id ?? 0) === $cid && (int) ($student->batch_id ?? 0) > 0) {
+                $bid = (int) $student->batch_id;
+                if (Batch::query()->whereKey($bid)->where('classroom_id', $cid)->whereNull('deleted_at')->exists()) {
+                    $batchIds->push($bid);
+                }
+            }
+            $batchIds = $batchIds->unique()->values()->all();
+            if ($batchIds === []) {
+                continue;
+            }
+            $classroomName = (string) ($group->first()->classroom_name ?? '');
+            $snap = $this->buildExamProgressSnapshotForStudentBatches($studentId, $batchIds, null);
+            $out[] = array_merge([
+                'classroom_id' => $cid,
+                'classroom_name' => $classroomName,
+            ], $snap);
+        }
+        usort($out, fn ($a, $b) => strcasecmp((string) $a['classroom_name'], (string) $b['classroom_name']));
+
+        return $out;
+    }
+
+    /**
+     * Aggregated attendance, marks, and calendar snapshot for a student across all mapped teachers (parent view).
+     *
+     * @param  array<int, int>  $batchIds
+     * @return array{
+     *   attendance_ready: bool,
+     *   attendance_present: int,
+     *   attendance_absent: int,
+     *   attendance_late: int,
+     *   attendance_rate: float|null,
+     *   overall_marks_pct: float|null,
+     *   overall_marks_exams_count: int,
+     *   upcoming_events_days: int,
+     *   upcoming_events_count: int,
+     *   upcoming_assignment_like_count: int
+     * }
+     */
+    private function buildParentStudentDashboardOverview(int $studentId, array $batchIds): array
+    {
+        $out = [
+            'attendance_ready' => Schema::hasTable('student_attendances'),
+            'attendance_present' => 0,
+            'attendance_absent' => 0,
+            'attendance_late' => 0,
+            'attendance_rate' => null,
+            'overall_marks_pct' => null,
+            'overall_marks_exams_count' => 0,
+            'upcoming_events_days' => 14,
+            'upcoming_events_count' => 0,
+            'upcoming_assignment_like_count' => 0,
+        ];
+
+        if ($studentId <= 0) {
+            return $out;
+        }
+
+        if ($out['attendance_ready'] && $batchIds !== []) {
+            $allRows = StudentAttendance::query()
+                ->whereIn('batch_id', $batchIds)
+                ->get(['batch_id', 'student_id', 'date', 'attendance_status']);
+            foreach ($allRows as $row) {
+                if ((int) $row->student_id !== $studentId) {
+                    continue;
+                }
+                $st = (string) $row->attendance_status;
+                if ($st === 'P') {
+                    $out['attendance_present']++;
+                } elseif ($st === 'A') {
+                    $out['attendance_absent']++;
+                } elseif ($st === 'L') {
+                    $out['attendance_late']++;
+                }
+            }
+            $totalMarked = $out['attendance_present'] + $out['attendance_absent'] + $out['attendance_late'];
+            if ($totalMarked > 0) {
+                $out['attendance_rate'] = round(100 * ($out['attendance_present'] + $out['attendance_late']) / $totalMarked, 1);
+            }
+        }
+
+        if (Schema::hasTable('exams') && Schema::hasTable('marks') && $batchIds !== []) {
+            $batchTeacherIdByBatchId = DB::table('batches as b')
+                ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                ->whereIn('b.id', $batchIds)
+                ->whereNull('b.deleted_at')
+                ->pluck('c.teacher_id', 'b.id');
+
+            $exams = Exam::query()
+                ->whereIn('batch_id', $batchIds)
+                ->orderBy('exam_date')
+                ->get(['id', 'batch_id', 'max_marks', 'exam_name']);
+
+            if ($exams->isNotEmpty()) {
+                $examIds = $exams->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+                $marksByExamId = Mark::query()
+                    ->where('student_id', $studentId)
+                    ->whereIn('exam_id', $examIds)
+                    ->get()
+                    ->keyBy(fn ($r) => (int) $r->exam_id);
+
+                $teacherMarkDisplayCache = [];
+                $absenceByExamId = collect();
+                if (Schema::hasTable('mark_absences')) {
+                    $absenceByExamId = MarkAbsence::query()
+                        ->where('student_id', $studentId)
+                        ->whereIn('exam_id', $examIds)
+                        ->get()
+                        ->keyBy(fn ($r) => (int) $r->exam_id);
+                }
+
+                $sumMax = 0.0;
+                $sumGot = 0.0;
+                $included = 0;
+
+                foreach ($exams as $exam) {
+                    $eid = (int) $exam->id;
+                    $max = (float) ($exam->max_marks ?? 0);
+                    if ($max <= 0) {
+                        continue;
+                    }
+
+                    $batchId = (int) $exam->batch_id;
+                    $teacherIdForExam = (int) ($batchTeacherIdByBatchId[$batchId] ?? 0);
+                    if ($teacherIdForExam <= 0) {
+                        continue;
+                    }
+                    if (! isset($teacherMarkDisplayCache[$teacherIdForExam])) {
+                        $teacherSettingRow = TeacherSetting::query()->where('teacher_id', $teacherIdForExam)->first();
+                        $teacherMarkDisplayCache[$teacherIdForExam] = self::normalizeAbsentDisplaySettingForStudent((int) ($teacherSettingRow?->count_setting ?? TeacherSetting::COUNT_AS_ZERO));
+                    }
+                    $teacherMarkDisplaySetting = $teacherMarkDisplayCache[$teacherIdForExam];
+
+                    $isAbsent = $absenceByExamId->has($eid);
+                    if ($isAbsent) {
+                        $absRow = $absenceByExamId->get($eid);
+                        $storedMode = null;
+                        if ($absRow && Schema::hasColumn('mark_absences', 'value') && $absRow->value !== null && $absRow->value !== '') {
+                            $storedMode = (int) $absRow->value;
+                        }
+                        $effectiveMode = self::normalizeAbsentDisplaySettingForStudent($storedMode ?? $teacherMarkDisplaySetting);
+                        if ($effectiveMode === TeacherSetting::EXCLUDE_FROM_OVERALL_PERCENTAGE) {
+                            continue;
+                        }
+                        $sumMax += $max;
+                        $included++;
+
+                        continue;
+                    }
+
+                    $markRow = $marksByExamId->get($eid);
+                    $raw = $markRow !== null ? trim((string) $markRow->marks) : '';
+                    if ($raw === '' || ! is_numeric($raw)) {
+                        continue;
+                    }
+                    $got = (float) $raw;
+                    if ($got < 0) {
+                        $got = 0;
+                    }
+                    if ($got > $max) {
+                        $got = $max;
+                    }
+                    $sumMax += $max;
+                    $sumGot += $got;
+                    $included++;
+                }
+
+                $out['overall_marks_exams_count'] = $included;
+                if ($sumMax > 0) {
+                    $out['overall_marks_pct'] = round(100 * $sumGot / $sumMax, 1);
+                }
+            }
+        }
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['name']);
+        $studentDisplayName = (string) ($student?->name ?? '');
+        $agg = $this->buildParentAggregatedStudentEventsPayload($studentId, $studentDisplayName);
+        $winStart = Carbon::now()->startOfDay();
+        $winEnd = Carbon::now()->addDays((int) $out['upcoming_events_days'])->endOfDay();
+        foreach ($agg['calendar_events'] as $ev) {
+            $startRaw = $ev['start'] ?? null;
+            if ($startRaw === null || $startRaw === '') {
+                continue;
+            }
+            try {
+                $startAt = Carbon::parse($startRaw);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($startAt->lt($winStart) || $startAt->gt($winEnd)) {
+                continue;
+            }
+            $out['upcoming_events_count']++;
+            $title = strtolower((string) ($ev['title'] ?? ''));
+            $typeTitle = strtolower((string) (($ev['extendedProps']['event_type_title'] ?? '') ?: ''));
+            $blob = $title.' '.$typeTitle;
+            if (preg_match('/\b(assign|assignment|homework|submission|deadline|due|project|quiz)\b/i', $blob)) {
+                $out['upcoming_assignment_like_count']++;
+            }
+        }
+
+        return $out;
     }
 
     /**

@@ -69,6 +69,7 @@ Route::prefix('user')
             Route::get('/select-teacher/access/{teacherId}', [UserDashboardController::class, 'accessTeacher']); // legacy
             // Student module pages under selected teacher context
             Route::get('/student/dashboard', [UserDashboardController::class, 'studentDashboard']);
+            Route::get('/student/progress', [UserDashboardController::class, 'studentProgress']);
             Route::get('/student/classrooms', [UserDashboardController::class, 'studentClassrooms']);
             Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
             Route::get('/student/events', [UserDashboardController::class, 'studentEvents']);
@@ -77,6 +78,7 @@ Route::prefix('user')
             Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
             Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
             Route::get('/student/leave', [StudentLeaveRequestController::class, 'index']);
+            Route::get('/student/leave/request', [StudentLeaveRequestController::class, 'create']);
             Route::post('/student/leave/store', [StudentLeaveRequestController::class, 'store']);
             Route::get('/student/complaints', [StudentComplaintController::class, 'studentComplaints']);
             Route::post('/student/complaints/store', [StudentComplaintController::class, 'store']);
@@ -89,10 +91,13 @@ Route::prefix('user')
             Route::get('/select-student/access/{studentId}', [UserDashboardController::class, 'accessStudent']);
 
             Route::get('/parent/dashboard', [UserDashboardController::class, 'parentDashboard']);
+            Route::get('/parent/progress', [UserDashboardController::class, 'parentProgress']);
             Route::get('/parent/classrooms', [UserDashboardController::class, 'parentClassrooms']);
             Route::get('/parent/classroom/{id}', [UserDashboardController::class, 'parentClassroomShow']);
             Route::get('/parent/events', [UserDashboardController::class, 'parentEvents']);
             Route::get('/parent/leave', [UserDashboardController::class, 'studentLeave']);
+            Route::get('/parent/leave/request', [UserDashboardController::class, 'parentLeaveRequest']);
+            Route::post('/parent/leave/store', [UserDashboardController::class, 'parentLeaveStore']);
             Route::get('/parent/complaints', [StudentComplaintController::class, 'parentComplaints']);
             Route::post('/parent/complaints/store', [StudentComplaintController::class, 'store']);
             Route::get('/parent/fees', [FeesController::class, 'parentFeesList']);

@@ -331,6 +331,12 @@
                     <div>Dashboard</div>
                 </a>
             </li>
+            <li class="menu-item {{ $active_tab === 'student_progress' ? 'active' : '' }}">
+                <a href="{{ url('user/student/progress') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-chart-line"></i>
+                    <div>Progress</div>
+                </a>
+            </li>
             <li class="menu-item {{ $active_tab === 'student_classrooms' ? 'active' : '' }}">
                 <a href="{{ url('user/student/classrooms') }}" class="menu-link">
                     <i class="menu-icon icon-base ti tabler-school"></i>

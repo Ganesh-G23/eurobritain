@@ -3157,7 +3157,10 @@ class UserTeacherController extends Controller
             return $redirect;
         }
 
-        $student_leave_requests = LeaveRequests::with('student')->where('teacher_id', $teacherId)->orderBy('id', 'desc')->get();
+        $student_leave_requests = LeaveRequests::with(['student', 'classroom', 'batch'])
+            ->where('teacher_id', $teacherId)
+            ->orderByDesc('id')
+            ->get();
         $data = [];
         $data['title'] = 'Student Leave';
         $data['active_tab'] = 'student_leave';
@@ -3170,17 +3173,17 @@ class UserTeacherController extends Controller
     {
         [$teacherId, $redirect] = $this->requireTeacher();
         if ($redirect) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized request.',
-            ], 401);
+            return response()->json(['status' => 0, 'error' => 'Unauthorized request.'], 401);
         }
 
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'id' => 'required|integer|exists:leave_requests,id',
             'action' => 'required|in:approve,reject',
-            'reason' => 'nullable|string',
+            'reason' => 'required_if:action,reject|nullable|string|max:2000',
         ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 0, 'error_array' => $validator->errors()->toArray()]);
+        }
 
         $id = (int) $request->id;
         $action = (string) $request->action;
@@ -3221,17 +3224,19 @@ class UserTeacherController extends Controller
                 $processedLeave = $leave->fresh();
             });
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Leave request not found.',
-            ], 404);
+            return response()->json(['status' => 0, 'error' => 'Leave request not found.'], 404);
+        } catch (\Throwable $e) {
+            Log::error('Teacher leave action failed', [
+                'teacher_id' => $teacherId,
+                'leave_id' => $id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['status' => 0, 'error' => 'Could not update leave request. Please try again.'], 500);
         }
 
         if ($blocked) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This leave request is already processed.',
-            ], 422);
+            return response()->json(['status' => 0, 'error' => 'This leave request is already processed.'], 422);
         }
 
         if ($processedLeave instanceof LeaveRequests) {
@@ -3246,8 +3251,9 @@ class UserTeacherController extends Controller
         }
 
         return response()->json([
-            'success' => true,
-            'status' => $processedLeave?->status,
+            'status' => 1,
+            'msg' => $action === 'approve' ? 'Leave approved.' : 'Leave rejected.',
+            'leave_status' => $processedLeave?->status,
         ]);
     }
 }

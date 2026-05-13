@@ -18,6 +18,22 @@ class StudentLeaveRequestController extends Controller
 {
     public function index()
     {
+        $user = PortalUser::query()->find(session('portal_user')['id']);
+        $studentLeaveRequests = LeaveRequests::query()
+            ->with(['classroom', 'batch'])
+            ->where('student_id', (int) $user->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return view('web.user.student.leave_list', [
+            'title' => 'Leave list',
+            'active_tab' => 'student_leave',
+            'student_leave_requests' => $studentLeaveRequests,
+        ]);
+    }
+
+    public function create()
+    {
         $user = PortalUser::with('studentClassroomMaps')->find(session('portal_user')['id']);
         $batchIds = $user->studentClassroomMaps->pluck('batch_id')->unique()->filter()->values();
         if ($batchIds->isNotEmpty()) {
@@ -29,8 +45,8 @@ class StudentLeaveRequestController extends Controller
             $batches = Batch::whereIn('classroom_id', $classrooms->pluck('id'))->get();
         }
 
-        return view('web.user.student.leave', [
-            'title' => 'Leave Requests',
+        return view('web.user.student.leave_request', [
+            'title' => 'Request leave',
             'active_tab' => 'student_leave',
             'classrooms' => $classrooms,
             'batches' => $batches,

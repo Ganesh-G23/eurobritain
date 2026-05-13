@@ -66,6 +66,7 @@
 	<script src="{{ url('public/admin_theme/assets/vendor/libs/apex-charts/apexcharts.js') }}"></script>
 	<script src="{{ url('public/admin_theme/assets/js/main.js') }}"></script>
 	<script src="{{ url('public/admin_theme/custom/custom.js') }}"></script>
+	@stack('scripts')
 	@yield('scripts')
 </body>
 </html>

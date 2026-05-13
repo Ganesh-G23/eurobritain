@@ -635,6 +635,13 @@
                         <div data-i18n="Dashboard">Dashboard</div>
                     </a>
                 </li>
+                <li class="menu-item {{ $active_tab === 'progress' ? 'active' : '' }}">
+                    <a href="{{ $portalRole === 2 ? ($selectedTeacherId > 0 ? url('user/student/progress') : url('user/select-teacher')) : ($portalRole === 3 ? ((int) (session('selected_student_id') ?? 0) > 0 ? url('user/parent/progress') : url('user/select-student')) : url('user/dashboard')) }}"
+                        class="menu-link">
+                        <i class="menu-icon icon-base ti tabler-chart-line"></i>
+                        <div data-i18n="Progress">Progress</div>
+                    </a>
+                </li>
                 <li class="menu-item {{ $active_tab === 'classrooms' ? 'active' : '' }}">
                     <a href="{{ $portalRole === 2 ? ($selectedTeacherId > 0 ? url('user/student/classrooms') : url('user/select-teacher')) : ($portalRole === 3 ? ((int) (session('selected_student_id') ?? 0) > 0 ? url('user/parent/classrooms') : url('user/select-student')) : url('user/dashboard')) }}"
                         class="menu-link">
