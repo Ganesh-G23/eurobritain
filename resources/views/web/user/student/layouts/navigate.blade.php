@@ -337,6 +337,28 @@
                     <div>Progress</div>
                 </a>
             </li>
+            <li
+                class="menu-item {{ str_starts_with((string) ($active_tab ?? ''), 'student_leaderboard') ? 'active open' : '' }}">
+                <a href="javascript:void(0)" class="menu-link menu-toggle">
+                    <i class="menu-icon icon-base ti tabler-trophy"></i>
+                    <div>Leaderboard</div>
+                </a>
+                <ul class="menu-sub">
+                    <li
+                        class="menu-item {{ ($active_tab ?? '') === 'student_leaderboard_aggregate' ? 'active' : '' }}">
+                        <a href="{{ url('user/student/leaderboard') }}" class="menu-link">
+                            <i class="menu-icon icon-base ti tabler-chart-bar"></i>
+                            <div>Batch wise</div>
+                        </a>
+                    </li>
+                    <li class="menu-item {{ ($active_tab ?? '') === 'student_leaderboard_test' ? 'active' : '' }}">
+                        <a href="{{ url('user/student/leaderboard?view=test') }}" class="menu-link">
+                            <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
+                            <div>Test wise</div>
+                        </a>
+                    </li>
+                </ul>
+            </li>
             <li class="menu-item {{ $active_tab === 'student_classrooms' ? 'active' : '' }}">
                 <a href="{{ url('user/student/classrooms') }}" class="menu-link">
                     <i class="menu-icon icon-base ti tabler-school"></i>

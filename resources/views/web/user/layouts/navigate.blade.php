@@ -575,11 +575,26 @@
                     </ul>
                 </li>
 
-                <li class="menu-item {{ $active_tab === 'leaderboard' ? 'active' : '' }}">
-                    <a href="{{ url('user/teacher/leaderboard') }}" class="menu-link">
-                        <i class="menu-icon icon-base ti tabler-calendar"></i>
+                <li
+                    class="menu-item {{ str_starts_with((string) ($active_tab ?? ''), 'leaderboard_') ? 'active open' : '' }}">
+                    <a href="javascript:void(0)" class="menu-link menu-toggle">
+                        <i class="menu-icon icon-base ti tabler-trophy"></i>
                         <div data-i18n="Leaderboard">Leaderboard</div>
                     </a>
+                    <ul class="menu-sub">
+                        <li class="menu-item {{ ($active_tab ?? '') === 'leaderboard_batch' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/leaderboard?view=batch') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-chart-bar"></i>
+                                <div data-i18n="Class / batch wise">Class / batch wise</div>
+                            </a>
+                        </li>
+                        <li class="menu-item {{ ($active_tab ?? '') === 'leaderboard_test' ? 'active' : '' }}">
+                            <a href="{{ url('user/teacher/leaderboard?view=test') }}" class="menu-link">
+                                <i class="menu-icon icon-base ti tabler-clipboard-check"></i>
+                                <div data-i18n="Test wise">Test wise</div>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 <li class="menu-item {{ $active_tab === 'complaints' ? 'active' : '' }}">
                     <a href="{{ url('user/teacher/complaints') }}" class="menu-link">

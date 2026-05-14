@@ -17,9 +17,9 @@ use App\Models\StudentClassroomMap;
 use App\Models\StudentPersonalEvent;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
+use App\Notifications\PortalNotification;
 use App\Support\FullCalendarEventPayload;
 use App\Support\PortalSession;
-use App\Notifications\PortalNotification;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -741,6 +741,260 @@ class UserDashboardController extends Controller
         ];
 
         return view('web.user.student.progress', $data);
+    }
+
+    /**
+     * Leaderboard enrollment: batches grouped by classroom; default classroom is first by name (one class per teacher).
+     *
+     * @return array{
+     *   classrooms: list<array{id: int, name: string}>,
+     *   batches_by_classroom: array<int, list<array{id: int, name: string}>>,
+     *   default_classroom_id: int,
+     *   batches_in_default_class: list<array{id: int, name: string}>
+     * }
+     */
+    private function studentLeaderboardEnrollmentPayload(int $studentId, int $teacherId): array
+    {
+        $batchRows = $this->studentTeacherEnrolledBatchRows($studentId, $teacherId);
+
+        $classroomsById = [];
+        $batchesByClassroom = [];
+        $batchSeen = [];
+        foreach ($batchRows as $r) {
+            $cid = (int) $r->classroom_id;
+            $bid = (int) $r->batch_id;
+            if ($cid <= 0 || $bid <= 0) {
+                continue;
+            }
+            if (! isset($classroomsById[$cid])) {
+                $classroomsById[$cid] = [
+                    'id' => $cid,
+                    'name' => (string) $r->classroom_name,
+                ];
+            }
+            $dedupeKey = $cid.':'.$bid;
+            if (isset($batchSeen[$dedupeKey])) {
+                continue;
+            }
+            $batchSeen[$dedupeKey] = true;
+            $batchesByClassroom[$cid][] = [
+                'id' => $bid,
+                'name' => (string) $r->batch_name,
+            ];
+        }
+
+        $classrooms = array_values($classroomsById);
+        usort($classrooms, fn ($a, $b) => strcmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? '')));
+
+        $defaultClassroomId = $classrooms !== [] ? (int) $classrooms[0]['id'] : 0;
+        $batchesInDefault = $defaultClassroomId > 0 ? ($batchesByClassroom[$defaultClassroomId] ?? []) : [];
+
+        return [
+            'classrooms' => $classrooms,
+            'batches_by_classroom' => $batchesByClassroom,
+            'default_classroom_id' => $defaultClassroomId,
+            'batches_in_default_class' => $batchesInDefault,
+        ];
+    }
+
+    public function studentLeaderboard(Request $request)
+    {
+        if (! session()->has('portal_user')) {
+            return redirect('login');
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return redirect('user/dashboard');
+        }
+        $teacherId = (int) (session('selected_teacher_id') ?? 0);
+        if ($teacherId <= 0) {
+            return redirect('user/select-teacher');
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+        $teacher = PortalUser::where('role', 1)->find($teacherId);
+
+        $view = $request->query('view', 'aggregate');
+        if (! is_string($view) || ! in_array($view, ['aggregate', 'test'], true)) {
+            $view = 'aggregate';
+        }
+
+        $lbPayload = $this->studentLeaderboardEnrollmentPayload($studentId, $teacherId);
+        $defaultClassroomId = (int) $lbPayload['default_classroom_id'];
+        $batchesInDefaultClass = $lbPayload['batches_in_default_class'];
+
+        $defaultBatchId = 0;
+        if ($batchesInDefaultClass !== []) {
+            $defaultBatchId = (int) $batchesInDefaultClass[0]['id'];
+        }
+
+        $examsByBatch = [];
+        if ($view === 'test' && $batchesInDefaultClass !== []) {
+            $batchIdsForExams = array_column($batchesInDefaultClass, 'id');
+            $examsByBatch = Exam::query()
+                ->whereIn('batch_id', $batchIdsForExams)
+                ->whereNull('deleted_at')
+                ->orderBy('exam_date')
+                ->orderBy('id')
+                ->get(['id', 'batch_id', 'exam_name', 'exam_date'])
+                ->groupBy(fn ($e) => (int) $e->batch_id)
+                ->map(fn ($group) => $group->map(function ($e) {
+                    return [
+                        'id' => (int) $e->id,
+                        'exam_name' => (string) $e->exam_name,
+                        'exam_date' => $e->exam_date ? $e->exam_date->format('Y-m-d') : null,
+                    ];
+                })->values()->all())
+                ->all();
+        }
+
+        $data = [];
+        $data['title'] = 'Leaderboard';
+        $data['active_tab'] = $view === 'test' ? 'student_leaderboard_test' : 'student_leaderboard_aggregate';
+        $data['teacher'] = $teacher;
+        $data['leaderboard_view'] = $view;
+        $data['leaderboard_default_classroom_id'] = $defaultClassroomId;
+        $data['leaderboard_batches_in_class_json'] = $batchesInDefaultClass;
+        $data['leaderboard_exams_by_batch_json'] = $examsByBatch;
+        $data['leaderboard_default_batch_id'] = $defaultBatchId;
+        $data['leaderboard_chart_data_url'] = url('user/student/leaderboard/chart-data');
+        $data['leaderboard_student_id'] = $studentId;
+
+        return view('web.user.student.leaderboard', $data);
+    }
+
+    public function studentLeaderboardChartData(Request $request)
+    {
+        if (! session()->has('portal_user')) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+        $portalUser = session('portal_user');
+        if ((int) ($portalUser['role'] ?? 0) !== 2) {
+            return response()->json(['status' => 0, 'error' => 'Forbidden'], 403);
+        }
+        $teacherId = (int) (session('selected_teacher_id') ?? 0);
+        if ($teacherId <= 0) {
+            return response()->json(['status' => 0, 'error' => 'No teacher selected'], 400);
+        }
+
+        $studentId = (int) ($portalUser['id'] ?? 0);
+        [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+
+        $enrolledRows = $this->studentTeacherEnrolledBatchRows($studentId, $teacherId);
+        $allowedBatchIds = $enrolledRows
+            ->pluck('batch_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $lbPayload = $this->studentLeaderboardEnrollmentPayload($studentId, $teacherId);
+        $batchIdsInDefaultClass = array_column($lbPayload['batches_in_default_class'], 'id');
+
+        $view = $request->query('view', 'aggregate');
+        if (! is_string($view) || ! in_array($view, ['aggregate', 'test'], true)) {
+            $view = 'aggregate';
+        }
+
+        if ($view === 'aggregate') {
+            $classroomId = (int) $lbPayload['default_classroom_id'];
+            if ($classroomId <= 0) {
+                return response()->json(['status' => 0, 'error' => 'No classroom linked for this teacher'], 400);
+            }
+
+            $batchId = (int) $request->query('batch_id', 0);
+            if ($batchId > 0) {
+                if (! in_array($batchId, $allowedBatchIds, true)) {
+                    return response()->json(['status' => 0, 'error' => 'Invalid batch'], 400);
+                }
+                if (! in_array($batchId, $batchIdsInDefaultClass, true)) {
+                    return response()->json(['status' => 0, 'error' => 'Invalid batch for your class'], 400);
+                }
+                $batchClassroom = (int) (Batch::query()->where('teacher_id', $teacherId)->whereKey($batchId)->value('classroom_id') ?? 0);
+                if ($batchClassroom !== $classroomId) {
+                    return response()->json(['status' => 0, 'error' => 'Batch does not belong to this classroom'], 400);
+                }
+            }
+
+            $rows = $this->queryStudentLeaderboardAggregateRanking($teacherId, $classroomId, $batchId > 0 ? $batchId : null);
+            $built = $this->buildStudentLeaderboardDisplayPoints($rows, $studentId);
+            $meta = $built['meta'];
+            $self = collect($rows)->first(fn ($r) => (int) ($r->student_id ?? 0) === $studentId);
+            if ($self && isset($self->sum_marks, $self->sum_total)) {
+                $meta['obtained_marks'] = round((float) $self->sum_marks, 2);
+                $meta['total_marks'] = round((float) $self->sum_total, 2);
+            } else {
+                $meta['obtained_marks'] = null;
+                $meta['total_marks'] = null;
+            }
+            $className = Classroom::query()->where('teacher_id', $teacherId)->whereKey($classroomId)->value('name');
+            $classLabel = $className ? (string) $className : 'This class';
+            if ($batchId > 0) {
+                $bn = Batch::query()->where('teacher_id', $teacherId)->whereKey($batchId)->value('name');
+                $meta['scope_label'] = $bn
+                    ? $classLabel.' — Batch: '.(string) $bn.' (all tests)'
+                    : $classLabel.' — One batch (all tests)';
+            } else {
+                $meta['scope_label'] = $classLabel.' — All batches in this class (all tests)';
+            }
+
+            return response()->json([
+                'status' => 1,
+                'view' => 'aggregate',
+                'points' => $built['points'],
+                'meta' => $meta,
+            ]);
+        }
+
+        $batchId = (int) $request->query('batch_id', 0);
+        if ($batchId <= 0 || ! in_array($batchId, $batchIdsInDefaultClass, true)) {
+            return response()->json(['status' => 0, 'error' => 'Choose a valid batch'], 400);
+        }
+
+        $examId = (int) $request->query('exam_id', 0);
+        if ($examId <= 0) {
+            return response()->json(['status' => 0, 'error' => 'Choose a test'], 400);
+        }
+
+        $exam = Exam::query()->whereKey($examId)->first();
+        if (! $exam || (int) $exam->batch_id !== $batchId) {
+            return response()->json(['status' => 0, 'error' => 'Invalid test'], 400);
+        }
+
+        $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey($batchId)->first();
+        if (! $batch) {
+            return response()->json(['status' => 0, 'error' => 'Invalid batch'], 400);
+        }
+
+        $classroomId = (int) ($batch->classroom_id ?? 0);
+        if ($classroomId <= 0 || $classroomId !== (int) $lbPayload['default_classroom_id']) {
+            return response()->json(['status' => 0, 'error' => 'Invalid classroom for this batch'], 400);
+        }
+
+        $rows = $this->queryStudentLeaderboardExamRanking($teacherId, $examId, $classroomId);
+        $built = $this->buildStudentLeaderboardDisplayPoints($rows, $studentId);
+        $meta = $built['meta'];
+        $self = collect($rows)->first(fn ($r) => (int) ($r->student_id ?? 0) === $studentId);
+        $maxM = (float) ($exam->max_marks ?? 0);
+        if ($self && isset($self->raw_marks) && $maxM > 0) {
+            $meta['obtained_marks'] = round((float) $self->raw_marks, 2);
+            $meta['total_marks'] = round($maxM, 2);
+        } else {
+            $meta['obtained_marks'] = null;
+            $meta['total_marks'] = $maxM > 0 ? round($maxM, 2) : null;
+        }
+        $meta['scope_label'] = (string) ($batch->name ?? 'Batch').' — '.(string) ($exam->exam_name ?? 'Test');
+        $meta['exam_date'] = $exam->exam_date ? $exam->exam_date->format('Y-m-d') : null;
+        $meta['batch_name'] = $batch->name;
+        $meta['max_marks'] = $maxM;
+
+        return response()->json([
+            'status' => 1,
+            'view' => 'test',
+            'points' => $built['points'],
+            'meta' => $meta,
+        ]);
     }
 
     public function studentClassrooms()
@@ -2331,7 +2585,7 @@ class UserDashboardController extends Controller
                 $teacherId = (int) ($student->teachers()->first()->id ?? 0);
             }
 
-            $leaveRequest = new LeaveRequests();
+            $leaveRequest = new LeaveRequests;
             $leaveRequest->student_id = $student->id;
             $leaveRequest->teacher_id = $teacherId;
             $leaveRequest->classroom_id = $request->classroom_id;
@@ -3244,5 +3498,168 @@ class UserDashboardController extends Controller
         }
 
         return $out;
+    }
+
+    private const STUDENT_LB_NUMERIC_MARKS_REGEX = '^[0-9]+(\\.[0-9]*)?$';
+
+    /**
+     * Aggregate ranking within one classroom (optional single batch in that classroom).
+     *
+     * @return array<int, object>
+     */
+    private function queryStudentLeaderboardAggregateRanking(int $teacherId, int $classroomId, ?int $batchId): array
+    {
+        $numeric = self::STUDENT_LB_NUMERIC_MARKS_REGEX;
+        $bindings = [$teacherId, $classroomId];
+        $batchFilter = '';
+        if ($batchId !== null && $batchId > 0) {
+            $batchFilter = ' AND b.id = ?';
+            $bindings[] = $batchId;
+        }
+
+        $sql = <<<SQL
+SELECT
+    r.student_id,
+    r.percentage,
+    r.rank_val,
+    r.sum_marks,
+    r.sum_total,
+    pu.name,
+    pu.email
+FROM (
+    SELECT
+        agg.student_id,
+        (agg.sum_marks / agg.sum_total) * 100 AS percentage,
+        RANK() OVER (ORDER BY (agg.sum_marks / agg.sum_total) * 100 DESC) AS rank_val,
+        agg.sum_marks,
+        agg.sum_total
+    FROM (
+        SELECT
+            m.student_id,
+            SUM(CAST(m.marks AS DECIMAL(14,4))) AS sum_marks,
+            SUM(CAST(e.max_marks AS DECIMAL(14,4))) AS sum_total
+        FROM marks m
+        INNER JOIN exams e ON m.exam_id = e.id AND e.deleted_at IS NULL
+        INNER JOIN batches b ON e.batch_id = b.id AND b.teacher_id = ? AND b.classroom_id = ? AND b.deleted_at IS NULL
+        INNER JOIN portal_user st ON m.student_id = st.id AND st.role = 2 AND st.deleted_at IS NULL
+        WHERE m.deleted_at IS NULL
+          AND e.max_marks > 0
+          AND m.marks REGEXP '{$numeric}'
+          {$batchFilter}
+        GROUP BY m.student_id
+        HAVING sum_total > 0
+    ) agg
+) r
+INNER JOIN portal_user pu ON r.student_id = pu.id
+ORDER BY r.rank_val ASC, pu.name ASC
+SQL;
+
+        /** @var array<int, object> */
+        return DB::select($sql, $bindings);
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    private function queryStudentLeaderboardExamRanking(int $teacherId, int $examId, int $classroomId): array
+    {
+        $numeric = self::STUDENT_LB_NUMERIC_MARKS_REGEX;
+
+        $sql = <<<SQL
+SELECT
+    inner_q.student_id,
+    inner_q.raw_marks,
+    inner_q.percentage,
+    inner_q.rank_val,
+    pu.name,
+    pu.email
+FROM (
+    SELECT
+        m.student_id,
+        CAST(m.marks AS DECIMAL(14,4)) AS raw_marks,
+        (CAST(m.marks AS DECIMAL(14,4)) / NULLIF(CAST(e.max_marks AS DECIMAL(14,4)), 0)) * 100 AS percentage,
+        RANK() OVER (
+            ORDER BY (CAST(m.marks AS DECIMAL(14,4)) / NULLIF(CAST(e.max_marks AS DECIMAL(14,4)), 0)) * 100 DESC
+        ) AS rank_val
+    FROM marks m
+    INNER JOIN exams e ON m.exam_id = e.id AND e.deleted_at IS NULL
+    INNER JOIN batches b ON e.batch_id = b.id AND b.teacher_id = ? AND b.classroom_id = ? AND b.deleted_at IS NULL
+    INNER JOIN portal_user st ON m.student_id = st.id AND st.role = 2 AND st.deleted_at IS NULL
+    WHERE m.deleted_at IS NULL
+      AND m.exam_id = ?
+      AND e.max_marks > 0
+      AND m.marks REGEXP '{$numeric}'
+) inner_q
+INNER JOIN portal_user pu ON inner_q.student_id = pu.id
+ORDER BY inner_q.rank_val ASC, pu.name ASC
+SQL;
+
+        /** @var array<int, object> */
+        return DB::select($sql, [$teacherId, $classroomId, $examId]);
+    }
+
+    /**
+     * @param  array<int, object>  $rows
+     * @return array{points: list<array<string, mixed>>, meta: array<string, mixed>}
+     */
+    private function buildStudentLeaderboardDisplayPoints(array $rows, int $studentId): array
+    {
+        $list = [];
+        foreach ($rows as $r) {
+            if ($r->percentage === null) {
+                continue;
+            }
+            $list[] = $r;
+        }
+
+        usort($list, function ($a, $b) {
+            return ((int) ($a->rank_val ?? 0)) <=> ((int) ($b->rank_val ?? 0));
+        });
+
+        $total = count($list);
+        $selfRow = null;
+        foreach ($list as $r) {
+            if ((int) ($r->student_id ?? 0) === $studentId) {
+                $selfRow = $r;
+
+                break;
+            }
+        }
+
+        $yourRank = $selfRow ? (int) ($selfRow->rank_val ?? 0) : null;
+        $yourPct = $selfRow && $selfRow->percentage !== null ? round((float) $selfRow->percentage, 2) : null;
+
+        $maxBars = 22;
+        $top = array_slice($list, 0, $maxBars);
+        $topIds = array_map(fn ($r) => (int) ($r->student_id ?? 0), $top);
+        if ($selfRow !== null && ! in_array($studentId, $topIds, true)) {
+            $top[] = $selfRow;
+        }
+
+        usort($top, function ($a, $b) {
+            return ((int) ($a->rank_val ?? 0)) <=> ((int) ($b->rank_val ?? 0));
+        });
+
+        $points = [];
+        foreach ($top as $r) {
+            $sid = (int) ($r->student_id ?? 0);
+            $points[] = [
+                'student_id' => $sid,
+                'name' => (string) ($r->name ?? ''),
+                'percentage' => round((float) $r->percentage, 2),
+                'rank' => (int) ($r->rank_val ?? 0),
+                'marks' => isset($r->raw_marks) ? round((float) $r->raw_marks, 2) : null,
+                'is_self' => $sid === $studentId,
+            ];
+        }
+
+        return [
+            'points' => $points,
+            'meta' => [
+                'your_rank' => $yourRank,
+                'your_percentage' => $yourPct,
+                'total_ranked' => $total,
+            ],
+        ];
     }
 }

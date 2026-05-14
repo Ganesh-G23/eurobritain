@@ -8,6 +8,7 @@ use App\Models\Classroom;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Exam;
+use App\Models\Fees;
 use App\Models\LeaveRequests;
 use App\Models\Mark;
 use App\Models\MarkAbsence;
@@ -1062,6 +1063,125 @@ class UserTeacherController extends Controller
         }
         $data['student'] = $student;
         $data['student_teachers'] = $student->teachers;
+
+        $studentId = (int) $student->id;
+        $batchRows = $this->enrolledBatchRowsForStudentTeacher($studentId, $teacherId);
+        $batchIds = $batchRows->pluck('batch_id')->map(static fn ($id) => (int) $id)->unique()->filter()->values()->all();
+
+        $attendanceSummary = ['present' => 0, 'absent' => 0, 'late' => 0, 'total' => 0, 'rate_pct' => null];
+        if (Schema::hasTable('student_attendances') && $batchIds !== []) {
+            foreach (
+                StudentAttendance::query()
+                    ->where('student_id', $studentId)
+                    ->whereIn('batch_id', $batchIds)
+                    ->get(['attendance_status']) as $attRow
+            ) {
+                $attendanceSummary['total']++;
+                $st = strtoupper(trim((string) ($attRow->attendance_status ?? '')));
+                if ($st === 'P') {
+                    $attendanceSummary['present']++;
+                } elseif ($st === 'A') {
+                    $attendanceSummary['absent']++;
+                } elseif ($st === 'L') {
+                    $attendanceSummary['late']++;
+                }
+            }
+            if ($attendanceSummary['total'] > 0) {
+                $attendanceSummary['rate_pct'] = round(
+                    (($attendanceSummary['present'] + $attendanceSummary['late']) / $attendanceSummary['total']) * 100,
+                    1
+                );
+            }
+        }
+
+        $feeSummary = [
+            'table_ready' => Schema::hasTable('fees'),
+            'total_paid' => 0.0,
+            'payment_count' => 0,
+            'last_paid_at' => null,
+        ];
+        if ($feeSummary['table_ready']) {
+            $feeBase = Fees::query()->where('teacher_id', $teacherId)->where('student_id', $studentId);
+            $feeSummary['total_paid'] = (float) (clone $feeBase)->sum('amount');
+            $feeSummary['payment_count'] = (int) (clone $feeBase)->count();
+            $maxCreated = (clone $feeBase)->max('created_at');
+            $feeSummary['last_paid_at'] = $maxCreated ? Carbon::parse($maxCreated) : null;
+        }
+
+        $examHistory = collect();
+        $chartLabels = [];
+        $chartSeries = [];
+        $overallMarksPct = null;
+
+        if ($batchIds !== [] && Schema::hasTable('marks')) {
+            $markRows = Mark::query()
+                ->where('student_id', $studentId)
+                ->whereIn('batch_id', $batchIds)
+                ->with(['exam' => static fn ($q) => $q->withTrashed()])
+                ->get();
+
+            $examIds = $markRows->pluck('exam_id')->unique()->filter()->map(static fn ($id) => (int) $id)->values()->all();
+            $absentExamIdSet = [];
+            if ($examIds !== [] && Schema::hasTable('mark_absences')) {
+                foreach (MarkAbsence::query()->where('student_id', $studentId)->whereIn('exam_id', $examIds)->pluck('exam_id') as $eid) {
+                    $absentExamIdSet[(int) $eid] = true;
+                }
+            }
+
+            $percentagesForAvg = [];
+            $chartPoints = [];
+
+            foreach ($markRows as $mrow) {
+                $exam = $mrow->exam;
+                if (! $exam) {
+                    continue;
+                }
+                $isAbsent = ! empty($absentExamIdSet[(int) $exam->id]);
+                $pct = $this->markFractionToPercentage($exam, (string) ($mrow->marks ?? ''), $isAbsent);
+                if ($pct !== null) {
+                    $percentagesForAvg[] = $pct;
+                }
+                $examDate = $exam->exam_date;
+                $ts = $examDate ? $examDate->getTimestamp() : 0;
+                $examHistory->push([
+                    'exam_id' => (int) $exam->id,
+                    'exam_name' => (string) ($exam->exam_name ?? 'Exam'),
+                    'exam_date' => $examDate,
+                    'exam_date_sort' => $ts,
+                    'marks_raw' => (string) ($mrow->marks ?? ''),
+                    'max_marks' => $exam->max_marks,
+                    'is_absent' => $isAbsent,
+                    'percentage' => $pct,
+                ]);
+                if ($pct !== null) {
+                    $chartPoints[] = [
+                        'label' => $this->shortExamChartLabel((string) ($exam->exam_name ?? 'Exam')),
+                        'sort' => $ts,
+                        'pct' => $pct,
+                    ];
+                }
+            }
+
+            $examHistory = $examHistory->sortByDesc('exam_date_sort')->values();
+
+            if ($percentagesForAvg !== []) {
+                $overallMarksPct = round(array_sum($percentagesForAvg) / count($percentagesForAvg), 1);
+            }
+
+            usort($chartPoints, static fn ($a, $b) => ($a['sort'] <=> $b['sort']) ?: strcmp($a['label'], $b['label']));
+            foreach ($chartPoints as $pt) {
+                $chartLabels[] = $pt['label'];
+                $chartSeries[] = $pt['pct'];
+            }
+        }
+
+        $data['batch_enrollment_rows'] = $batchRows;
+        $data['stats_attendance'] = $attendanceSummary;
+        $data['stats_fees'] = $feeSummary;
+        $data['stats_overall_marks_pct'] = $overallMarksPct;
+        $data['exam_history'] = $examHistory->take(5);
+        $data['performance_chart_labels'] = $chartLabels;
+        $data['performance_chart_series'] = $chartSeries;
 
         return view('web.user.teacher.student_show', $data);
     }
@@ -3255,5 +3375,148 @@ class UserTeacherController extends Controller
             'msg' => $action === 'approve' ? 'Leave approved.' : 'Leave rejected.',
             'leave_status' => $processedLeave?->status,
         ]);
+    }
+
+    /**
+     * @return array{classroom_id: int, batch_id: int|null}|null
+     */
+    protected function legacyEnrollmentForStudentTeacher(int $studentId, int $teacherId): ?array
+    {
+        if ($studentId <= 0 || $teacherId <= 0) {
+            return null;
+        }
+
+        $student = PortalUser::query()->where('role', 2)->whereKey($studentId)->first(['classroom_id', 'batch_id']);
+        if (! $student) {
+            return null;
+        }
+
+        $classroomId = (int) ($student->classroom_id ?? 0);
+        if ($classroomId <= 0) {
+            return null;
+        }
+
+        $classroom = Classroom::query()->whereKey($classroomId)->first(['id', 'teacher_id']);
+        if (! $classroom || (int) $classroom->teacher_id !== $teacherId) {
+            return null;
+        }
+
+        $batchId = (int) ($student->batch_id ?? 0);
+        if ($batchId > 0) {
+            $batch = Batch::query()->whereKey($batchId)->first(['id', 'classroom_id', 'teacher_id']);
+            if (! $batch || (int) $batch->classroom_id !== $classroomId || (int) $batch->teacher_id !== $teacherId) {
+                $batchId = 0;
+            }
+        }
+
+        return [
+            'classroom_id' => $classroomId,
+            'batch_id' => $batchId > 0 ? $batchId : null,
+        ];
+    }
+
+    /**
+     * Batches the student is enrolled in for this teacher (map + legacy portal_user fields).
+     *
+     * @return Collection<int, object{batch_id: int, batch_name: string, classroom_id: int, classroom_name: string}>
+     */
+    protected function enrolledBatchRowsForStudentTeacher(int $studentId, int $teacherId): Collection
+    {
+        $batchRows = DB::table('student_classroom_map as scm')
+            ->join('batches as b', 'b.id', '=', 'scm.batch_id')
+            ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+            ->where('scm.teacher_id', $teacherId)
+            ->where('scm.student_id', $studentId)
+            ->whereNotNull('scm.batch_id')
+            ->where('c.teacher_id', $teacherId)
+            ->select([
+                'b.id as batch_id',
+                'b.name as batch_name',
+                'c.id as classroom_id',
+                'c.name as classroom_name',
+            ])
+            ->distinct()
+            ->orderBy('c.name')
+            ->orderBy('b.name')
+            ->get();
+
+        if ($batchRows->isEmpty()) {
+            $legacy = $this->legacyEnrollmentForStudentTeacher($studentId, $teacherId);
+            if ($legacy !== null) {
+                if ($legacy['batch_id'] !== null) {
+                    $batchRows = DB::table('batches as b')
+                        ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                        ->where('b.id', $legacy['batch_id'])
+                        ->where('c.teacher_id', $teacherId)
+                        ->whereNull('b.deleted_at')
+                        ->select([
+                            'b.id as batch_id',
+                            'b.name as batch_name',
+                            'c.id as classroom_id',
+                            'c.name as classroom_name',
+                        ])
+                        ->get();
+                } else {
+                    $batchRows = DB::table('batches as b')
+                        ->join('classrooms as c', 'c.id', '=', 'b.classroom_id')
+                        ->where('b.classroom_id', $legacy['classroom_id'])
+                        ->where('c.teacher_id', $teacherId)
+                        ->whereNull('b.deleted_at')
+                        ->select([
+                            'b.id as batch_id',
+                            'b.name as batch_name',
+                            'c.id as classroom_id',
+                            'c.name as classroom_name',
+                        ])
+                        ->orderBy('c.name')
+                        ->orderBy('b.name')
+                        ->get();
+                }
+            }
+        }
+
+        return $batchRows;
+    }
+
+    protected function shortExamChartLabel(string $name, int $maxLen = 22): string
+    {
+        $t = trim($name);
+
+        return strlen($t) <= $maxLen ? $t : substr($t, 0, $maxLen - 1).'…';
+    }
+
+    /**
+     * Percentage score for one exam mark (0–100), or null if absent / not applicable.
+     */
+    protected function markFractionToPercentage(Exam $exam, string $marksRaw, bool $isAbsent): ?float
+    {
+        if ($isAbsent) {
+            return null;
+        }
+        if (! is_numeric($exam->max_marks) || (float) $exam->max_marks <= 0) {
+            return null;
+        }
+        $max = (float) $exam->max_marks;
+        $raw = trim($marksRaw);
+        if ($raw === '') {
+            return null;
+        }
+        if (str_contains($raw, '/')) {
+            $parts = preg_split('#/#', $raw, 2);
+            if (count($parts) === 2 && is_numeric(trim($parts[0])) && is_numeric(trim($parts[1]))) {
+                $num = (float) trim($parts[0]);
+                $den = (float) trim($parts[1]);
+                if ($den <= 0) {
+                    return null;
+                }
+
+                return round(min(100.0, ($num / $den) * 100.0), 1);
+            }
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        return round(min(100.0, ((float) $raw / $max) * 100.0), 1);
     }
 }

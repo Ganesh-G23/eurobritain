@@ -24,7 +24,13 @@ class LeaderBoardController extends Controller
 
         $data = [];
         $data['title'] = 'Leaderboard';
-        $data['active_tab'] = 'leaderboard';
+
+        $view = $request->query('view', 'test');
+        if (! is_string($view) || ! in_array($view, ['batch', 'test'], true)) {
+            $view = 'test';
+        }
+        $data['leaderboard_view'] = $view;
+        $data['active_tab'] = $view === 'batch' ? 'leaderboard_batch' : 'leaderboard_test';
 
         $data['classrooms'] = Classroom::query()
             ->where('teacher_id', $teacherId)
@@ -33,7 +39,7 @@ class LeaderBoardController extends Controller
 
         $selectedClassroomId = (int) $request->query('classroom_id', 0);
         $selectedBatchId = (int) $request->query('batch_id', 0);
-        $selectedExamId = (int) $request->query('exam_id', 0);
+        $selectedExamId = $view === 'batch' ? 0 : (int) $request->query('exam_id', 0);
 
         $data['selected_classroom_id'] = $selectedClassroomId;
         $data['selected_batch_id'] = $selectedBatchId;
@@ -83,9 +89,17 @@ class LeaderBoardController extends Controller
         $data['leaderboard_batch'] = null;
         $data['leaderboard_rows'] = collect();
 
-        $rankType = $this->resolveRankType($request, $selectedClassroomId, $selectedBatchId, $selectedExamId);
+        $rankType = $this->resolveRankType($request, $selectedClassroomId, $selectedBatchId, $selectedExamId, $view);
 
-        if (!$request->filled('search')) {
+        if (! $request->filled('search')) {
+            return view('web.user.teacher.leaderboard', $data);
+        }
+
+        if ($view === 'batch' && $selectedClassroomId <= 0) {
+            return view('web.user.teacher.leaderboard', $data);
+        }
+
+        if ($view === 'test' && ($selectedClassroomId <= 0 || $selectedBatchId <= 0 || $selectedExamId <= 0)) {
             return view('web.user.teacher.leaderboard', $data);
         }
 
@@ -244,6 +258,8 @@ class LeaderBoardController extends Controller
                 $chart[] = [
                     'name' => $r->name ?? '—',
                     'percentage' => $pct,
+                    'marks_obtained' => isset($r->sum_marks) ? round((float) $r->sum_marks, 2) : null,
+                    'total_marks' => isset($r->sum_total) ? round((float) $r->sum_total, 2) : null,
                 ];
             }
 
@@ -276,6 +292,8 @@ class LeaderBoardController extends Controller
             $chart[] = [
                 'name' => $r->name ?? '—',
                 'percentage' => $pct,
+                'marks_obtained' => isset($r->sum_marks) ? round((float) $r->sum_marks, 2) : null,
+                'total_marks' => isset($r->sum_total) ? round((float) $r->sum_total, 2) : null,
             ];
         }
 
@@ -298,8 +316,17 @@ class LeaderBoardController extends Controller
         Request $request,
         int $selectedClassroomId,
         int $selectedBatchId,
-        int $selectedExamId
+        int $selectedExamId,
+        string $view = 'test'
     ): string {
+        if ($view === 'batch') {
+            if ($selectedClassroomId > 0) {
+                return 'class';
+            }
+
+            return 'overall';
+        }
+
         $t = $request->query('type');
         if (is_string($t) && in_array($t, ['overall', 'class', 'exam'], true)) {
             return $t;
@@ -339,6 +366,8 @@ class LeaderBoardController extends Controller
         $sql = <<<SQL
 SELECT
     r.student_id,
+    r.sum_marks,
+    r.sum_total,
     r.percentage,
     r.rank_val,
     pu.name,
@@ -346,6 +375,8 @@ SELECT
 FROM (
     SELECT
         agg.student_id,
+        agg.sum_marks,
+        agg.sum_total,
         (agg.sum_marks / agg.sum_total) * 100 AS percentage,
         RANK() OVER (ORDER BY (agg.sum_marks / agg.sum_total) * 100 DESC) AS rank_val
     FROM (

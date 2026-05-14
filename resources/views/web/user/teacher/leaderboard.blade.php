@@ -1,4 +1,15 @@
 @extends('web.user.layouts.app')
+@php
+    $lbView = $leaderboard_view ?? 'test';
+    $showAggregateMarksTooltip =
+        $lbView === 'batch'
+        && in_array($leaderboard_scope ?? '', ['classroom', 'batch'], true);
+    $teacherTestSearchReady =
+        $lbView === 'test'
+        && ($selected_classroom_id ?? 0) > 0
+        && ($selected_batch_id ?? 0) > 0
+        && ($selected_exam_id ?? 0) > 0;
+@endphp
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y pt-2 pb-2">
         <div class="row g-6">
@@ -8,58 +19,105 @@
                         <h5 class="mb-0">{{ $title ?? 'Leaderboard' }}</h5>
                     </div>
                     <div class="card-body">
-                        <form method="get" action="{{ url('user/teacher/leaderboard') }}" id="leaderboard-filter-form"
-                            class="row g-3 align-items-end mb-4">
-                            <div class="col-md-4 col-lg-3">
-                                <label class="form-label" for="lb-classroom">Classroom</label>
-                                <select class="form-select" name="classroom_id" id="lb-classroom">
-                                    <option value="">Choose classroom</option>
-                                    @foreach ($classrooms ?? [] as $c)
-                                        <option value="{{ $c->id }}"
-                                            {{ (int) ($selected_classroom_id ?? 0) === (int) $c->id ? 'selected' : '' }}>
-                                            {{ $c->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-4 col-lg-3">
-                                <label class="form-label" for="lb-batch">Batch</label>
-                                <select class="form-select" name="batch_id" id="lb-batch"
-                                    {{ ($selected_classroom_id ?? 0) > 0 ? '' : 'disabled' }}>
-                                    <option value="">Choose batch</option>
-                                    @foreach ($batches ?? [] as $b)
-                                        <option value="{{ $b->id }}"
-                                            {{ (int) ($selected_batch_id ?? 0) === (int) $b->id ? 'selected' : '' }}>
-                                            {{ $b->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-4 col-lg-3">
-                                <label class="form-label" for="lb-exam">Test</label>
-                                <select class="form-select" name="exam_id" id="lb-exam"
-                                    {{ ($selected_batch_id ?? 0) > 0 ? '' : 'disabled' }}>
-                                    <option value="">Choose test</option>
-                                    @foreach ($exams ?? [] as $e)
-                                        <option value="{{ $e->id }}"
-                                            {{ (int) ($selected_exam_id ?? 0) === (int) $e->id ? 'selected' : '' }}>
-                                            {{ $e->exam_name }}
-                                            @if (!empty($e->exam_date))
-                                                ({{ $e->exam_date->format('d M Y') }})
-                                            @endif
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-4 col-lg-3">
-                                <button type="submit" name="search" value="1" class="btn btn-primary">
-                                    <i class="icon-base ti tabler-search me-1"></i> Search
-                                </button>
-                            </div>
-                            <div class="col-12">
-                                <p class="text-body-secondary small mb-0">Select a <strong>classroom</strong> and click
-                                    Search for class-wide averages. Add <strong>batch</strong> for that batch only.
-                                    Add <strong>test</strong> for one test’s scores.</p>
-                            </div>
-                        </form>
+                        @if ($lbView === 'batch')
+                            <form method="get" action="{{ url('user/teacher/leaderboard') }}"
+                                id="leaderboard-filter-form" class="row g-3 align-items-end mb-4">
+                                <input type="hidden" name="view" value="batch">
+                                <div class="col-md-4 col-lg-3">
+                                    <label class="form-label" for="lb-classroom">Classroom</label>
+                                    <select class="form-select" name="classroom_id" id="lb-classroom">
+                                        <option value="">Choose classroom</option>
+                                        @foreach ($classrooms ?? [] as $c)
+                                            <option value="{{ $c->id }}"
+                                                {{ (int) ($selected_classroom_id ?? 0) === (int) $c->id ? 'selected' : '' }}>
+                                                {{ $c->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4 col-lg-3">
+                                    <label class="form-label" for="lb-batch">Batch</label>
+                                    <select class="form-select" name="batch_id" id="lb-batch"
+                                        {{ ($selected_classroom_id ?? 0) > 0 ? '' : 'disabled' }}>
+                                        <option value="">Choose batch</option>
+                                        @if (($selected_classroom_id ?? 0) > 0)
+                                            <option value="0"
+                                                {{ (int) ($selected_batch_id ?? 0) === 0 ? 'selected' : '' }}>
+                                                All batches in this class</option>
+                                        @endif
+                                        @foreach ($batches ?? [] as $b)
+                                            <option value="{{ $b->id }}"
+                                                {{ (int) ($selected_batch_id ?? 0) === (int) $b->id ? 'selected' : '' }}>
+                                                {{ $b->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4 col-lg-3">
+                                    <button type="submit" name="search" value="1" class="btn btn-primary">
+                                        <i class="icon-base ti tabler-search me-1"></i> Search
+                                    </button>
+                                </div>
+                                <div class="col-12">
+                                    <p class="text-body-secondary small mb-0">Select a <strong>classroom</strong> and
+                                        Search to rank students by average % across all tests in that class (all batches).
+                                        Pick a <strong>batch</strong> to rank within that batch only.</p>
+                                </div>
+                            </form>
+                        @else
+                            <form method="get" action="{{ url('user/teacher/leaderboard') }}"
+                                id="leaderboard-filter-form" class="row g-3 align-items-end mb-4">
+                                <input type="hidden" name="view" value="test">
+                                <div class="col-md-4 col-lg-3">
+                                    <label class="form-label" for="lb-classroom">Classroom</label>
+                                    <select class="form-select" name="classroom_id" id="lb-classroom">
+                                        <option value="">Choose classroom</option>
+                                        @foreach ($classrooms ?? [] as $c)
+                                            <option value="{{ $c->id }}"
+                                                {{ (int) ($selected_classroom_id ?? 0) === (int) $c->id ? 'selected' : '' }}>
+                                                {{ $c->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4 col-lg-3">
+                                    <label class="form-label" for="lb-batch">Batch</label>
+                                    <select class="form-select" name="batch_id" id="lb-batch"
+                                        {{ ($selected_classroom_id ?? 0) > 0 ? '' : 'disabled' }}>
+                                        <option value="">Choose batch</option>
+                                        @foreach ($batches ?? [] as $b)
+                                            <option value="{{ $b->id }}"
+                                                {{ (int) ($selected_batch_id ?? 0) === (int) $b->id ? 'selected' : '' }}>
+                                                {{ $b->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4 col-lg-3">
+                                    <label class="form-label" for="lb-exam">Test</label>
+                                    <select class="form-select" name="exam_id" id="lb-exam"
+                                        {{ ($selected_batch_id ?? 0) > 0 ? '' : 'disabled' }}>
+                                        <option value="">Choose test</option>
+                                        @foreach ($exams ?? [] as $e)
+                                            <option value="{{ $e->id }}"
+                                                {{ (int) ($selected_exam_id ?? 0) === (int) $e->id ? 'selected' : '' }}>
+                                                {{ $e->exam_name }}
+                                                @if (!empty($e->exam_date))
+                                                    ({{ $e->exam_date->format('d M Y') }})
+                                                @endif
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4 col-lg-3">
+                                    <button type="submit" name="search" value="1" id="lb-search-btn"
+                                        class="btn btn-primary" @disabled(!$teacherTestSearchReady)>
+                                        <i class="icon-base ti tabler-search me-1"></i> Search
+                                    </button>
+                                </div>
+                                <div class="col-12">
+                                    <p class="text-body-secondary small mb-0">Select a <strong>classroom</strong>, choose a
+                                        <strong>batch</strong> and a <strong>test</strong>, then click <strong>Search</strong>
+                                        to see the leaderboard for that test.</p>
+                                </div>
+                            </form>
+                        @endif
 
                         <div class="mt-1">
                             <div class="card h-100">
@@ -78,8 +136,15 @@
                                         </h5>
                                         <p class="card-subtitle text-body-secondary mb-0">
                                             @if ($leaderboard_chart === null)
-                                                Pick at least a classroom, then Search. Bars show average % across
-                                                tests (classroom or batch) or score % for one test.
+                                                @if ($lbView === 'batch')
+                                                    Pick a classroom, optionally a batch, then Search. Bars show each
+                                                    student’s average % across all tests in that scope (whole class or
+                                                    one batch).
+                                                @else
+                                                    Select a <strong>classroom</strong>, <strong>batch</strong>, and
+                                                    <strong>test</strong>, then Search. Bars show each student’s score %
+                                                    for that test.
+                                                @endif
                                             @elseif (($leaderboard_scope ?? '') === 'classroom' && ($leaderboard_classroom_name ?? null))
                                                 {{ $leaderboard_classroom_name }} — average % across all tests in this
                                                 classroom (per student).
@@ -132,6 +197,7 @@
         (function() {
             var batchesUrl = @json(url('user/teacher/batches-by-classroom'));
             var examsUrl = @json(url('user/teacher/exams-by-batch'));
+            var teacherLbView = @json($lbView);
 
             function escapeHtml(text) {
                 return String(text || '').replace(/[&<>"']/g, function(m) {
@@ -157,8 +223,15 @@
                 return n;
             }
 
-            function loadBatches($batch, classroomId, selectedId, done) {
-                selectedId = selectedId || '';
+            function normalizeBatchSelectValue(selectedId) {
+                if (selectedId === 0 || selectedId === '0') {
+                    return '0';
+                }
+                return selectedId ? String(selectedId) : '';
+            }
+
+            function loadBatches($batch, classroomId, selectedId, done, includeAllBatchesOption) {
+                selectedId = normalizeBatchSelectValue(selectedId);
                 if (!classroomId) {
                     $batch.html('<option value="">Choose classroom first</option>').prop('disabled', true);
                     if (typeof done === 'function') done();
@@ -170,10 +243,13 @@
                 }, function(res) {
                     if (res.status == 1 && res.data && res.data.length) {
                         $batch.html('<option value="">Choose batch</option>');
+                        if (includeAllBatchesOption) {
+                            var selAll = selectedId === '0' ? ' selected' : '';
+                            $batch.append('<option value="0"' + selAll + '>All batches in this class</option>');
+                        }
                         $.each(res.data, function(_, b) {
                             var sel = String(b.id) === String(selectedId) ? ' selected' : '';
-                            $batch.append('<option value="' + b.id + '"' + sel + '>' + escapeHtml(b
-                                    .name) +
+                            $batch.append('<option value="' + b.id + '"' + sel + '>' + escapeHtml(b.name) +
                                 '</option>');
                         });
                         $batch.prop('disabled', false);
@@ -220,30 +296,66 @@
                 var $c = $('#lb-classroom');
                 var $b = $('#lb-batch');
                 var $e = $('#lb-exam');
+                var hasExam = $e.length > 0;
                 var initialClassroom = $c.val();
                 var initialBatch = $b.val();
-                var initialExam = $e.val();
+                var initialExam = hasExam ? $e.val() : '';
+                var batchAll = teacherLbView === 'batch';
+
+                function updateTestSearchBtn() {
+                    if (!hasExam) {
+                        return;
+                    }
+                    var $btn = $('#lb-search-btn');
+                    if (!$btn.length) {
+                        return;
+                    }
+                    var ok = !!($c.val() && $b.val() && $e.val());
+                    $btn.prop('disabled', !ok);
+                }
 
                 if (!initialClassroom) {
                     $b.html('<option value="">Choose classroom first</option>').prop('disabled', true);
-                    $e.html('<option value="">Choose batch first</option>').prop('disabled', true);
-                } else if (!initialBatch) {
-                    loadBatches($b, initialClassroom, '', function() {
+                    if (hasExam) {
                         $e.html('<option value="">Choose batch first</option>').prop('disabled', true);
+                    }
+                } else if (!normalizeBatchSelectValue(initialBatch)) {
+                    loadBatches($b, initialClassroom, '', function() {
+                        if (hasExam) {
+                            $e.html('<option value="">Choose batch first</option>').prop('disabled', true);
+                            updateTestSearchBtn();
+                        }
+                    }, batchAll);
+                } else if (hasExam && initialBatch && initialBatch !== '0' && !initialExam) {
+                    loadExams($e, initialBatch, '', function() {
+                        updateTestSearchBtn();
                     });
-                } else if (!initialExam) {
-                    loadExams($e, initialBatch, '', function() {});
+                }
+
+                if (hasExam) {
+                    $e.on('change', updateTestSearchBtn);
                 }
 
                 $c.on('change', function() {
                     var cid = $(this).val();
-                    $e.html('<option value="">Choose batch first</option>').prop('disabled', true);
-                    loadBatches($b, cid, '');
+                    if (hasExam) {
+                        $e.html('<option value="">Choose batch first</option>').prop('disabled', true);
+                    }
+                    loadBatches($b, cid, '', function() {
+                        if (hasExam) {
+                            updateTestSearchBtn();
+                        }
+                    }, batchAll);
                 });
 
                 $b.on('change', function() {
+                    if (!hasExam) {
+                        return;
+                    }
                     var bid = $(this).val();
-                    loadExams($e, bid, '');
+                    loadExams($e, bid, '', function() {
+                        updateTestSearchBtn();
+                    });
                 });
 
                 $('#leaderboard-filter-form').on('submit', function(ev) {
@@ -252,10 +364,20 @@
                         ev.preventDefault();
                         return false;
                     }
+                    if (hasExam) {
+                        if (!$b.val() || !$e.val()) {
+                            ev.preventDefault();
+                            return false;
+                        }
+                    }
                     $c.prop('disabled', false);
                     $b.prop('disabled', false);
-                    $e.prop('disabled', false);
+                    if (hasExam) {
+                        $e.prop('disabled', false);
+                    }
                 });
+
+                updateTestSearchBtn();
             });
         })();
     </script>
@@ -266,6 +388,7 @@
                 searched: @json($leaderboard_chart !== null),
                 rowCount: @json($leaderboard_row_count ?? null),
                 scope: @json($leaderboard_scope ?? null),
+                viewTab: @json($lbView),
                 maxMarks: @json(($leaderboard_scope ?? '') === 'exam' && ($leaderboard_exam ?? null) ? (float) ($leaderboard_exam->max_marks ?? 0) : null),
                 examName: @json(($leaderboard_scope ?? '') === 'exam' && ($leaderboard_exam ?? null) ? ($leaderboard_exam->exam_name ?? '') : null),
                 examDateLabel: @json(
@@ -273,7 +396,8 @@
                         ? $leaderboard_exam->exam_date->format('d M Y')
                         : null),
                 batchName: @json(($leaderboard_scope ?? '') === 'batch' && ($leaderboard_batch ?? null) ? ($leaderboard_batch->name ?? '') : null),
-                classroomName: @json(($leaderboard_scope ?? '') === 'classroom' ? ($leaderboard_classroom_name ?? '') : null)
+                classroomName: @json(($leaderboard_scope ?? '') === 'classroom' ? ($leaderboard_classroom_name ?? '') : null),
+                showAggregateMarksTooltip: @json($showAggregateMarksTooltip),
             };
 
             function escapeHtmlLb(text) {
@@ -398,6 +522,12 @@
                         '</strong>.</p>');
                     parts.push('<p class="mb-0"><strong>Average</strong><br>' + escapeHtmlLb(String(row.percentage)) +
                         '%</p>');
+                    if (row.total_marks != null && row.marks_obtained != null && !isNaN(Number(row.total_marks))) {
+                        parts.push('<p class="mb-0 mt-2 small"><strong>Total marks (max)</strong><br>' +
+                            escapeHtmlLb(String(row.total_marks)) + '</p>');
+                        parts.push('<p class="mb-0 small"><strong>Obtained marks</strong><br>' +
+                            escapeHtmlLb(String(row.marks_obtained)) + '</p>');
+                    }
                 } else if (meta.scope === 'classroom') {
                     titleEl.textContent = 'Average';
                     var cn = meta.classroomName ? escapeHtmlLb(meta.classroomName) : 'this classroom';
@@ -405,6 +535,12 @@
                         '</strong>.</p>');
                     parts.push('<p class="mb-0"><strong>Average</strong><br>' + escapeHtmlLb(String(row.percentage)) +
                         '%</p>');
+                    if (row.total_marks != null && row.marks_obtained != null && !isNaN(Number(row.total_marks))) {
+                        parts.push('<p class="mb-0 mt-2 small"><strong>Total marks (max)</strong><br>' +
+                            escapeHtmlLb(String(row.total_marks)) + '</p>');
+                        parts.push('<p class="mb-0 small"><strong>Obtained marks</strong><br>' +
+                            escapeHtmlLb(String(row.marks_obtained)) + '</p>');
+                    }
                 } else {
                     titleEl.textContent = 'Details';
                     parts.push('<p class="mb-0"><strong>Score</strong><br>' + escapeHtmlLb(String(row.percentage)) +
@@ -428,8 +564,7 @@
                 var showChart = false;
 
                 if (meta.series === null || meta.series === undefined) {
-                    emptyMsg =
-                        'Choose a classroom (and optionally batch and test), then Search to see the chart.';
+                    emptyMsg = '';
                 } else if (meta.searched) {
                     if (Array.isArray(meta.series) && meta.series.length > 0) {
                         showChart = true;
@@ -450,8 +585,7 @@
                         emptyMsg = 'Nothing to plot.';
                     }
                 } else if (!emptyMsg) {
-                    emptyMsg =
-                        'Choose a classroom (and optionally batch and test), then Search to see the chart.';
+                    emptyMsg = '';
                 }
 
                 if (!showChart) {
@@ -501,6 +635,71 @@
 
                 var seriesLabel = meta.scope === 'exam' ? 'Score % (this test)' :
                     'Avg. % (all tests in scope)';
+
+                var chartTooltip = {
+                    y: {
+                        formatter: function(v) {
+                            return v + '%';
+                        }
+                    }
+                };
+                if (meta.showAggregateMarksTooltip || meta.scope === 'exam') {
+                    chartTooltip.custom = function(arg) {
+                        var idx = arg.dataPointIndex;
+                        if (idx == null || idx < 0) {
+                            return '';
+                        }
+                        var row = meta.series[idx];
+                        var pctVal = (arg.series && arg.series[0] && arg.series[0][idx] !== undefined) ?
+                            arg.series[0][idx] :
+                            (row ? row.percentage : '');
+                        var nm = row && row.name ? row.name :
+                            (arg.w && arg.w.globals && arg.w.globals.labels && arg.w.globals.labels[idx] != null ?
+                                arg.w.globals.labels[idx] :
+                                '');
+                        var html = '<div class="px-3 py-2">';
+                        html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtmlLb(String(nm)) + '</div>';
+
+                        if (meta.scope === 'exam') {
+                            html += '<div>Score: <strong>' + escapeHtmlLb(String(pctVal)) + '%</strong></div>';
+                            if (meta.examName) {
+                                html += '<div class="text-muted" style="font-size:11px;margin-top:6px;max-width:260px;line-height:1.4">' +
+                                    escapeHtmlLb(meta.examName) + '</div>';
+                            }
+                            var mm = meta.maxMarks != null ? Number(meta.maxMarks) : 0;
+                            var obtained = row && row.marks;
+                            if ((obtained === null || obtained === undefined || obtained === '') && mm > 0 && row &&
+                                row.percentage != null && !isNaN(Number(row.percentage))) {
+                                obtained = Math.round(Number(row.percentage) / 100 * mm * 100) / 100;
+                            }
+                            if (mm > 0 && obtained !== null && obtained !== undefined && obtained !== '' &&
+                                !isNaN(Number(obtained))) {
+                                html += '<div style="margin-top:8px;font-size:13px">Total marks (max): <strong>' +
+                                    escapeHtmlLb(String(mm)) + '</strong></div>';
+                                html += '<div style="font-size:13px">Obtained marks: <strong>' +
+                                    escapeHtmlLb(String(obtained)) + '</strong></div>';
+                            }
+                            html += '</div>';
+                            return html;
+                        }
+
+                        html += '<div>Average: <strong>' + escapeHtmlLb(String(pctVal)) + '%</strong></div>';
+                        var scopeNote = meta.scope === 'batch' ?
+                            'Across all tests in this batch.' :
+                            'Across all tests and batches in this class.';
+                        if (row && row.total_marks != null && row.marks_obtained != null &&
+                            !isNaN(Number(row.total_marks)) && !isNaN(Number(row.marks_obtained))) {
+                            html += '<div class="text-muted" style="font-size:11px;margin-top:8px;max-width:260px;line-height:1.4">' +
+                                escapeHtmlLb(scopeNote) + '</div>';
+                            html += '<div style="margin-top:8px;font-size:13px">Total marks (max): <strong>' +
+                                escapeHtmlLb(String(row.total_marks)) + '</strong></div>';
+                            html += '<div style="font-size:13px">Obtained marks: <strong>' +
+                                escapeHtmlLb(String(row.marks_obtained)) + '</strong></div>';
+                        }
+                        html += '</div>';
+                        return html;
+                    };
+                }
 
                 var options = {
                     series: [{
@@ -593,13 +792,7 @@
                         position: 'bottom',
                         fontFamily: fontFamily
                     },
-                    tooltip: {
-                        y: {
-                            formatter: function(v) {
-                                return v + '%';
-                            }
-                        }
-                    },
+                    tooltip: chartTooltip,
                     responsive: [{
                         breakpoint: 480,
                         options: singlePoint ? {
