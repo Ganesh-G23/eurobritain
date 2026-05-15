@@ -15,6 +15,7 @@ use App\Models\MarkAbsence;
 use App\Models\ParentStudentMap;
 use App\Models\PortalUser;
 use App\Models\StudentAttendance;
+use App\Models\StudentBatchEnrollmentPeriod;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
@@ -612,6 +613,7 @@ class UserTeacherController extends Controller
         if (! $student) {
             return response()->json(['status' => 0, 'error' => 'Student not found']);
         }
+        StudentBatchEnrollmentPeriod::closeOpenPeriodsForTeacherStudent($student->id, $teacherId);
         StudentClassroomMap::where('student_id', $student->id)->where('teacher_id', $teacherId)->delete();
         StudentTeacherMap::where('student_id', $student->id)->where('teacher_id', $teacherId)->delete();
         $stillMapped = StudentTeacherMap::where('student_id', $student->id)->exists();
@@ -2400,6 +2402,53 @@ class UserTeacherController extends Controller
         return response()->json([
             'status' => 1,
             'msg' => 'Test saved',
+            'redirect_url' => url('user/teacher/classrooms/details/'.$batch->classroom_id),
+        ]);
+    }
+
+    public function deleteExam(Request $request)
+    {
+        [$teacherId, $redirect] = $this->requireTeacher();
+        if ($redirect) {
+            return response()->json(['status' => 0, 'error' => 'Unauthorized'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'exam_id' => 'required|integer',
+            'batch_id' => 'required|integer',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => 0, 'error_array' => $validator->errors()->toArray()]);
+        }
+
+        $batch = Batch::query()->where('teacher_id', $teacherId)->whereKey((int) $request->batch_id)->first();
+
+        if (! $batch) {
+            return response()->json(['status' => 0, 'error' => 'Batch not found']);
+        }
+
+        $exam = Exam::query()->whereKey((int) $request->exam_id)->where('batch_id', $batch->id)->first();
+
+        if (! $exam) {
+            return response()->json(['status' => 0, 'error' => 'Test not found']);
+        }
+
+        DB::transaction(function () use ($exam) {
+            if (Schema::hasTable('marks')) {
+                Mark::query()->where('exam_id', $exam->id)->delete();
+            }
+
+            // if (Schema::hasTable('mark_absences')) {
+            //     MarkAbsence::query()->where('exam_id', $exam->id)->delete();
+            // }
+
+            $exam->delete();
+        });
+
+        return response()->json([
+            'status' => 1,
+            'msg' => 'Test deleted',
             'redirect_url' => url('user/teacher/classrooms/details/'.$batch->classroom_id),
         ]);
     }

@@ -10,6 +10,9 @@
         $assignLike = (int) ($ov['upcoming_assignment_like_count'] ?? 0);
     @endphp
     <div class="container-xxl flex-grow-1 pb-2 pt-0">
+        @if (session('error'))
+            <div class="alert alert-warning">{{ session('error') }}</div>
+        @endif
         <div class="row g-4 mb-2">
             <div class="col-12">
                 <h5 class="mb-1">Overview</h5>
@@ -54,7 +57,7 @@
                                     <h3 class="mb-0 text-heading">{{ $attRate }}%</h3>
                                     <p class="mb-0 small text-body-secondary">
                                         {{ (int) ($ov['attendance_present'] ?? 0) }} present ·
-                                        {{ (int) ($ov['attendance_late'] ?? 0) }} late ·
+                                        {{ (int) ($ov['attendance_late'] ?? 0) }} leave ·
                                         {{ (int) ($ov['attendance_absent'] ?? 0) }} absent
                                     </p>
                                 @else

@@ -112,15 +112,22 @@
                                     <ul class="nav nav-pills flex-column flex-md-row mb-0 gap-md-0 gap-2"
                                         id="classroomBatchTabs" role="tablist">
                                         @foreach ($classroom->batches as $batch)
+                                            @php
+                                                $isDefaultBatchTab =
+                                                    (int) $batch->id === (int) ($default_batch_id ?? 0);
+                                            @endphp
                                             <li class="nav-item" role="presentation">
                                                 <button type="button"
-                                                    class="nav-link @if ($loop->first) active @endif"
+                                                    class="nav-link @if ($isDefaultBatchTab) active @endif"
                                                     id="batch-tab-{{ $batch->id }}" data-bs-toggle="tab"
                                                     data-bs-target="#batch-pane-{{ $batch->id }}" role="tab"
                                                     aria-controls="batch-pane-{{ $batch->id }}"
-                                                    aria-selected="{{ $loop->first ? 'true' : 'false' }}">
+                                                    aria-selected="{{ $isDefaultBatchTab ? 'true' : 'false' }}">
                                                     <i class="icon-base ti tabler-folders icon-sm me-1_5"></i>
                                                     {{ $batch->name }}
+                                                    @if (! empty($batch->is_past_batch_tab))
+                                                        <span class="badge bg-label-secondary ms-1">Previous</span>
+                                                    @endif
                                                 </button>
                                             </li>
                                         @endforeach
@@ -143,7 +150,7 @@
                                     <div class="col-lg-6">
 
                                         @foreach ($classroom->batches as $batch)
-                                            <div class="batch-tests @if ($batch->id != $default_batch_id) d-none @endif"
+                                            <div class="batch-tests @if ((int) $batch->id !== (int) ($default_batch_id ?? 0)) d-none @endif"
                                                 id="batch-tests-{{ $batch->id }}">
 
                                                 @if ($batch->exams->isEmpty())
@@ -241,13 +248,10 @@
                                 @elseif(!$classroom->batches->contains(fn($b) => $b->is_my_batch))
                                     <div class="alert alert-info mb-0">This student is not enrolled in any batch in this
                                         classroom.</div>
-                                @else
-                                    @foreach ($classroom->batches as $batch)
-                                        @if (!$batch->is_my_batch)
-                                            @continue
-                                        @endif
-                                        @php
-                                            $bid = (int) $batch->id;
+                                    @else
+                                        @foreach ($classroom->batches as $batch)
+                                            @php
+                                                $bid = (int) $batch->id;
                                             $attDates = collect($batch->attendance_dates ?? [])->values();
                                             $cells = is_array($batch->attendance_cells ?? null)
                                                 ? $batch->attendance_cells
@@ -259,7 +263,7 @@
                                                 ->endOfMonth()
                                                 ->format('Y-m-d');
                                         @endphp
-                                        <div class="batch-attendance @if ($batch->id != $default_batch_id) d-none @endif"
+                                        <div class="batch-attendance @if ((int) $batch->id !== (int) ($default_batch_id ?? 0)) d-none @endif"
                                             id="batch-attendance-{{ $bid }}">
                                             <p class="text-body-secondary small mb-3">{{ $batch->name }}</p>
                                             <div class="row g-3 mb-3 align-items-end">
@@ -412,6 +416,13 @@
             }
 
             function showBatch(batchId) {
+                document.querySelectorAll('#classroomBatchTabs .nav-link').forEach(function(btn) {
+                    var id = btn.id || '';
+                    var isActive = id === ('batch-tab-' + batchId);
+                    btn.classList.toggle('active', isActive);
+                    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+
                 document.querySelectorAll('.batch-tests').forEach(el => {
                     el.classList.add('d-none');
                 });

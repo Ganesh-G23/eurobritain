@@ -337,6 +337,13 @@
                     <div>Progress</div>
                 </a>
             </li>
+            <li class="menu-item {{ $active_tab === 'student_report' ? 'active' : '' }}">
+                <a href="{{ url('user/student/report') }}" class="menu-link">
+                    <i class="menu-icon icon-base ti tabler-report"></i>
+                    <div>Reports</div>
+                </a>
+            </li>
+            @if ($student_leaderboard_visible ?? true)
             <li
                 class="menu-item {{ str_starts_with((string) ($active_tab ?? ''), 'student_leaderboard') ? 'active open' : '' }}">
                 <a href="javascript:void(0)" class="menu-link menu-toggle">
@@ -359,6 +366,7 @@
                     </li>
                 </ul>
             </li>
+            @endif
             <li class="menu-item {{ $active_tab === 'student_classrooms' ? 'active' : '' }}">
                 <a href="{{ url('user/student/classrooms') }}" class="menu-link">
                     <i class="menu-icon icon-base ti tabler-school"></i>

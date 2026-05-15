@@ -13,6 +13,7 @@ use App\Models\Mark;
 use App\Models\MarkAbsence;
 use App\Models\PortalUser;
 use App\Models\StudentAttendance;
+use App\Models\StudentBatchEnrollmentPeriod;
 use App\Models\StudentClassroomMap;
 use App\Models\StudentPersonalEvent;
 use App\Models\StudentTeacherMap;
@@ -166,7 +167,13 @@ class UserDashboardController extends Controller
         $data['title'] = 'Settings';
         $data['active_tab'] = 'teacher_settings';
         $data['details'] = $details;
-        $data['teacher_setting'] = TeacherSetting::firstOrNew(['teacher_id' => $details->id], ['count_setting' => null]);
+        $data['teacher_setting'] = TeacherSetting::firstOrNew(
+            ['teacher_id' => $details->id],
+            [
+                'count_setting' => TeacherSetting::COUNT_AS_ZERO,
+                'leaderboard_visible' => true,
+            ]
+        );
 
         return view('web.user.profile_settings', $data);
     }
@@ -394,6 +401,7 @@ class UserDashboardController extends Controller
 
         $validation = Validator::make($request->all(), [
             'count_setting' => ['required', 'integer', 'in:1,2'],
+            'leaderboard_visible' => ['nullable', 'in:0,1'],
         ]);
 
         if ($validation->fails()) {
@@ -406,8 +414,15 @@ class UserDashboardController extends Controller
 
         $userId = (int) ($portalUser['id'] ?? 0);
         $value = (int) $request->input('count_setting');
+        $leaderboardVisible = $request->input('leaderboard_visible', '1') === '1';
 
-        TeacherSetting::updateOrCreate(['teacher_id' => $userId], ['count_setting' => $value]);
+        TeacherSetting::updateOrCreate(
+            ['teacher_id' => $userId],
+            [
+                'count_setting' => $value,
+                'leaderboard_visible' => $leaderboardVisible,
+            ]
+        );
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Settings saved';
@@ -637,29 +652,6 @@ class UserDashboardController extends Controller
         return view('web.user.student.attendance', $data);
     }
 
-    public function studentReport()
-    {
-        if (! session()->has('portal_user')) {
-            return redirect('login');
-        }
-        $portalUser = session('portal_user');
-        if ((int) ($portalUser['role'] ?? 0) !== 2) {
-            return redirect('user/dashboard');
-        }
-        $teacherId = (int) (session('selected_teacher_id') ?? 0);
-        if ($teacherId <= 0) {
-            return redirect('user/select-teacher');
-        }
-
-        $data = [];
-        $data['title'] = 'My Reports';
-        $data['active_tab'] = 'student_report';
-        $data['teacher'] = PortalUser::where('role', 1)->find($teacherId);
-        $data['reports'] = collect([]);
-
-        return view('web.user.student.report', $data);
-    }
-
     public function studentDashboard()
     {
         if (! session()->has('portal_user')) {
@@ -813,6 +805,14 @@ class UserDashboardController extends Controller
 
         $studentId = (int) ($portalUser['id'] ?? 0);
         [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+
+        if (! TeacherSetting::isLeaderboardVisibleForTeacher($teacherId)) {
+            return redirect('user/student/dashboard')->with(
+                'error',
+                'Leaderboard is not available. Your teacher has turned off leaderboard visibility.'
+            );
+        }
+
         $teacher = PortalUser::where('role', 1)->find($teacherId);
 
         $view = $request->query('view', 'aggregate');
@@ -880,6 +880,10 @@ class UserDashboardController extends Controller
 
         $studentId = (int) ($portalUser['id'] ?? 0);
         [$teacherId] = $this->alignStudentPortalTeacherWithEnrollments($studentId, $teacherId);
+
+        if (! TeacherSetting::isLeaderboardVisibleForTeacher($teacherId)) {
+            return response()->json(['status' => 0, 'error' => 'Leaderboard is not available for your class'], 403);
+        }
 
         $enrolledRows = $this->studentTeacherEnrolledBatchRows($studentId, $teacherId);
         $allowedBatchIds = $enrolledRows
@@ -1825,12 +1829,49 @@ class UserDashboardController extends Controller
         if ($legacyEnrollment !== null && (int) $legacyEnrollment['classroom_id'] === $classroomId && $legacyEnrollment['batch_id'] !== null) {
             $myBatchIds = $myBatchIds->push((int) $legacyEnrollment['batch_id'])->unique()->values();
         }
-        if ($myBatchIds->isNotEmpty()) {
-            $classroom->setRelation(
-                'batches',
-                $classroom->batches->filter(fn ($batch) => $myBatchIds->contains((int) $batch->id))->values()
-            );
+
+        $batchesKeyed = $classroom->batches->keyBy('id');
+        $periodsReady = Schema::hasTable('student_batch_enrollment_periods');
+        $periodBatchIds = collect();
+        if ($periodsReady) {
+            $periodBatchIds = StudentBatchEnrollmentPeriod::query()
+                ->where('student_id', $studentId)
+                ->where('teacher_id', $teacherId)
+                ->where('classroom_id', $classroomId)
+                ->distinct()
+                ->pluck('batch_id')
+                ->map(fn ($bid) => (int) $bid)
+                ->values();
         }
+
+        $unionBatchIdsForDisplay = $myBatchIds->merge($periodBatchIds)->unique()->values();
+        $pastOnlyBatchIds = $unionBatchIdsForDisplay->diff($myBatchIds)->values();
+        $pastOnlyOrdered = $pastOnlyBatchIds;
+        if ($periodsReady && $pastOnlyBatchIds->isNotEmpty()) {
+            $pastOnlyOrdered = StudentBatchEnrollmentPeriod::query()
+                ->where('student_id', $studentId)
+                ->where('teacher_id', $teacherId)
+                ->where('classroom_id', $classroomId)
+                ->whereIn('batch_id', $pastOnlyBatchIds->all())
+                ->groupBy('batch_id')
+                ->select('batch_id', DB::raw('MAX(IFNULL(`ended_at`, `started_at`)) AS sort_ts'))
+                ->orderByDesc('sort_ts')
+                ->pluck('batch_id')
+                ->map(fn ($bid) => (int) $bid)
+                ->values();
+            foreach ($pastOnlyBatchIds->all() as $extraBid) {
+                if (! $pastOnlyOrdered->contains($extraBid)) {
+                    $pastOnlyOrdered->push((int) $extraBid);
+                }
+            }
+        }
+
+        $orderedDisplayBatchIds = $myBatchIds->merge($pastOnlyOrdered)->unique()->values()->all();
+        $orderedBatches = collect($orderedDisplayBatchIds)
+            ->map(fn (int $bid) => $batchesKeyed->get($bid))
+            ->filter()
+            ->values();
+        $classroom->setRelation('batches', $orderedBatches);
 
         $teacher = PortalUser::where('role', 1)->find($teacherId);
 
@@ -1875,19 +1916,15 @@ class UserDashboardController extends Controller
             $bid = (int) $batch->id;
             $batch->enrollment_student_count = (int) ($countsByBatch[$bid] ?? 0);
             $batch->is_my_batch = $myBatchIds->contains($bid);
-            if ($batch->is_my_batch) {
-                $keysAtt = array_keys($attendanceDateKeysByBatch[$bid] ?? []);
-                sort($keysAtt, SORT_STRING);
-                $cellsAtt = [];
-                foreach ($keysAtt as $dAtt) {
-                    $cellsAtt[$dAtt] = $attendanceStudentStatusByBatchDate[$bid][$dAtt] ?? '';
-                }
-                $batch->setAttribute('attendance_dates', $keysAtt);
-                $batch->setAttribute('attendance_cells', $cellsAtt);
-            } else {
-                $batch->setAttribute('attendance_dates', []);
-                $batch->setAttribute('attendance_cells', []);
+            $batch->setAttribute('is_past_batch_tab', ! $batch->is_my_batch);
+            $keysAtt = array_keys($attendanceDateKeysByBatch[$bid] ?? []);
+            sort($keysAtt, SORT_STRING);
+            $cellsAtt = [];
+            foreach ($keysAtt as $dAtt) {
+                $cellsAtt[$dAtt] = $attendanceStudentStatusByBatchDate[$bid][$dAtt] ?? '';
             }
+            $batch->setAttribute('attendance_dates', $keysAtt);
+            $batch->setAttribute('attendance_cells', $cellsAtt);
             foreach ($batch->exams as $exam) {
                 $eid = (int) $exam->id;
                 $row = $marksByExamId->get($exam->id);

@@ -1,4 +1,4 @@
-@extends('web.user.layouts.app')
+﻿@extends('web.user.layouts.app')
 
 @section('content')
     @php
@@ -57,9 +57,9 @@
                                         @foreach ($maps as $row)
                                             <li class="mb-1">
                                                 <span
-                                                    class="fw-semibold">{{ optional($row->classroom)->name ?? '—' }}</span>
-                                                <span class="text-muted"> · </span>
-                                                <span class="fw-semibold">{{ optional($row->batch)->name ?? '—' }}</span>
+                                                    class="fw-semibold">{{ optional($row->classroom)->name ?? 'â€”' }}</span>
+                                                <span class="text-muted"> Â· </span>
+                                                <span class="fw-semibold">{{ optional($row->batch)->name ?? 'â€”' }}</span>
                                             </li>
                                         @endforeach
                                     </ul>
@@ -120,6 +120,25 @@
             </div>
         </div>
 
+
+        @php
+            $teacherReportDownloadBase = url('user/teacher/students/' . base64_encode((string) $student->id) . '/report/download');
+        @endphp
+        <div class="row g-4 mt-0">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Academic Reports</h5>
+                    </div>
+                    <div class="card-body pt-2">
+                        @include('web.user.partials.academic_reports_cards', [
+                            'download_base_url' => $teacherReportDownloadBase,
+                        ])
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-4 mt-0">
             <div class="col-md-6 col-xl-4">
                 <div class="card h-100">
@@ -129,7 +148,7 @@
                             @if ($overallPct !== null)
                                 {{ $overallPct }}<small class="fs-6 fw-normal text-body-secondary">%</small>
                             @else
-                                <span class="fs-5 text-body-secondary">—</span>
+                                <span class="fs-5 text-body-secondary">â€”</span>
                             @endif
                         </h3>
                         <small class="text-body-secondary">Average across graded exams (excludes absent)</small>
@@ -147,16 +166,16 @@
                                         {{ $att['rate_pct'] }}<small
                                             class="fs-6 fw-normal text-body-secondary">%</small>
                                     @else
-                                        <span class="fs-5 text-body-secondary">—</span>
+                                        <span class="fs-5 text-body-secondary">â€”</span>
                                     @endif
                                 </h3>
-                                <small class="text-body-secondary d-block">Present + late vs total sessions</small>
+                                <small class="text-body-secondary d-block">Present + leave vs total sessions</small>
                             </div>
                             <ul class="list-unstyled mb-0 small text-sm-end">
-                                <li><span class="text-success">Present</span> · {{ (int) $att['present'] }}</li>
-                                <li><span class="text-danger">Absent</span> · {{ (int) $att['absent'] }}</li>
-                                <li><span class="text-warning">Late</span> · {{ (int) $att['late'] }}</li>
-                                <li class="text-body-secondary mt-1">Total · {{ (int) $att['total'] }}</li>
+                                <li><span class="text-success">Present</span> Â· {{ (int) $att['present'] }}</li>
+                                <li><span class="text-danger">Absent</span> Â· {{ (int) $att['absent'] }}</li>
+                                <li><span class="text-warning">Leave</span> Â· {{ (int) $att['late'] }}</li>
+                                <li class="text-body-secondary mt-1">Total Â· {{ (int) $att['total'] }}</li>
                             </ul>
                         </div>
                     </div>
@@ -171,7 +190,7 @@
                             <small class="text-body-secondary d-block">
                                 {{ (int) $fees['payment_count'] }} payment record(s)
                                 @if (!empty($fees['last_paid_at']))
-                                    · Last {{ $fees['last_paid_at']->format('d M Y') }}
+                                    Â· Last {{ $fees['last_paid_at']->format('d M Y') }}
                                 @endif
                             </small>
                             <a href="{{ url('user/teacher/fees/list') }}" class="btn btn-sm btn-label-primary mt-2">Fees
@@ -232,16 +251,16 @@
                                             @if (!empty($row['exam_date']))
                                                 {{ $row['exam_date']->format('d M Y') }}
                                             @else
-                                                —
+                                                â€”
                                             @endif
                                         </td>
-                                        <td>{{ $row['is_absent'] ? '—' : $row['marks_raw'] }}</td>
-                                        <td>{{ $row['max_marks'] ?? '—' }}</td>
+                                        <td>{{ $row['is_absent'] ? 'â€”' : $row['marks_raw'] }}</td>
+                                        <td>{{ $row['max_marks'] ?? 'â€”' }}</td>
                                         <td>
                                             @if ($row['percentage'] !== null)
                                                 {{ $row['percentage'] }}%
                                             @else
-                                                —
+                                                â€”
                                             @endif
                                         </td>
                                         <td>
@@ -250,7 +269,7 @@
                                             @elseif ($row['percentage'] !== null)
                                                 <span class="badge bg-label-success">Graded</span>
                                             @else
-                                                <span class="badge bg-label-secondary">—</span>
+                                                <span class="badge bg-label-secondary">â€”</span>
                                             @endif
                                         </td>
                                     </tr>

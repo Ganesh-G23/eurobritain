@@ -42,7 +42,25 @@
                                 </label>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary teacher-settings-submit">Save settings</button>
+
+                        <hr class="my-4">
+
+                        <h6 class="mb-2">Leaderboard visibility</h6>
+                        <p class="text-body-secondary small mb-3">
+                            When turned off, students in your classes will not see the leaderboard menu or rankings.
+                            You can still use the leaderboard in your teacher panel.
+                        </p>
+                        <div class="form-check form-switch mb-0">
+                            <input type="hidden" name="leaderboard_visible" value="0">
+                            <input class="form-check-input" type="checkbox" name="leaderboard_visible" id="leaderboard_visible"
+                                value="1"
+                                {{ ($teacher_setting->leaderboard_visible ?? true) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="leaderboard_visible">
+                                Show leaderboard to students
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary teacher-settings-submit mt-4">Save settings</button>
                     </form>
                 </div>
             </div>

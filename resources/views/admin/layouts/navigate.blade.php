@@ -26,6 +26,13 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
     </a>
 </li>
 
+<li class="menu-item {{ $active_tab == 'fees' ? 'active' : '' }}">
+    <a href="{{ url('admin/fees') }}" class="menu-link">
+        <i class="menu-icon icon-base ti tabler-receipt-2"></i>
+        <div data-i18n="Fees">Fees</div>
+    </a>
+</li>
+
 @if ($adminLevel === 1)
     <li class="menu-item {{ $active_tab == 'admins' ? 'active' : '' }}">
         <a href="{{ url('admin/admins') }}" class="menu-link">

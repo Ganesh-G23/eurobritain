@@ -217,9 +217,9 @@
                                                                             checked>
                                                                     </div>
 
-                                                                    @if ($marksReady)
-                                                                        <div
-                                                                            class="d-flex align-items-center justify-content-center gap-1 mt-1 flex-wrap">
+                                                                    <div
+                                                                        class="d-flex align-items-center justify-content-center gap-1 mt-1 flex-wrap">
+                                                                        @if ($marksReady)
                                                                             <button type="button"
                                                                                 class="btn btn-sm btn-icon btn-label-secondary js-edit-marks-col"
                                                                                 title="Edit marks"
@@ -236,8 +236,17 @@
                                                                                 <button type="button"
                                                                                     class="btn btn-sm btn-label-secondary js-cancel-marks-col">Cancel</button>
                                                                             </div>
-                                                                        </div>
-                                                                    @endif
+                                                                        @endif
+
+                                                                        <button type="button"
+                                                                            class="btn btn-sm btn-icon btn-label-danger js-delete-exam"
+                                                                            title="Delete test"
+                                                                            data-exam-id="{{ $exam->id }}"
+                                                                            data-batch-id="{{ $batch->id }}"
+                                                                            data-exam-name="{{ $exam->exam_name }}">
+                                                                            <i class="icon-base ti tabler-trash"></i>
+                                                                        </button>
+                                                                    </div>
                                                                 </th>
                                                             @endforeach
 
@@ -1088,6 +1097,7 @@
         <script>
             (function() {
                 var marksSaveUrl = "{{ portal_same_origin_path('user/teacher/exams/marks/save') }}";
+                var marksDeleteUrl = "{{ portal_same_origin_path('user/teacher/exams/delete') }}";
                 var csrf = "{{ csrf_token() }}";
                 var activeColumn = null;
 
@@ -1173,6 +1183,44 @@
                 }
 
                 document.addEventListener('click', function(e) {
+                    var deleteExamBtn = e.target.closest('.js-delete-exam');
+                    if (deleteExamBtn) {
+                        e.preventDefault();
+                        var examId = deleteExamBtn.getAttribute('data-exam-id');
+                        var batchId = deleteExamBtn.getAttribute('data-batch-id');
+                        var examName = deleteExamBtn.getAttribute('data-exam-name') || 'this test';
+                        var pane = document.getElementById('batch-' + batchId + '-tests-pane');
+                        if (!pane || !examId || !batchId) {
+                            return;
+                        }
+                        if (!window.confirm('Delete "' + examName + '"? This will remove the test and all marks for it.')) {
+                            return;
+                        }
+                        if (activeColumn && activeColumn.examId === examId) {
+                            cancelValues(activeColumn.pane, activeColumn.examId);
+                            exitEdit(activeColumn.pane, activeColumn.examId);
+                            activeColumn = null;
+                        }
+                        clearMsg(pane);
+                        deleteExamBtn.disabled = true;
+                        $.post(marksDeleteUrl, {
+                            _token: csrf,
+                            exam_id: examId,
+                            batch_id: batchId
+                        }, function(res) {
+                            if (res.status == 1) {
+                                window.location.href = res.redirect_url || window.location.href;
+                            } else {
+                                deleteExamBtn.disabled = false;
+                                showMsg(pane, res.error || 'Failed to delete test', true);
+                            }
+                        }, 'json').fail(function() {
+                            deleteExamBtn.disabled = false;
+                            showMsg(pane, 'Request failed', true);
+                        });
+                        return;
+                    }
+
                     var editBtn = e.target.closest('.js-edit-marks-col');
                     if (editBtn) {
                         e.preventDefault();

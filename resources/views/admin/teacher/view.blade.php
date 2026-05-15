@@ -661,7 +661,7 @@
                     <form id="studentEnrollmentsForm">
                         <input type="hidden" name="student_id" id="enr_student_id" value="">
                         <input type="hidden" name="teacher_id" value="{{ $teacher->id }}">
-                        <p class="text-body-secondary small">Add one row per classroom and batch. The first row sets the student&apos;s primary classroom and batch for display.</p>
+                        <p class="text-body-secondary small">Add at most one row per classroom (one batch per classroom). The first row sets the student&apos;s primary classroom and batch for display.</p>
                         <div id="student-enrollment-rows" class="mb-3"></div>
                         <button type="button" class="btn btn-sm btn-label-primary" id="add-enrollment-row">
                             <i class="icon-base ti tabler-plus me-1"></i> Add row
@@ -715,7 +715,7 @@
                         <strong>2.</strong> Download the sample and fill rows using this teacher’s classroom and batch names (or numeric IDs).<br>
                         <strong>3.</strong> Required columns:
                         <strong>name, email, phone, classroom, batch</strong> (first pair = primary display).<br>
-                        <strong>Optional extra enrollments</strong> (same teacher only):
+                        <strong>Optional extra enrollments</strong> (same teacher only; use a <strong>different</strong> classroom in each pair — only one batch allowed per classroom):
                         <strong>classroom_2, batch_2</strong> and <strong>classroom_3, batch_3</strong> — leave blank if not used.<br>
                         For each import row, all pairs you fill <strong>replace</strong> that student’s classroom/batch mappings for this teacher.<br>
                         Optional parent columns: <strong>parent_name, parent_email, parent_phone</strong>.

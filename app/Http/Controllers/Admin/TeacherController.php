@@ -8,6 +8,7 @@ use App\Models\PortalUser;
 use App\Models\Classroom;
 use App\Models\Batch;
 use App\Models\StudentClassroomMap;
+use App\Models\StudentBatchEnrollmentPeriod;
 use App\Models\StudentTeacherMap;
 use App\Support\PortalSession;
 use App\Support\StudentEnrollmentSync;
@@ -635,6 +636,7 @@ class TeacherController extends Controller
                     $batch = Batch::find($student->batch_id);
                     $teacherId = $batch ? (int) $batch->teacher_id : null;
                 }
+                StudentBatchEnrollmentPeriod::closeOpenPeriodsForStudent((int) $student->id);
                 StudentClassroomMap::where('student_id', $student->id)->delete();
                 StudentTeacherMap::where('student_id', $student->id)->delete();
                 ParentStudentMap::where('student_id', $student->id)->delete();

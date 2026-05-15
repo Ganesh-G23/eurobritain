@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\PortalUser;
+use App\Models\TeacherSetting;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
@@ -62,9 +63,15 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            $selectedTeacherId = (int) (session('selected_teacher_id') ?? 0);
+            $studentLeaderboardVisible = $selectedTeacherId > 0
+                ? TeacherSetting::isLeaderboardVisibleForTeacher($selectedTeacherId)
+                : false;
+
             $view->with([
                 'layoutStudentNotifications' => $layoutStudentNotifications,
                 'StudentUnreadNotificationCount' => $StudentUnreadNotificationCount,
+                'student_leaderboard_visible' => $studentLeaderboardVisible,
             ]);
         });
 

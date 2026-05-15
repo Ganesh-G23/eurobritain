@@ -133,7 +133,7 @@
                                     <h3 class="mb-0 text-heading">{{ $attRate }}%</h3>
                                     <p class="mb-0 small text-body-secondary">
                                         {{ (int) ($ov['attendance_present'] ?? 0) }} present ·
-                                        {{ (int) ($ov['attendance_late'] ?? 0) }} late ·
+                                        {{ (int) ($ov['attendance_late'] ?? 0) }} leave (planned) ·
                                         {{ (int) ($ov['attendance_absent'] ?? 0) }} absent
                                     </p>
                                 @else

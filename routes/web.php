@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\FeesController as AdminFeesController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\StudentController;
 use App\Http\Controllers\Admin\TeacherController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\Web\PortalPasswordResetController;
 use App\Http\Controllers\Web\StudentComplaintController;
 use App\Http\Controllers\Web\StudentLeaveRequestController;
 use App\Http\Controllers\Web\TimelineController;
+use App\Http\Controllers\Web\AcademicReportController;
 use App\Http\Controllers\Web\UserDashboardController;
 use App\Http\Controllers\Web\UserTeacherController;
 use Illuminate\Support\Facades\Route;
@@ -76,7 +78,8 @@ Route::prefix('user')
             Route::post('/student/personal-events/save', [UserDashboardController::class, 'saveStudentPersonalEvent']);
             Route::post('/student/personal-events/delete', [UserDashboardController::class, 'deleteStudentPersonalEvent']);
             Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
-            Route::get('/student/report', [UserDashboardController::class, 'studentReport']);
+            Route::get('/student/report', [AcademicReportController::class, 'studentIndex']);
+            Route::get('/student/report/download/{type}', [AcademicReportController::class, 'studentDownload']);
             Route::get('/student/leaderboard', [UserDashboardController::class, 'studentLeaderboard']);
             Route::get('/student/leaderboard/chart-data', [UserDashboardController::class, 'studentLeaderboardChartData']);
             Route::get('/student/leave', [StudentLeaveRequestController::class, 'index']);
@@ -103,6 +106,8 @@ Route::prefix('user')
             Route::get('/parent/complaints', [StudentComplaintController::class, 'parentComplaints']);
             Route::post('/parent/complaints/store', [StudentComplaintController::class, 'store']);
             Route::get('/parent/fees', [FeesController::class, 'parentFeesList']);
+            Route::get('/parent/report', [AcademicReportController::class, 'parentIndex']);
+            Route::get('/parent/report/download/{type}', [AcademicReportController::class, 'parentDownload']);
         });
 
         // User-side Teacher management (logged-in teacher) - original simple routes
@@ -119,6 +124,7 @@ Route::prefix('user')
                 Route::get('/batches', [UserTeacherController::class, 'batches']);
                 Route::get('/students', [UserTeacherController::class, 'students']);
                 Route::get('/students/view/{id}', [UserTeacherController::class, 'viewStudent']);
+                Route::get('/students/{id}/report/download/{type}', [AcademicReportController::class, 'teacherDownload']);
                 Route::get('/students/leave', [UserTeacherController::class, 'studentLeave']);
                 Route::post('leave-action', [UserTeacherController::class, 'leaveAction'])->name('teacher.leave.action');
                 Route::get('/leaderboard', [LeaderBoardController::class, 'leaderboard']);
@@ -150,6 +156,7 @@ Route::prefix('user')
                 Route::post('/classrooms/details/{id}/import-attendance', [UserTeacherController::class, 'importAttendanceFromCsv']);
                 Route::get('/classrooms/details/{id}', [UserTeacherController::class, 'classroomsDetails']);
                 Route::post('/exams/save', [UserTeacherController::class, 'saveExam']);
+                Route::post('/exams/delete', [UserTeacherController::class, 'deleteExam']);
                 Route::post('/exams/marks/save', [UserTeacherController::class, 'saveExamMarksColumn']);
                 Route::post('/attendance/save-day', [UserTeacherController::class, 'saveBatchAttendanceDay']);
                 Route::post('/attendance/save-column', [UserTeacherController::class, 'saveAttendanceColumn']);
@@ -210,6 +217,7 @@ Route::middleware('prevent-back')
             Route::get('student/form', [StudentController::class, 'form']);
             Route::post('student/save', [StudentController::class, 'saveStudent']);
             Route::get('student/view', [StudentController::class, 'view']);
+            Route::get('fees', [AdminFeesController::class, 'index']);
 
             // Admin bulk student upload/sample
             Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);

@@ -223,7 +223,7 @@
                             <p class="form-text small mb-0">Select the teacher first. Classrooms and batches shown are only
                                 for that teacher.</p>
                         </div>
-                        <p class="text-body-secondary small">One row per classroom and batch for the selected teacher. The
+                        <p class="text-body-secondary small">At most one row per classroom (one batch per classroom) for the selected teacher. The
                             first row sets the student’s primary classroom and batch for display.</p>
                         <div id="student-list-enrollment-rows" class="mb-3"></div>
                         <button type="button" class="btn btn-sm btn-label-primary" id="student-list-add-enrollment-row">
@@ -275,7 +275,7 @@
                         <strong>2.</strong> Download the sample and fill rows using that teacher’s classroom and batch names (or numeric IDs).<br>
                         <strong>3.</strong> Required columns:
                         <strong>name, email, phone, classroom, batch</strong> (first pair = primary display).<br>
-                        <strong>Optional extra enrollments</strong> (same teacher only):
+                        <strong>Optional extra enrollments</strong> (same teacher only; use a <strong>different</strong> classroom in each pair — only one batch allowed per classroom):
                         <strong>classroom_2, batch_2</strong> and <strong>classroom_3, batch_3</strong> — leave blank if not used.<br>
                         For each import row, all pairs you fill <strong>replace</strong> that student’s classroom/batch mappings for this teacher (same idea as the school icon on the student list).<br>
                         Optional parent columns: <strong>parent_name, parent_email, parent_phone</strong>.

@@ -11,6 +11,7 @@ use App\Models\ParentStudentMap;
 use App\Models\PortalUser;
 use App\Models\StudentAttendance;
 use App\Models\StudentClassroomMap;
+use App\Models\StudentBatchEnrollmentPeriod;
 use App\Models\StudentTeacherMap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -138,6 +139,7 @@ class StudentController extends Controller
             if ($student) {
                 $batch = Batch::find($student->batch_id);
                 $teacherId = $batch ? $batch->teacher_id : null;
+                StudentBatchEnrollmentPeriod::closeOpenPeriodsForStudent((int) $student->id);
                 StudentClassroomMap::where('student_id', $student->id)->delete();
                 StudentTeacherMap::where('student_id', $student->id)->delete();
                 ParentStudentMap::where('student_id', $student->id)->delete();

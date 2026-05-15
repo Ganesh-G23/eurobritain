@@ -74,6 +74,43 @@ class FeesController extends Controller
         return $byBatch;
     }
 
+    /**
+     * @return array<int, list<array{id: int, name: string}>>
+     */
+    protected function studentsByClassroomForTeacher(int $teacherId): array
+    {
+        $rows = StudentClassroomMap::query()
+            ->where('teacher_id', $teacherId)
+            ->whereNotNull('classroom_id')
+            ->with(['student' => static function ($q) {
+                $q->select(['id', 'name', 'role'])->where('role', 2);
+            }])
+            ->get(['classroom_id', 'student_id']);
+
+        $byClassroom = [];
+        foreach ($rows as $row) {
+            if (! $row->student) {
+                continue;
+            }
+            $cid = (int) $row->classroom_id;
+            $sid = (int) $row->student_id;
+            if (! isset($byClassroom[$cid][$sid])) {
+                $byClassroom[$cid][$sid] = [
+                    'id' => $sid,
+                    'name' => (string) $row->student->name,
+                ];
+            }
+        }
+
+        foreach ($byClassroom as $cid => $students) {
+            $list = array_values($students);
+            usort($list, static fn ($a, $b) => strcmp($a['name'], $b['name']));
+            $byClassroom[$cid] = $list;
+        }
+
+        return $byClassroom;
+    }
+
     public function fees()
     {
         [$teacherId, $redirect] = $this->requireTeacher();
@@ -122,24 +159,145 @@ class FeesController extends Controller
         ]);
     }
 
-    public function feesList()
+    /**
+     * @return \Illuminate\Support\Collection<int, PortalUser>
+     */
+    protected function studentsForTeacherFilter(int $teacherId)
+    {
+        $studentIds = StudentClassroomMap::query()
+            ->where('teacher_id', $teacherId)
+            ->pluck('student_id')
+            ->unique()
+            ->filter()
+            ->map(static fn ($id) => (int) $id)
+            ->values();
+
+        if ($studentIds->isEmpty()) {
+            return collect();
+        }
+
+        return PortalUser::query()
+            ->where('role', 2)
+            ->whereIn('id', $studentIds)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    public function feesList(Request $request)
     {
         [$teacherId, $redirect] = $this->requireTeacher();
         if ($redirect) {
             return $redirect;
         }
 
-        return view('web.user.teacher.fees_list', [
-            'title' => 'Fees List',
-            'active_tab' => 'fees',
-            'fees' => Fees::with([
+        $classroomId = (int) ($request->classroom_id ?? 0);
+        $batchId = (int) ($request->batch_id ?? 0);
+        $studentId = (int) ($request->student_id ?? 0);
+        $fromDate = trim((string) ($request->from_date ?? ''));
+        $toDate = trim((string) ($request->to_date ?? ''));
+
+        $page = max(1, (int) ($request->page ?? 1));
+        $perPage = max(1, min(200, (int) ($request->per_page ?? 50)));
+
+        $feesQuery = Fees::query()
+            ->with([
                 'classroom:id,name',
                 'batch:id,name',
                 'student:id,name,email',
             ])
-                ->where('teacher_id', $teacherId)
-                ->orderByDesc('id')
-                ->get(),
+            ->where('teacher_id', $teacherId)
+            ->orderByDesc('id');
+
+        if ($classroomId > 0) {
+            $feesQuery->where('classroom_id', $classroomId);
+        }
+
+        if ($batchId > 0) {
+            $feesQuery->where('batch_id', $batchId);
+        }
+
+        if ($studentId > 0) {
+            $feesQuery->where('student_id', $studentId);
+        }
+
+        if ($fromDate !== '') {
+            $feesQuery->whereDate('created_at', '>=', $fromDate);
+        }
+
+        if ($toDate !== '') {
+            $feesQuery->whereDate('created_at', '<=', $toDate);
+        }
+
+        $queryParams = array_filter(
+            [
+                'classroom_id' => $classroomId > 0 ? $classroomId : null,
+                'batch_id' => $batchId > 0 ? $batchId : null,
+                'student_id' => $studentId > 0 ? $studentId : null,
+                'from_date' => $fromDate !== '' ? $fromDate : null,
+                'to_date' => $toDate !== '' ? $toDate : null,
+            ],
+            static fn ($v) => $v !== null && $v !== '',
+        );
+
+        $numRows = (clone $feesQuery)->count();
+
+        $fees = $feesQuery
+            ->limit($perPage)
+            ->offset(($page - 1) * $perPage)
+            ->get();
+
+        $classrooms = Classroom::query()
+            ->where('teacher_id', $teacherId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $batchesQuery = Batch::query()
+            ->where('teacher_id', $teacherId)
+            ->orderBy('name');
+
+        if ($classroomId > 0) {
+            $batchesQuery->where('classroom_id', $classroomId);
+        }
+
+        $batches = $batchesQuery->get(['id', 'name', 'classroom_id']);
+
+        $allBatches = Batch::query()
+            ->where('teacher_id', $teacherId)
+            ->orderBy('name')
+            ->get(['id', 'name', 'classroom_id']);
+
+        $allBatchesForJs = $allBatches->map(static fn ($b) => [
+            'id' => (int) $b->id,
+            'name' => (string) $b->name,
+            'classroom_id' => (int) $b->classroom_id,
+        ])->values();
+
+        $allStudents = $this->studentsForTeacherFilter($teacherId);
+
+        return view('web.user.teacher.fees_list', [
+            'title' => 'Fees List',
+            'active_tab' => 'fees',
+            'fees' => $fees,
+            'classrooms' => $classrooms,
+            'batches' => $batches,
+            'all_batches' => $allBatches,
+            'all_batches_for_js' => $allBatchesForJs,
+            'students' => $allStudents,
+            'students_for_js' => $allStudents->map(static fn ($s) => [
+                'id' => (int) $s->id,
+                'name' => (string) $s->name,
+            ])->values(),
+            'students_by_batch' => $this->studentsByBatchForTeacher($teacherId),
+            'students_by_classroom' => $this->studentsByClassroomForTeacher($teacherId),
+            'classroom_id' => $classroomId,
+            'batch_id' => $batchId,
+            'student_id' => $studentId,
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'num_rows' => $numRows,
+            'page' => $page,
+            'per_page' => $perPage,
+            'query_params' => $queryParams,
         ]);
     }
 
