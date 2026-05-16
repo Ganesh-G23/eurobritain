@@ -561,6 +561,12 @@ class TeacherController extends Controller
 
     function syncStudentEnrollments(Request $request)
     {
+        if ($request->boolean('multi_teacher_enrollments')) {
+            $this->syncStudentEnrollmentsMulti($request);
+
+            return;
+        }
+
         $studentId = $request->student_id ? (int) base64_decode($request->student_id) : 0;
         $teacherId = (int) ($request->teacher_id ?? 0);
 
@@ -619,6 +625,122 @@ class TeacherController extends Controller
             $this->response['redirect_url'] = url('admin/student');
         } else {
             $this->response['redirect_url'] = url('admin/teacher/view?id='.base64_encode($teacherId));
+        }
+        echo json_encode($this->response);
+    }
+
+    private function syncStudentEnrollmentsMulti(Request $request): void
+    {
+        $studentId = $request->student_id ? (int) base64_decode($request->student_id) : 0;
+        if ($studentId < 1) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Invalid student.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $student = PortalUser::where('role', 2)->find($studentId);
+        if (! $student) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Student not found.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $blocks = array_values((array) $request->input('enrollment_blocks', []));
+        if (count($blocks) < 1) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Add at least one teacher section.';
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $submittedTeacherIds = [];
+        $hasPrimaryPairs = false;
+
+        foreach ($blocks as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+            $teacherId = (int) ($block['teacher_id'] ?? 0);
+            if ($teacherId < 1) {
+                $this->response['status'] = 0;
+                $this->response['error'] = 'Each teacher section needs a teacher selected.';
+                echo json_encode($this->response);
+
+                return;
+            }
+            if (in_array($teacherId, $submittedTeacherIds, true)) {
+                $this->response['status'] = 0;
+                $this->response['error'] = 'Each teacher can only appear once. Remove duplicate teacher sections.';
+                echo json_encode($this->response);
+
+                return;
+            }
+            $submittedTeacherIds[] = $teacherId;
+
+            $pairs = StudentEnrollmentSync::pairsFromRequestArrays(
+                (array) ($block['map_classroom_id'] ?? []),
+                (array) ($block['map_batch_id'] ?? [])
+            );
+
+            if (count($pairs) < 1) {
+                $this->response['status'] = 0;
+                $this->response['error'] = 'Each teacher section needs at least one classroom and batch.';
+                echo json_encode($this->response);
+
+                return;
+            }
+
+            if (! $hasPrimaryPairs) {
+                $hasPrimaryPairs = true;
+            }
+
+            [$ok, $err] = StudentEnrollmentSync::validatePairsForTeacher($teacherId, $pairs);
+            if (! $ok) {
+                $this->response['status'] = 0;
+                $this->response['error'] = $err;
+                echo json_encode($this->response);
+
+                return;
+            }
+        }
+
+        $initialTeacherIds = array_map('intval', (array) $request->input('initial_teacher_ids', []));
+        $teachersToClear = array_diff($initialTeacherIds, $submittedTeacherIds);
+
+        try {
+            DB::transaction(function () use ($studentId, $blocks, $teachersToClear) {
+                foreach ($blocks as $block) {
+                    $teacherId = (int) ($block['teacher_id'] ?? 0);
+                    $pairs = StudentEnrollmentSync::pairsFromRequestArrays(
+                        (array) ($block['map_classroom_id'] ?? []),
+                        (array) ($block['map_batch_id'] ?? [])
+                    );
+                    StudentEnrollmentSync::syncForTeacher($studentId, $teacherId, $pairs);
+                }
+                foreach ($teachersToClear as $teacherId) {
+                    StudentEnrollmentSync::syncForTeacher($studentId, (int) $teacherId, []);
+                }
+            });
+        } catch (\Throwable $e) {
+            $this->response['status'] = 0;
+            $this->response['error'] = 'Unable to save enrollments. '.$e->getMessage();
+            echo json_encode($this->response);
+
+            return;
+        }
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Classrooms saved successfully';
+        if ($request->boolean('return_student_list')) {
+            $this->response['redirect_url'] = url('admin/student');
+        } else {
+            $firstTeacherId = $submittedTeacherIds[0] ?? 0;
+            $this->response['redirect_url'] = url('admin/teacher/view?id='.base64_encode((string) $firstTeacherId));
         }
         echo json_encode($this->response);
     }

@@ -18,6 +18,7 @@ use App\Models\StudentClassroomMap;
 use App\Models\StudentPersonalEvent;
 use App\Models\StudentTeacherMap;
 use App\Models\TeacherSetting;
+use App\Models\TimeLine;
 use App\Notifications\PortalNotification;
 use App\Support\FullCalendarEventPayload;
 use App\Support\PortalSession;
@@ -1912,6 +1913,31 @@ class UserDashboardController extends Controller
                 }
             }
         }
+        $topicsCoveredByBatch = [];
+        if (Schema::hasTable('timelines')) {
+            $today = Carbon::today()->toDateString();
+            $pastTimelines = TimeLine::query()
+                ->where('classroom_id', $classroomId)
+                ->where('teacher_id', $teacherId)
+                ->whereDate('date', '<', $today)
+                ->orderByDesc('date')
+                ->orderByDesc('id')
+                ->get(['id', 'batch_ids', 'topic', 'date']);
+
+            foreach ($classroom->batches as $batch) {
+                $bid = (int) $batch->id;
+                $topicsCoveredByBatch[$bid] = $pastTimelines
+                    ->filter(fn (TimeLine $timeline) => $timeline->appliesToBatch($bid))
+                    ->map(fn (TimeLine $timeline) => [
+                        'date' => $timeline->date->format('Y-m-d'),
+                        'date_label' => $timeline->date->format('d M Y'),
+                        'topic' => $timeline->topic,
+                    ])
+                    ->values()
+                    ->all();
+            }
+        }
+
         foreach ($classroom->batches as $batch) {
             $bid = (int) $batch->id;
             $batch->enrollment_student_count = (int) ($countsByBatch[$bid] ?? 0);
@@ -1925,6 +1951,7 @@ class UserDashboardController extends Controller
             }
             $batch->setAttribute('attendance_dates', $keysAtt);
             $batch->setAttribute('attendance_cells', $cellsAtt);
+            $batch->setAttribute('topics_covered', $topicsCoveredByBatch[$bid] ?? []);
             foreach ($batch->exams as $exam) {
                 $eid = (int) $exam->id;
                 $row = $marksByExamId->get($exam->id);

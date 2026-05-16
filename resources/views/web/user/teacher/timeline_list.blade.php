@@ -12,47 +12,39 @@
                         <a href="{{ url('user/teacher/timelines') }}" class="btn btn-sm btn-primary">Add Timeline</a>
                     </div>
                     <div class="table-responsive">
-                        <table class="table mb-0">
+                        <table class="table mb-0 align-middle">
                             <thead>
                                 <tr>
                                     <th>Topic</th>
                                     <th>Classroom</th>
-                                    <th>Batch</th>
-                                    <th>Start</th>
-                                    <th>End</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
+                                    <th>Batches</th>
+                                    <th>Date</th>
+                                    <th class="text-nowrap">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse ($timelines ?? [] as $timeline)
+                                    @php
+                                        $batchLabel = collect($timeline->normalizedBatchIds())
+                                            ->map(fn ($id) => $batch_names[$id] ?? null)
+                                            ->filter()
+                                            ->implode(', ');
+                                    @endphp
                                     <tr>
                                         <td>{{ $timeline->topic }}</td>
                                         <td>{{ $timeline->classroom->name ?? '-' }}</td>
-                                        <td>{{ $timeline->batch->name ?? '-' }}</td>
-                                        <td>{{ $timeline->start_date ? \Illuminate\Support\Carbon::parse($timeline->start_date)->format('d M Y') : '-' }}</td>
-                                        <td>{{ $timeline->end_date ? \Illuminate\Support\Carbon::parse($timeline->end_date)->format('d M Y') : '-' }}</td>
-                                        <td>
-                                            @if ((int) $timeline->status === 1)
-                                                <span class="badge bg-label-success">Active</span>
-                                            @elseif ((int) $timeline->status === 0)
-                                                <span class="badge bg-label-secondary">Inactive</span>
-                                            @elseif ((int) $timeline->status === 2)
-                                                <span class="badge bg-label-primary">Completed</span>
-                                            @endif
-                                        </td>
-                                        <td>
-                                            <div class="d-flex justify-content-end">
-                                                <a href="{{ url('user/teacher/timelines/edit/' . $timeline->id) }}"
-                                                    class="btn btn-sm btn-icon btn-label-primary" title="Edit">
-                                                    <i class="icon-base ti tabler-edit"></i>
-                                                </a>
-                                            </div>
+                                        <td>{{ $batchLabel !== '' ? $batchLabel : '—' }}</td>
+                                        <td>{{ $timeline->date ? $timeline->date->format('d M Y') : '—' }}</td>
+                                        <td class="text-nowrap">
+                                            <a href="{{ url('user/teacher/timelines/edit/' . $timeline->id) }}"
+                                                class="btn btn-sm btn-icon btn-label-primary" title="Edit">
+                                                <i class="icon-base ti tabler-edit"></i>
+                                            </a>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="7" class="text-center text-body-secondary py-4">No timelines added yet.</td>
+                                        <td colspan="5" class="text-center text-body-secondary py-4">No timelines added yet.</td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -62,8 +54,4 @@
             </div>
         </div>
     </div>
-@endsection
-
-@section('scripts')
-  
 @endsection

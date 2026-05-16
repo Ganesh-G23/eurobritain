@@ -131,6 +131,8 @@
                                 data-bs-toggle="list" href="#horizontal-home" role="tab">Tests</a>
                             <a class="list-group-item list-group-item-action" id="attendance-list-item"
                                 data-bs-toggle="list" href="#horizontal-attendance" role="tab">Attendance</a>
+                            <a class="list-group-item list-group-item-action" id="topics-list-item"
+                                data-bs-toggle="list" href="#horizontal-topics" role="tab">Topics Covered</a>
                         </div>
                         <div class="tab-content px-0 mt-0">
                             <div class="tab-pane fade show active" id="horizontal-home" role="tabpanel">
@@ -360,6 +362,8 @@
                                     @endif
                             </div>
 
+                            @include('web.user.student.partials.topics_covered_tab')
+
                         </div>
                     </div>
                 </div>
@@ -373,6 +377,48 @@
         document.addEventListener("DOMContentLoaded", function() {
 
             const defaultBatch = "{{ $default_batch_id }}";
+
+            function applyTopicsDateRangeFilter(batchId) {
+                var b = String(batchId);
+                var fromEl = document.getElementById('classroom-topics-filter-from-' + b);
+                var toEl = document.getElementById('classroom-topics-filter-to-' + b);
+                var table = document.getElementById('topics-table-' + b);
+                var emptyMsg = document.getElementById('topics-filter-empty-' + b);
+                if (!table || !fromEl || !toEl) {
+                    return;
+                }
+                var fromVal = fromEl.value ? String(fromEl.value).trim() : '';
+                var toVal = toEl.value ? String(toEl.value).trim() : '';
+                if (fromVal && toVal && fromVal > toVal) {
+                    var tmp = fromVal;
+                    fromVal = toVal;
+                    toVal = tmp;
+                    fromEl.value = fromVal;
+                    toEl.value = toVal;
+                }
+                var visibleCount = 0;
+                table.querySelectorAll('tbody tr[data-topic-date]').forEach(function(row) {
+                    var d = row.getAttribute('data-topic-date') || '';
+                    var show = true;
+                    if (fromVal && d < fromVal) {
+                        show = false;
+                    }
+                    if (toVal && d > toVal) {
+                        show = false;
+                    }
+                    row.classList.toggle('d-none', !show);
+                    if (show) {
+                        visibleCount++;
+                    }
+                });
+                if (emptyMsg) {
+                    emptyMsg.classList.toggle('d-none', visibleCount > 0);
+                }
+                var tableWrap = table.closest('.topics-date-scroll');
+                if (tableWrap) {
+                    tableWrap.classList.toggle('d-none', visibleCount === 0);
+                }
+            }
 
             function applyAttendanceDateRangeFilter(batchId) {
                 var b = String(batchId);
@@ -427,6 +473,9 @@
                 document.querySelectorAll('.batch-attendance').forEach(el => {
                     el.classList.add('d-none');
                 });
+                document.querySelectorAll('.batch-topics').forEach(el => {
+                    el.classList.add('d-none');
+                });
 
                 let activeTests = document.getElementById('batch-tests-' + batchId);
                 if (activeTests) {
@@ -436,7 +485,12 @@
                 if (activeAtt) {
                     activeAtt.classList.remove('d-none');
                 }
+                let activeTopics = document.getElementById('batch-topics-' + batchId);
+                if (activeTopics) {
+                    activeTopics.classList.remove('d-none');
+                }
                 applyAttendanceDateRangeFilter(batchId);
+                applyTopicsDateRangeFilter(batchId);
             }
 
             if (defaultBatch) {
@@ -451,6 +505,33 @@
             });
 
             document.addEventListener('click', function(e) {
+                var topicsSearchBtn = e.target.closest('.js-topics-date-search-btn');
+                if (topicsSearchBtn) {
+                    e.preventDefault();
+                    var topicsBid = topicsSearchBtn.getAttribute('data-batch-id');
+                    if (topicsBid) {
+                        applyTopicsDateRangeFilter(topicsBid);
+                    }
+                    return;
+                }
+                var topicsResetBtn = e.target.closest('.js-topics-date-reset-btn');
+                if (topicsResetBtn) {
+                    e.preventDefault();
+                    var topicsRb = topicsResetBtn.getAttribute('data-batch-id');
+                    if (!topicsRb) {
+                        return;
+                    }
+                    var topicsFromReset = document.getElementById('classroom-topics-filter-from-' + topicsRb);
+                    var topicsToReset = document.getElementById('classroom-topics-filter-to-' + topicsRb);
+                    if (topicsFromReset) {
+                        topicsFromReset.value = topicsFromReset.getAttribute('data-default-date') || '';
+                    }
+                    if (topicsToReset) {
+                        topicsToReset.value = topicsToReset.getAttribute('data-default-date') || '';
+                    }
+                    applyTopicsDateRangeFilter(topicsRb);
+                    return;
+                }
                 var rangeSearchBtn = e.target.closest('.js-attendance-date-search-btn');
                 if (rangeSearchBtn) {
                     e.preventDefault();
@@ -496,6 +577,18 @@
                         var bid = getCurrentBatchId();
                         if (bid) {
                             applyAttendanceDateRangeFilter(bid);
+                        }
+                    }, 10);
+                });
+            }
+
+            var topicsListItem = document.getElementById('topics-list-item');
+            if (topicsListItem) {
+                topicsListItem.addEventListener('click', function() {
+                    setTimeout(function() {
+                        var bid = getCurrentBatchId();
+                        if (bid) {
+                            applyTopicsDateRangeFilter(bid);
                         }
                     }, 10);
                 });

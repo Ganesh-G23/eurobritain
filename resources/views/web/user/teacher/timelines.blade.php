@@ -1,4 +1,25 @@
 @extends('web.user.layouts.app')
+
+@push('page_styles')
+    <style>
+        #timeline-batches-wrap:not(.is-ready) select#timeline-batch {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #timeline-batches-wrap:not(.is-ready) .select2-container {
+            display: none !important;
+        }
+
+        #timeline-batches-wrap:not(.is-ready) {
+            min-height: 2.375rem;
+        }
+    </style>
+@endpush
+
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
         <div class="row g-6">
@@ -15,13 +36,21 @@
                         <form method="post" action="{{ url('user/teacher/timelines/store') }}">
                             @csrf
                             <input type="hidden" name="id" value="{{ old('id', $timeline->id ?? '') }}">
+                            @php
+                                $selectedBatchIds = collect(old('batch_ids', $timeline->batch_ids ?? []))
+                                    ->map(fn ($id) => (int) $id)
+                                    ->filter(fn ($id) => $id > 0)
+                                    ->values()
+                                    ->all();
+                                $initialClassroomId = (int) old('classroom_id', $timeline->classroom_id ?? 0);
+                            @endphp
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label class="form-label">Classroom <span class="text-danger">*</span></label>
                                     <select name="classroom_id" id="timeline-classroom" class="form-select @error('classroom_id') is-invalid @enderror">
                                         <option value="">Select classroom</option>
                                         @foreach ($classrooms ?? [] as $classroom)
-                                            <option value="{{ $classroom->id }}" {{ old('classroom_id', $timeline->classroom_id ?? '') == $classroom->id ? 'selected' : '' }}>
+                                            <option value="{{ $classroom->id }}" {{ $initialClassroomId === (int) $classroom->id ? 'selected' : '' }}>
                                                 {{ $classroom->name }}
                                             </option>
                                         @endforeach
@@ -31,59 +60,32 @@
                                     @enderror
                                 </div>
 
-                                <div class="col-12">
-                                    <label class="form-label">Batch <span class="text-danger">*</span></label>
-                                    <select name="batch_id" id="timeline-batch" class="form-select @error('batch_id') is-invalid @enderror">
-                                        <option value="">Select batch</option>
-                                        @foreach ($batches ?? [] as $batch)
-                                            <option
-                                                value="{{ $batch->id }}"
-                                                data-classroom-id="{{ $batch->classroom_id }}"
-                                                {{ old('batch_id', $timeline->batch_id ?? '') == $batch->id ? 'selected' : '' }}>
-                                                {{ $batch->name }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                    @error('batch_id')
-                                        <div class="invalid-feedback">{{ $message }}</div>
+                                <div class="col-12 select2-primary" id="timeline-batches-wrap">
+                                    <label class="form-label">Batches <span class="text-danger">*</span></label>
+                                    <select name="batch_ids[]" id="timeline-batch" class="form-select @error('batch_ids') is-invalid @enderror" multiple disabled></select>
+                                    <div class="form-text">Choose a classroom first, then select one or more batches.</div>
+                                    @error('batch_ids')
+                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                    @enderror
+                                    @error('batch_ids.*')
+                                        <div class="invalid-feedback d-block">{{ $message }}</div>
                                     @enderror
                                 </div>
 
                                 <div class="col-12">
                                     <label class="form-label">Topic <span class="text-danger">*</span></label>
                                     <input type="text" name="topic" class="form-control @error('topic') is-invalid @enderror"
-                                        value="{{ old('topic', $timeline->topic ?? '') }}" placeholder="Enter timeline topic">
+                                        value="{{ old('topic', $timeline->topic ?? '') }}" placeholder="Enter topic to cover">
                                     @error('topic')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
 
                                 <div class="col-12 col-md-6">
-                                    <label class="form-label">Start Date <span class="text-danger">*</span></label>
-                                    <input type="date" name="start_date" class="form-control @error('start_date') is-invalid @enderror"
-                                        value="{{ old('start_date', $timeline->start_date ?? '') }}">
-                                    @error('start_date')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label">End Date <span class="text-danger">*</span></label>
-                                    <input type="date" name="end_date" class="form-control @error('end_date') is-invalid @enderror"
-                                        value="{{ old('end_date', $timeline->end_date ?? '') }}">
-                                    @error('end_date')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-
-                                <div class="col-12">
-                                    <label class="form-label">Status <span class="text-danger">*</span></label>
-                                    <select name="status" class="form-select @error('status') is-invalid @enderror">
-                                        <option value="0" {{ (string) old('status', $timeline->status ?? '0') === '0' ? 'selected' : '' }}>Inactive</option>
-                                        <option value="1" {{ (string) old('status', $timeline->status ?? '') === '1' ? 'selected' : '' }}>Active</option>
-                                        <option value="2" {{ (string) old('status', $timeline->status ?? '') === '2' ? 'selected' : '' }}>Completed</option>
-                                    </select>
-                                    @error('status')
+                                    <label class="form-label">Date <span class="text-danger">*</span></label>
+                                    <input type="date" name="date" class="form-control @error('date') is-invalid @enderror"
+                                        value="{{ old('date', isset($timeline->date) ? $timeline->date->format('Y-m-d') : '') }}">
+                                    @error('date')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
@@ -106,36 +108,92 @@
 @section('scripts')
     <script>
         (function() {
-            const classroomSelect = document.getElementById('timeline-classroom');
-            const batchSelect = document.getElementById('timeline-batch');
-            if (!classroomSelect || !batchSelect) return;
+            var batchesUrl = @json(url('user/teacher/batches-by-classroom'));
+            var initialClassroomId = @json($initialClassroomId > 0 ? $initialClassroomId : null);
+            var initialBatchIds = @json($selectedBatchIds);
+            var $classroom = $('#timeline-classroom');
+            var $batch = $('#timeline-batch');
+            var $wrap = $('#timeline-batches-wrap');
 
-            function filterBatches() {
-                const classroomId = classroomSelect.value;
-                let selectedBatchStillVisible = false;
+            if (!$classroom.length || !$batch.length) {
+                return;
+            }
 
-                Array.from(batchSelect.options).forEach((option, index) => {
-                    if (index === 0) {
-                        option.hidden = false;
-                        return;
-                    }
-
-                    const optionClassroomId = option.getAttribute('data-classroom-id');
-                    const shouldShow = !classroomId || optionClassroomId === classroomId;
-                    option.hidden = !shouldShow;
-
-                    if (shouldShow && option.value === batchSelect.value) {
-                        selectedBatchStillVisible = true;
-                    }
-                });
-
-                if (!selectedBatchStillVisible) {
-                    batchSelect.value = '';
+            function markBatchesReady() {
+                if ($wrap.length) {
+                    $wrap.addClass('is-ready');
                 }
             }
 
-            classroomSelect.addEventListener('change', filterBatches);
-            filterBatches();
+            function normalizeSelectedIds(ids) {
+                return (ids || []).map(function(id) {
+                    return String(id);
+                });
+            }
+
+            function initBatchSelect2(placeholder, disabled, batches, selectedIds) {
+                selectedIds = normalizeSelectedIds(selectedIds || []);
+
+                if ($batch.data('select2')) {
+                    $batch.select2('destroy');
+                }
+
+                $batch.empty();
+                (batches || []).forEach(function(batch) {
+                    var id = String(batch.id);
+                    $batch.append(
+                        $('<option></option>')
+                            .attr('value', batch.id)
+                            .prop('selected', selectedIds.indexOf(id) !== -1)
+                            .text(batch.name)
+                    );
+                });
+
+                $batch.prop('disabled', false);
+                $batch.select2({
+                    placeholder: placeholder,
+                    allowClear: true,
+                    width: '100%'
+                });
+
+                if (disabled) {
+                    $batch.prop('disabled', true);
+                }
+
+                markBatchesReady();
+            }
+
+            function loadBatches(classroomId, selectedIds) {
+                if (!classroomId) {
+                    initBatchSelect2('Select classroom first', true, [], []);
+                    return;
+                }
+
+                $.get(batchesUrl, { classroom_id: classroomId }, function(res) {
+                    if (res.status == 1 && res.data && res.data.length) {
+                        initBatchSelect2('Select batches', false, res.data, selectedIds);
+                    } else {
+                        initBatchSelect2('No batches in this classroom', true, [], []);
+                    }
+                }, 'json').fail(function() {
+                    initBatchSelect2('Could not load batches', true, [], []);
+                });
+            }
+
+            $classroom.on('change', function() {
+                $wrap.removeClass('is-ready');
+                loadBatches($(this).val(), []);
+            });
+
+            $classroom.closest('form').on('submit', function() {
+                $batch.prop('disabled', false);
+            });
+
+            if (initialClassroomId) {
+                loadBatches(initialClassroomId, initialBatchIds);
+            } else {
+                initBatchSelect2('Select classroom first', true, [], []);
+            }
         })();
     </script>
 @endsection

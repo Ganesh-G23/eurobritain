@@ -208,19 +208,17 @@ class StudentController extends Controller
     {
         $teacherId = (int) ($request->teacher_id ?? 0);
         if ($teacherId < 1) {
-            $this->response['status'] = 0;
-            $this->response['error'] = 'Invalid teacher.';
-            echo json_encode($this->response);
-
-            return;
+            return response()->json([
+                'status' => 0,
+                'error' => 'Invalid teacher.',
+            ]);
         }
 
         if (! PortalUser::where('role', 1)->whereKey($teacherId)->exists()) {
-            $this->response['status'] = 0;
-            $this->response['error'] = 'Teacher not found.';
-            echo json_encode($this->response);
-
-            return;
+            return response()->json([
+                'status' => 0,
+                'error' => 'Teacher not found.',
+            ]);
         }
 
         $classrooms = Classroom::where('teacher_id', $teacherId)
@@ -230,12 +228,13 @@ class StudentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'classroom_id']);
 
-        $this->response['status'] = 1;
-        $this->response['data'] = [
-            'classrooms' => $classrooms,
-            'batches' => $batches,
-        ];
-        echo json_encode($this->response);
+        return response()->json([
+            'status' => 1,
+            'data' => [
+                'classrooms' => $classrooms,
+                'batches' => $batches,
+            ],
+        ]);
     }
 
     public function form(Request $request)

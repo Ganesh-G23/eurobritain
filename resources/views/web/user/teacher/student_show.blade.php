@@ -57,9 +57,9 @@
                                         @foreach ($maps as $row)
                                             <li class="mb-1">
                                                 <span
-                                                    class="fw-semibold">{{ optional($row->classroom)->name ?? 'â€”' }}</span>
-                                                <span class="text-muted"> Â· </span>
-                                                <span class="fw-semibold">{{ optional($row->batch)->name ?? 'â€”' }}</span>
+                                                    class="fw-semibold">{{ optional($row->classroom)->name ?? '—' }}</span>
+                                                <span class="text-muted"> &middot; </span>
+                                                <span class="fw-semibold">{{ optional($row->batch)->name ?? '—' }}</span>
                                             </li>
                                         @endforeach
                                     </ul>
@@ -148,7 +148,7 @@
                             @if ($overallPct !== null)
                                 {{ $overallPct }}<small class="fs-6 fw-normal text-body-secondary">%</small>
                             @else
-                                <span class="fs-5 text-body-secondary">â€”</span>
+                                <span class="fs-5 text-body-secondary">&mdash;</span>
                             @endif
                         </h3>
                         <small class="text-body-secondary">Average across graded exams (excludes absent)</small>
@@ -166,16 +166,16 @@
                                         {{ $att['rate_pct'] }}<small
                                             class="fs-6 fw-normal text-body-secondary">%</small>
                                     @else
-                                        <span class="fs-5 text-body-secondary">â€”</span>
+                                        <span class="fs-5 text-body-secondary">&mdash;</span>
                                     @endif
                                 </h3>
                                 <small class="text-body-secondary d-block">Present + leave vs total sessions</small>
                             </div>
                             <ul class="list-unstyled mb-0 small text-sm-end">
-                                <li><span class="text-success">Present</span> Â· {{ (int) $att['present'] }}</li>
-                                <li><span class="text-danger">Absent</span> Â· {{ (int) $att['absent'] }}</li>
-                                <li><span class="text-warning">Leave</span> Â· {{ (int) $att['late'] }}</li>
-                                <li class="text-body-secondary mt-1">Total Â· {{ (int) $att['total'] }}</li>
+                                <li><span class="text-success">Present</span> &middot; {{ (int) $att['present'] }}</li>
+                                <li><span class="text-danger">Absent</span> &middot; {{ (int) $att['absent'] }}</li>
+                                <li><span class="text-warning">Leave</span> &middot; {{ (int) $att['late'] }}</li>
+                                <li class="text-body-secondary mt-1">Total &middot; {{ (int) $att['total'] }}</li>
                             </ul>
                         </div>
                     </div>
@@ -190,7 +190,7 @@
                             <small class="text-body-secondary d-block">
                                 {{ (int) $fees['payment_count'] }} payment record(s)
                                 @if (!empty($fees['last_paid_at']))
-                                    Â· Last {{ $fees['last_paid_at']->format('d M Y') }}
+                                    &middot; Last {{ $fees['last_paid_at']->format('d M Y') }}
                                 @endif
                             </small>
                             <a href="{{ url('user/teacher/fees/list') }}" class="btn btn-sm btn-label-primary mt-2">Fees
@@ -251,16 +251,16 @@
                                             @if (!empty($row['exam_date']))
                                                 {{ $row['exam_date']->format('d M Y') }}
                                             @else
-                                                â€”
+                                                &mdash;
                                             @endif
                                         </td>
-                                        <td>{{ $row['is_absent'] ? 'â€”' : $row['marks_raw'] }}</td>
-                                        <td>{{ $row['max_marks'] ?? 'â€”' }}</td>
+                                        <td>{{ $row['is_absent'] ? '—' : $row['marks_raw'] }}</td>
+                                        <td>{{ $row['max_marks'] ?? '—' }}</td>
                                         <td>
                                             @if ($row['percentage'] !== null)
                                                 {{ $row['percentage'] }}%
                                             @else
-                                                â€”
+                                                &mdash;
                                             @endif
                                         </td>
                                         <td>
@@ -269,7 +269,7 @@
                                             @elseif ($row['percentage'] !== null)
                                                 <span class="badge bg-label-success">Graded</span>
                                             @else
-                                                <span class="badge bg-label-secondary">â€”</span>
+                                                <span class="badge bg-label-secondary">&mdash;</span>
                                             @endif
                                         </td>
                                     </tr>

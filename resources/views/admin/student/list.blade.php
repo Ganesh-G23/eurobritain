@@ -139,22 +139,14 @@
                                             <td class="text-center">{{ $batchCount }}</td>
                                             <td class="text-end">
                                                 <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
-                                                    @if ($enrollmentTeacher)
-                                                        <button type="button"
-                                                            class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments-list"
-                                                            data-student-id="{{ base64_encode($student->id) }}"
-                                                            data-teacher-id="{{ $enrollmentTeacher->id }}"
-                                                            data-teachers='@json($enrollmentTeachersList)'
-                                                            data-maps-by-teacher='@json($enrollmentMapsByTeacher)'
-                                                            title="Classrooms &amp; batches">
-                                                            <i class="icon-base ti tabler-school"></i>
-                                                        </button>
-                                                    @else
-                                                        <span class="btn btn-sm btn-icon btn-label-secondary disabled"
-                                                            title="Assign a teacher first (edit student)">
-                                                            <i class="icon-base ti tabler-school"></i>
-                                                        </span>
-                                                    @endif
+                                                    <button type="button"
+                                                        class="btn btn-sm btn-icon btn-label-secondary open-student-enrollments-list"
+                                                        data-student-id="{{ base64_encode($student->id) }}"
+                                                        data-teacher-id="{{ $enrollmentTeacher?->id ?? 0 }}"
+                                                        data-maps-by-teacher='@json($enrollmentMapsByTeacher)'
+                                                        title="Classrooms &amp; batches">
+                                                        <i class="icon-base ti tabler-school"></i>
+                                                    </button>
                                                     <a href="{{ url('admin/student/edit?id=' . base64_encode($student->id)) }}"
                                                         class="btn btn-sm btn-icon btn-label-primary" title="Edit">
                                                         <i class="icon-base ti tabler-edit"></i>
@@ -204,6 +196,38 @@
         </div>
     </div>
 
+    <style>
+        #studentListEnrollmentsModal .student-list-teacher-block {
+            background: rgba(var(--bs-body-color-rgb), 0.03);
+        }
+
+        #studentListEnrollmentsModal .student-list-enrollment-row {
+            border-bottom: 1px solid rgba(var(--bs-border-color-rgb), 0.65);
+        }
+
+        #studentListEnrollmentsModal .student-list-enrollment-row:last-child {
+            border-bottom: 0;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        #studentListEnrollmentsModal .student-list-enr-remove-btn {
+            width: 2.375rem;
+            height: 2.375rem;
+            padding: 0;
+            border: 0;
+            color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.08);
+            transition: color 0.15s ease, background-color 0.15s ease;
+        }
+
+        #studentListEnrollmentsModal .student-list-enr-remove-btn:hover,
+        #studentListEnrollmentsModal .student-list-enr-remove-btn:focus {
+            color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.16);
+        }
+    </style>
+
     <!-- Classrooms & batches (same behavior as teacher student list) -->
     <div class="modal fade" id="studentListEnrollmentsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -213,21 +237,16 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="ajax-msg mb-3"></div>
                     <form id="studentListEnrollmentsForm">
                         <input type="hidden" name="student_id" id="list_enr_student_id" value="">
-                        <input type="hidden" name="teacher_id" id="list_enr_teacher_id" value="">
                         <input type="hidden" name="return_student_list" value="1">
-                        <div class="mb-3">
-                            <label class="form-label" for="list_enr_teacher_select">Teacher</label>
-                            <select id="list_enr_teacher_select" class="form-select" autocomplete="off"></select>
-                            <p class="form-text small mb-0">Select the teacher first. Classrooms and batches shown are only
-                                for that teacher.</p>
-                        </div>
-                        <p class="text-body-secondary small">At most one row per classroom (one batch per classroom) for the selected teacher. The
-                            first row sets the student’s primary classroom and batch for display.</p>
-                        <div id="student-list-enrollment-rows" class="mb-3"></div>
-                        <button type="button" class="btn btn-sm btn-label-primary" id="student-list-add-enrollment-row">
-                            <i class="icon-base ti tabler-plus me-1"></i> Add row
+                        <input type="hidden" name="multi_teacher_enrollments" value="1">
+                        <div id="list-enr-initial-teacher-ids"></div>
+                        <p class="text-body-secondary small mb-3">Add one section per teacher. Select the teacher first — classrooms and batches shown are only for that teacher. At most one row per classroom per teacher. The first row of the first section sets the student’s primary classroom and batch for display.</p>
+                        <div id="student-list-enrollment-blocks" class="mb-3"></div>
+                        <button type="button" class="btn btn-sm btn-label-primary" id="student-list-add-teacher-block">
+                            <i class="icon-base ti tabler-plus me-1"></i> Add teacher
                         </button>
                     </form>
                 </div>
@@ -239,22 +258,51 @@
         </div>
     </div>
 
+    <template id="student-list-teacher-block-template">
+        <div class="student-list-teacher-block border rounded-3 p-3 mb-3">
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col">
+                    <label class="form-label mb-1">Teacher</label>
+                    <select class="form-select list-enr-block-teacher" name="enrollment_blocks[__IDX__][teacher_id]" autocomplete="off">
+                        <option value="">Select teacher</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1 invisible d-block" aria-hidden="true">Remove</label>
+                    <button type="button"
+                        class="btn btn-sm rounded-2 student-list-enr-remove-btn student-list-enr-remove-btn--section student-list-remove-teacher-block"
+                        title="Remove this teacher">
+                        <i class="icon-base ti tabler-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="form-text small mb-3">Classrooms and batches below are only for this teacher.</p>
+            <div class="student-list-enrollment-rows mb-2"></div>
+            <button type="button" class="btn btn-sm btn-label-primary student-list-add-enrollment-row-in-block">
+                <i class="icon-base ti tabler-plus me-1"></i> Add row
+            </button>
+        </div>
+    </template>
+
     <template id="student-list-enrollment-row-template">
-        <div class="row g-2 align-items-end student-list-enrollment-row mb-3 pb-3 border-bottom">
-            <div class="col-md-5">
+        <div class="row g-2 align-items-end student-list-enrollment-row mb-3 pb-3">
+            <div class="col-sm-5">
                 <label class="form-label small mb-1">Classroom</label>
-                <select class="form-select list-enr-classroom" name="map_classroom_id[]">
+                <select class="form-select list-enr-classroom" data-name="enrollment_blocks[__IDX__][map_classroom_id][]">
                     <option value="">Choose classroom</option>
                 </select>
             </div>
-            <div class="col-md-5">
+            <div class="col-sm-5">
                 <label class="form-label small mb-1">Batch</label>
-                <select class="form-select list-enr-batch" name="map_batch_id[]" disabled>
+                <select class="form-select list-enr-batch" data-name="enrollment_blocks[__IDX__][map_batch_id][]" disabled>
                     <option value="">Choose classroom first</option>
                 </select>
             </div>
-            <div class="col-md-2 text-md-end">
-                <button type="button" class="btn btn-sm btn-label-danger student-list-remove-enr-row" title="Remove row">
+            <div class="col-sm-2 col-auto ms-sm-auto">
+                <label class="form-label small mb-1 invisible d-block" aria-hidden="true">Remove</label>
+                <button type="button"
+                    class="btn btn-sm rounded-2 student-list-enr-remove-btn student-list-remove-enr-row"
+                    title="Remove row">
                     <i class="icon-base ti tabler-trash"></i>
                 </button>
             </div>
@@ -326,176 +374,20 @@
                 $('#student-list-filter-batch').val('');
             });
 
-            const enrollmentOptionsUrl = "{{ url('admin/student/enrollment-options') }}";
-            let listEnrClassrooms = [];
-            let listEnrBatches = [];
-            let listEnrMapsByTeacher = [];
-
-            function getListMapsForTeacher(teacherId) {
-                const t = String(teacherId);
-                const hit = (listEnrMapsByTeacher || []).find(function(row) {
-                    return String(row.teacher_id) === t;
-                });
-                return hit && hit.maps ? hit.maps : [];
-            }
-
-            function showStudentListEnrollmentModal() {
-                const modalEl = document.getElementById('studentListEnrollmentsModal');
-                if (modalEl && window.bootstrap && window.bootstrap.Modal) {
-                    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                } else {
-                    $('#studentListEnrollmentsModal').modal('show');
-                }
-            }
-
-            function loadListEnrollmentUI(teacherId, shouldShowModal) {
-                const tid = parseInt(teacherId, 10) || 0;
-                if (!tid) {
-                    return;
-                }
-                $('#list_enr_teacher_id').val(tid);
-                $('#student-list-enrollment-rows').html(
-                    '<p class="small text-muted mb-0">Loading…</p>');
-                $.get(enrollmentOptionsUrl, {
-                    teacher_id: tid
-                }, function(res) {
-                    if (res.status != 1) {
-                        alert(res.error || 'Could not load classrooms.');
-                        $('#student-list-enrollment-rows').empty();
-                        return;
-                    }
-                    listEnrClassrooms = res.data.classrooms || [];
-                    listEnrBatches = res.data.batches || [];
-                    const parsed = getListMapsForTeacher(tid);
-                    $('#student-list-enrollment-rows').empty();
-                    if (!listEnrClassrooms.length) {
-                        $('#student-list-enrollment-rows').html(
-                            '<div class="alert alert-warning mb-0">This teacher has no classrooms yet. Add them from the teacher page.</div>'
-                        );
-                    } else if (parsed && parsed.length) {
-                        parsed.forEach(function(m) {
-                            appendListEnrollmentRow(m.classroom_id, m.batch_id);
-                        });
-                    } else {
-                        appendListEnrollmentRow('', '');
-                    }
-                    if (shouldShowModal) {
-                        showStudentListEnrollmentModal();
-                    }
-                }, 'json');
-            }
-
-            $('#list_enr_teacher_select').on('change.listEnr', function() {
-                const tid = $(this).val();
-                if (tid) {
-                    loadListEnrollmentUI(tid, false);
-                }
-            });
-
-            function loadListBatchesIntoSelect($batchSelect, classroomId, selectedBatchId, done) {
-                selectedBatchId = selectedBatchId || '';
-                if (!classroomId) {
-                    $batchSelect.html('<option value="">Choose classroom first</option>').prop('disabled', true);
-                    if (typeof done === 'function') done();
-                    return;
-                }
-                const batches = listEnrBatches.filter(function(b) {
-                    return String(b.classroom_id) === String(classroomId);
-                });
-                if (!batches.length) {
-                    $batchSelect.html('<option value="">No batches found</option>').prop('disabled', true);
-                    if (typeof done === 'function') done();
-                    return;
-                }
-                $batchSelect.empty().append($('<option/>', {
-                    value: '',
-                    text: 'Choose batch'
-                }));
-                batches.forEach(function(batch) {
-                    const o = $('<option/>').attr('value', batch.id).text(batch.name);
-                    if (String(batch.id) === String(selectedBatchId)) {
-                        o.prop('selected', true);
-                    }
-                    $batchSelect.append(o);
-                });
-                $batchSelect.prop('disabled', false);
-                if (typeof done === 'function') done();
-            }
-
-            function appendListEnrollmentRow(classroomId, batchId) {
-                const tpl = document.getElementById('student-list-enrollment-row-template');
-                if (!tpl) {
-                    return;
-                }
-                const frag = tpl.content.cloneNode(true);
-                const el = frag.querySelector('.student-list-enrollment-row');
-                $('#student-list-enrollment-rows').append(el);
-                const $row = $(el);
-                const $c = $row.find('.list-enr-classroom');
-                const $b = $row.find('.list-enr-batch');
-                listEnrClassrooms.forEach(function(c) {
-                    $c.append($('<option/>').attr('value', c.id).text(c.name));
-                });
-                if (classroomId) {
-                    $c.val(String(classroomId));
-                }
-                loadListBatchesIntoSelect($b, $c.val(), batchId);
-            }
-
-            $(document).on('click', '.open-student-enrollments-list', function() {
-                const studentId = $(this).data('student-id');
-                const defaultTeacherId = $(this).data('teacher-id');
-                let teachers = [];
-                try {
-                    teachers = JSON.parse($(this).attr('data-teachers') || '[]');
-                } catch (e) {
-                    teachers = [];
-                }
-                try {
-                    listEnrMapsByTeacher = JSON.parse($(this).attr('data-maps-by-teacher') || '[]');
-                } catch (e) {
-                    listEnrMapsByTeacher = [];
-                }
-                $('#list_enr_student_id').val(studentId);
-                clearAjaxErrors('#studentListEnrollmentsModal');
-
-                const $sel = $('#list_enr_teacher_select').empty();
-                teachers.forEach(function(t) {
-                    $sel.append($('<option/>').attr('value', t.id).text(t.name));
-                });
-                $sel.val(String(defaultTeacherId));
-                if (!$sel.val() && teachers.length) {
-                    $sel.val(String(teachers[0].id));
-                }
-                const tidToLoad = parseInt($sel.val(), 10) || parseInt(defaultTeacherId, 10);
-                loadListEnrollmentUI(tidToLoad, true);
-            });
-
-            $(document).on('change', '#studentListEnrollmentsModal .list-enr-classroom', function() {
-                const $row = $(this).closest('.student-list-enrollment-row');
-                loadListBatchesIntoSelect($row.find('.list-enr-batch'), $(this).val(), '');
-            });
-
-            $(document).on('click', '#student-list-add-enrollment-row', function() {
-                if (!listEnrClassrooms.length) {
-                    return;
-                }
-                appendListEnrollmentRow('', '');
-            });
-
-            $(document).on('click', '.student-list-remove-enr-row', function() {
-                const $rows = $('#student-list-enrollment-rows .student-list-enrollment-row');
-                if ($rows.length <= 1) {
-                    $(this).closest('.student-list-enrollment-row').find('.list-enr-classroom').val('');
-                    $(this).closest('.student-list-enrollment-row').find('.list-enr-batch').html(
-                        '<option value="">Choose classroom first</option>').prop('disabled', true);
-                    return;
-                }
-                $(this).closest('.student-list-enrollment-row').remove();
-            });
+            @include('admin.student.partials.list_enrollments_script')
 
             $('#studentListSaveEnrollmentsBtn').on('click', function() {
                 clearAjaxErrors('#studentListEnrollmentsModal');
+                const clientCheck = typeof validateListEnrollmentFormBeforeSave === 'function'
+                    ? validateListEnrollmentFormBeforeSave()
+                    : { valid: true, error: '' };
+                if (!clientCheck.valid) {
+                    processAjaxResponse({ status: 0, error: clientCheck.error }, 0, '#studentListEnrollmentsModal');
+                    if (clientCheck.error) {
+                        alert(clientCheck.error);
+                    }
+                    return;
+                }
                 const form = $('#studentListEnrollmentsForm');
                 const formData = form.serializeArray();
                 formData.push({
@@ -513,6 +405,9 @@
                         processAjaxResponse(res, 500);
                     } else {
                         processAjaxResponse(res, 0, '#studentListEnrollmentsModal');
+                        if (res.error) {
+                            alert(res.error);
+                        }
                     }
                 }, 'json');
             });

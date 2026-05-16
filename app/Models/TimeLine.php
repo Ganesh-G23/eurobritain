@@ -16,11 +16,14 @@ class TimeLine extends Model
     protected $fillable = [
         'teacher_id',
         'classroom_id',
-        'batch_id',
+        'batch_ids',
         'topic',
-        'start_date',
-        'end_date',
-        'status',
+        'date',
+    ];
+
+    protected $casts = [
+        'batch_ids' => 'array',
+        'date' => 'date',
     ];
 
     public function classroom()
@@ -28,13 +31,26 @@ class TimeLine extends Model
         return $this->belongsTo(Classroom::class, 'classroom_id');
     }
 
-    public function batch()
-    {
-        return $this->belongsTo(Batch::class, 'batch_id');
-    }
-
     public function teacher()
     {
         return $this->belongsTo(PortalUser::class, 'teacher_id');
+    }
+
+    /**
+     * @return int[]
+     */
+    public function normalizedBatchIds(): array
+    {
+        return collect($this->batch_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public function appliesToBatch(int $batchId): bool
+    {
+        return in_array($batchId, $this->normalizedBatchIds(), true);
     }
 }
