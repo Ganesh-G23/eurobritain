@@ -88,7 +88,7 @@
             <!-- Login -->
             <div class="d-flex col-12 col-xl-4 align-items-center authentication-bg p-sm-12 p-6">
                 <div class="w-px-400 mx-auto mt-12 pt-5">
-                    <div class="text-center mb-4">
+                    <div class=" mb-4">
                         <img src="{{ url('public/admin_theme/assets/img/logo.png') }}" alt="logo" style="max-height: 60px;">
                     </div>
                     <h4 class="mb-1">Welcome to {{ config('app.name') }}!</h4>
@@ -114,14 +114,6 @@
                                             class="icon-base ti tabler-eye-off"></i></span>
                                 </div>
                                 <span class="ajax-error"></span>
-                            </div>
-                            <div class="my-8">
-                                <div class="d-flex justify-content-between">
-                                    <div class="form-check mb-0 ms-2">
-                                        <input class="form-check-input" type="checkbox" id="remember-me" />
-                                        <label class="form-check-label" for="remember-me"> Remember Me </label>
-                                    </div>
-                                </div>
                             </div>
                             <button type="submit" class="btn btn-primary d-grid w-100 submit-button">Sign in</button>
                         </div>

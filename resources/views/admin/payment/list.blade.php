@@ -72,7 +72,7 @@
                                     <td>{{ $row->invoice->invoice_number ?? '—' }}</td>
                                     <td>{{ $row->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->client->company_name ?? '—' }}</td>
-                                    <td>{{ number_format((float) $row->amount, 2) }}</td>
+                                    <td>{{ '₹ '.number_format((float) $row->amount, 2) }}</td>
                                     <td>
                                         @if ($row->status === 'done')
                                             <span class="badge bg-label-success">Done</span>

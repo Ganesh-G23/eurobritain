@@ -39,9 +39,9 @@
                                     <td>{{ $serial_start + $index + 1 }}</td>
                                     <td>{{ $row->code }}</td>
                                     <td>{{ $row->prefix }}</td>
-                                    <td>{{ $row->audit_period ?? '—' }}</td>
-                                    <td>{{ $row->renewal_period ?? '—' }}</td>
-                                    <td>{{ number_format((float) $row->price, 2) }}</td>
+                                    <td>{{ $row->audit_period.' Days' ?? '—' }}</td>
+                                    <td>{{ $row->renewal_period.' Days' ?? '—' }}</td>
+                                    <td>{{ '₹ '.number_format((float) $row->price, 2) }}</td>
                                     <td class="text-center text-nowrap">
                                         <a href="{{ url('admin/certificate-type/edit/' . $row->id) }}"
                                             class="btn btn-sm btn-icon btn-label-primary" title="Edit">

@@ -43,7 +43,7 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="country_id">Country <span class="text-danger">*</span></label>
-                            <select class="form-select" id="country_id" name="country_id">
+                            <select class="form-select select2" id="country_id" name="country_id">
                                 <option value="">Select country</option>
                                 @foreach ($countries as $country)
                                     <option value="{{ $country->id }}"
@@ -56,7 +56,7 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="state_id">State <span class="text-danger">*</span></label>
-                            <select class="form-select" id="state_id" name="state_id">
+                            <select class="form-select select2" id="state_id" name="state_id">
                                 <option value="">Select state</option>
                                 @foreach ($preselectedStates as $state)
                                     <option value="{{ $state->id }}"

@@ -49,13 +49,13 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label">Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" id="issue_date" name="issue_date"
+                            <input type="date" class="form-control" name="issue_date"
                                 value="{{ old('issue_date', $issue_date) }}">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label">Initial Certificate Granted On</label>
-                            <input type="date" class="form-control" name="initial_certificate_granted_on"
+                            <input type="date" class="form-control" id="issue_date"  name="initial_certificate_granted_on"
                                 value="{{ old('initial_certificate_granted_on', $details->initial_certificate_granted_on?->format('Y-m-d')) }}">
                             <span class="ajax-error"></span>
                         </div>

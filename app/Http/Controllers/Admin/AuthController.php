@@ -71,7 +71,7 @@ class AuthController extends Controller
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Login successful...';
-
+        $this->response['redirect_url'] = $this->redirectAfterLogin($admin);
         return response()->json($this->response);
     }
 
