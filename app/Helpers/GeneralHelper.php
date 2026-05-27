@@ -76,75 +76,73 @@ function pagination($total, $per_page = 10, $page = 1, $url = '?')
     $lpm1 = $lastpage - 1;
     $pagination = '';
 
-    //paginate_button current
+    $arrowStyle = "font-size:1.25rem;line-height:1;font-weight:600;";
+    $prevArrow = "<span style='{$arrowStyle}'>&lsaquo;</span>";
+    $nextArrow = "<span style='{$arrowStyle}'>&rsaquo;</span>";
+
     if ($lastpage > 1) {
         $pagination .= '<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">';
-        $pagination .= "<ul class='pagination pagination-borderless justify-content-end' style='padding: 0px 10px 0px 15px;'>";
+        $pagination .= "<ul class='pagination pagination-borderless justify-content-end mb-0'>";
         if ($lastpage < 7 + $adjacents * 2) {
-            // Place the left arrow before the page numbers
             if ($page > 1) {
-                $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'><i class='ti ti-chevron-left ti-xs'></i></a></li>";
+                $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'>$prevArrow</a></li>";
             } else {
-                $pagination .= "<li class='page-item prev disabled'><span class='page-link'><i class='ti ti-chevron-left ti-xs'></i></span></li>";
+                $pagination .= "<li class='page-item prev disabled'><span class='page-link'>$prevArrow</span></li>";
             }
 
             for ($counter = 1; $counter <= $lastpage; $counter++) {
                 if ($counter == $page) {
-                    $pagination .= "<li class='page-item active'><a class='current page-link'>$counter</a></li>";
+                    $pagination .= "<li class='page-item active'><a class='page-link'>$counter</a></li>";
                 } else {
                     $pagination .= "<li class='page-item'><a href='{$url}page=$counter' class='page-link'>$counter</a></li>";
                 }
             }
 
-            // Place the right arrow after the page numbers
             if ($next <= $lastpage) {
-                $pagination .= "<li class='page-item next'><a href='{$url}page=$next' class='page-link'><i class='ti ti-chevron-right ti-xs'></i></a></li>";
+                $pagination .= "<li class='page-item next'><a href='{$url}page=$next' class='page-link'>$nextArrow</a></li>";
             } else {
-                $pagination .= "<li class='page-item next disabled'><span class='page-link'><i class='ti ti-chevron-right ti-xs'></i></span></li>";
+                $pagination .= "<li class='page-item next disabled'><span class='page-link'>$nextArrow</span></li>";
             }
         } elseif ($lastpage > 5 + $adjacents * 2) {
-            // Place the left arrow before the page numbers
-            $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'><i class='ti ti-chevron-left ti-xs'></i></a></li>";
+            $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'>$prevArrow</a></li>";
 
             for ($counter = 1; $counter < 4 + $adjacents * 2; $counter++) {
                 if ($counter == $page) {
-                    $pagination .= "<li class='page-item active'><a class='current page-link'>$counter</a></li>";
+                    $pagination .= "<li class='page-item active'><a class='page-link'>$counter</a></li>";
                 } else {
                     $pagination .= "<li class='page-item'><a href='{$url}page=$counter' class='page-link'>$counter</a></li>";
                 }
             }
 
-            $pagination .= "<li class='dot' style='padding: 0px 10px;float: left;'>...</li>";
+            $pagination .= "<li class='page-item disabled'><span class='page-link'>...</span></li>";
             $pagination .= "<li class='page-item'><a href='{$url}page=$lpm1' class='page-link'>$lpm1</a></li>";
             $pagination .= "<li class='page-item'><a href='{$url}page=$lastpage' class='page-link'>$lastpage</a></li>";
 
-            // Place the right arrow after the page numbers
             if ($next <= $lastpage) {
-                $pagination .= "<li class='page-item next'><a href='{$url}page=$next' class='page-link'><i class='ti ti-chevron-right ti-xs'></i></a></li>";
+                $pagination .= "<li class='page-item next'><a href='{$url}page=$next' class='page-link'>$nextArrow</a></li>";
             } else {
-                $pagination .= "<li class='page-item next disabled'><span class='page-link'><i class='ti ti-chevron-right ti-xs'></i></span></li>";
+                $pagination .= "<li class='page-item next disabled'><span class='page-link'>$nextArrow</span></li>";
             }
         } else {
-            // Place the left arrow before the page numbers
             if ($page > 1) {
-                $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'><i class='ti ti-chevron-left ti-xs'></i></a></li>";
+                $pagination .= "<li class='page-item prev'><a href='{$url}page=$prev' class='page-link'>$prevArrow</a></li>";
             } else {
-                $pagination .= "<li class='page-item prev disabled'><span class='page-link'><i class='ti ti-chevron-left ti-xs'></i></span></li>";
+                $pagination .= "<li class='page-item prev disabled'><span class='page-link'>$prevArrow</span></li>";
             }
 
             $pagination .= "<li class='page-item'><a href='{$url}page=1' class='page-link'>1</a></li>";
             $pagination .= "<li class='page-item'><a href='{$url}page=2' class='page-link'>2</a></li>";
-            $pagination .= "<li class='dot' style='padding: 0px 10px;float: left;'>...</li>";
+            $pagination .= "<li class='page-item disabled'><span class='page-link'>...</span></li>";
 
             for ($counter = $page - $adjacents; $counter <= $page + $adjacents; $counter++) {
                 if ($counter == $page) {
-                    $pagination .= "<li class='page-item active'><a class='current page-link'>$counter</a></li>";
+                    $pagination .= "<li class='page-item active'><a class='page-link'>$counter</a></li>";
                 } else {
                     $pagination .= "<li class='page-item'><a href='{$url}page=$counter' class='page-link'>$counter</a></li>";
                 }
             }
 
-            $pagination .= "<li class='dot' style='padding: 0px 10px;float: left;'>..</li>";
+            $pagination .= "<li class='page-item disabled'><span class='page-link'>...</span></li>";
             $pagination .= "<li class='page-item'><a href='{$url}page=$lpm1' class='page-link'>$lpm1</a></li>";
             $pagination .= "<li class='page-item'><a href='{$url}page=$lastpage' class='page-link'>$lastpage</a></li>";
         }

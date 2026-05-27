@@ -1,167 +1,18 @@
 <?php
 
-use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AssociateController;
 use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\Admin\CertificateApplicationController;
+use App\Http\Controllers\Admin\CertificateController;
+use App\Http\Controllers\Admin\CertificateTypeController;
+use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\FeesController as AdminFeesController;
+use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ProfileController;
-use App\Http\Controllers\Admin\StudentController;
-use App\Http\Controllers\Admin\TeacherController;
 use App\Http\Controllers\CommonController;
-use App\Http\Controllers\Web\CustomerController;
-use App\Http\Controllers\Web\FeesController;
-use App\Http\Controllers\Web\HomeController;
-use App\Http\Controllers\Web\LeaderBoardController;
-use App\Http\Controllers\Web\PortalPasswordResetController;
-use App\Http\Controllers\Web\StudentComplaintController;
-use App\Http\Controllers\Web\StudentLeaveRequestController;
-use App\Http\Controllers\Web\TimelineController;
-use App\Http\Controllers\Web\AcademicReportController;
-use App\Http\Controllers\Web\UserDashboardController;
-use App\Http\Controllers\Web\UserTeacherController;
 use Illuminate\Support\Facades\Route;
-
-// Web Frontend Routes
-Route::get('/', [HomeController::class, 'index'])->name('web.home');
-Route::get('/about', [HomeController::class, 'about'])->name('web.about');
-Route::get('/services', [HomeController::class, 'services'])->name('web.services');
-Route::get('/contact', [HomeController::class, 'contact'])->name('web.contact');
-Route::get('/login', [HomeController::class, 'login'])->name('web.login');
-Route::post('/login', [CustomerController::class, 'login'])
-    ->middleware('throttle:5,1')
-    ->name('web.login.submit');
-Route::post('/login/verify-otp', [CustomerController::class, 'verifyLoginOtp'])
-    ->middleware('throttle:10,1')
-    ->name('web.login.verify-otp');
-Route::get('/sign-up', [HomeController::class, 'register'])->name('web.register');
-
-Route::get('/forgot-password', [PortalPasswordResetController::class, 'showForgotPasswordForm'])->name('web.password.request');
-Route::post('/forgot-password', [PortalPasswordResetController::class, 'sendResetLinkEmail'])->name('web.password.email');
-Route::get('/reset-password/{token}', [PortalPasswordResetController::class, 'showResetForm'])->name('web.password.reset');
-Route::post('/reset-password', [PortalPasswordResetController::class, 'reset'])->name('web.password.update');
-
-// User (Portal) Panel Routes
-Route::prefix('user')
-    ->middleware('portal.auth')
-    ->group(function () {
-
-        Route::get('/', function () {
-            return redirect('user/dashboard');
-        });
-        Route::get('/dashboard', [UserDashboardController::class, 'index']);
-        Route::get('/profile', [UserDashboardController::class, 'profile']);
-        // Route::get('/profile/settings', [UserDashboardController::class, 'teacherProfileSettings']);
-        Route::post('/profile/save_profile', [UserDashboardController::class, 'saveProfile']);
-        Route::post('/profile/email-two-factor', [UserDashboardController::class, 'saveEmailTwoFactor']);
-
-        Route::get('/profile/settings', [UserDashboardController::class, 'teacherProfileSettings']);
-        Route::post('/profile/save_teacher_settings', [UserDashboardController::class, 'saveTeacherSettings']);
-
-        Route::get('/security', [UserDashboardController::class, 'security']);
-        Route::post('/security/save_change_password', [UserDashboardController::class, 'saveChangePassword']);
-        Route::post('/update_password_popup', [UserDashboardController::class, 'updatePasswordPopup']);
-        Route::post('/skip_password_popup', [UserDashboardController::class, 'skipPasswordPopup']);
-        Route::get('/logout', [UserDashboardController::class, 'logout']);
-        Route::post('/notification/delete', [UserDashboardController::class, 'delete'])->name('notification.delete');
-
-        Route::middleware('portal.student')->group(function () {
-            // Student: Select teacher (header/footer-less view) and access teacher panel
-            Route::get('/select-teacher', [UserDashboardController::class, 'selectTeacher']);
-            Route::post('/select-teacher/access', [UserDashboardController::class, 'accessTeacher']); // legacy
-            Route::get('/select-teacher/access/{teacherId}', [UserDashboardController::class, 'accessTeacher']); // legacy
-            // Student module pages under selected teacher context
-            Route::get('/student/dashboard', [UserDashboardController::class, 'studentDashboard']);
-            Route::get('/student/progress', [UserDashboardController::class, 'studentProgress']);
-            Route::get('/student/classrooms', [UserDashboardController::class, 'studentClassrooms']);
-            Route::get('/student/classroom/{id}', [UserDashboardController::class, 'studentClassroomShow']);
-            Route::get('/student/events', [UserDashboardController::class, 'studentEvents']);
-            Route::post('/student/personal-events/save', [UserDashboardController::class, 'saveStudentPersonalEvent']);
-            Route::post('/student/personal-events/delete', [UserDashboardController::class, 'deleteStudentPersonalEvent']);
-            Route::get('/student/attendance', [UserDashboardController::class, 'studentAttendance']);
-            Route::get('/student/report', [AcademicReportController::class, 'studentIndex']);
-            Route::get('/student/report/download/{type}', [AcademicReportController::class, 'studentDownload']);
-            Route::get('/student/leaderboard', [UserDashboardController::class, 'studentLeaderboard']);
-            Route::get('/student/leaderboard/chart-data', [UserDashboardController::class, 'studentLeaderboardChartData']);
-            Route::get('/student/leave', [StudentLeaveRequestController::class, 'index']);
-            Route::get('/student/leave/request', [StudentLeaveRequestController::class, 'create']);
-            Route::post('/student/leave/store', [StudentLeaveRequestController::class, 'store']);
-            Route::get('/student/complaints', [StudentComplaintController::class, 'studentComplaints']);
-            Route::post('/student/complaints/store', [StudentComplaintController::class, 'store']);
-        });
-
-        Route::middleware('portal.parent')->group(function () {
-            // Parent: Select student (header/footer-less view) and access student portal
-            Route::get('/select-student', [UserDashboardController::class, 'selectStudent']);
-            Route::post('/select-student/access', [UserDashboardController::class, 'accessStudent']);
-            Route::get('/select-student/access/{studentId}', [UserDashboardController::class, 'accessStudent']);
-
-            Route::get('/parent/dashboard', [UserDashboardController::class, 'parentDashboard']);
-            Route::get('/parent/progress', [UserDashboardController::class, 'parentProgress']);
-            Route::get('/parent/classrooms', [UserDashboardController::class, 'parentClassrooms']);
-            Route::get('/parent/classroom/{id}', [UserDashboardController::class, 'parentClassroomShow']);
-            Route::get('/parent/events', [UserDashboardController::class, 'parentEvents']);
-            Route::get('/parent/leave', [UserDashboardController::class, 'studentLeave']);
-            Route::get('/parent/leave/request', [UserDashboardController::class, 'parentLeaveRequest']);
-            Route::post('/parent/leave/store', [UserDashboardController::class, 'parentLeaveStore']);
-            Route::get('/parent/complaints', [StudentComplaintController::class, 'parentComplaints']);
-            Route::post('/parent/complaints/store', [StudentComplaintController::class, 'store']);
-            Route::get('/parent/fees', [FeesController::class, 'parentFeesList']);
-            Route::get('/parent/report', [AcademicReportController::class, 'parentIndex']);
-            Route::get('/parent/report/download/{type}', [AcademicReportController::class, 'parentDownload']);
-        });
-
-        // User-side Teacher management (logged-in teacher) - original simple routes
-        Route::middleware('portal.teacher')
-            ->prefix('teacher')
-            ->group(function () {
-                Route::get('/', [UserTeacherController::class, 'index']);
-                Route::get('/events', [UserTeacherController::class, 'events']);
-                Route::get('/event_types', [UserTeacherController::class, 'eventTypes']);
-                Route::post('/event_types/save', [UserTeacherController::class, 'saveEventType']);
-                Route::post('/event_types/delete', [UserTeacherController::class, 'deleteEventType']);
-                Route::post('/events/save-event', [UserTeacherController::class, 'saveEvent']);
-                Route::get('/classrooms', [UserTeacherController::class, 'classrooms']);
-                Route::get('/batches', [UserTeacherController::class, 'batches']);
-                Route::get('/students', [UserTeacherController::class, 'students']);
-                Route::get('/students/view/{id}', [UserTeacherController::class, 'viewStudent']);
-                Route::get('/students/{id}/report/download/{type}', [AcademicReportController::class, 'teacherDownload']);
-                Route::get('/students/leave', [UserTeacherController::class, 'studentLeave']);
-                Route::post('leave-action', [UserTeacherController::class, 'leaveAction'])->name('teacher.leave.action');
-                Route::get('/leaderboard', [LeaderBoardController::class, 'leaderboard']);
-                Route::get('/complaints', [StudentComplaintController::class, 'complaintList']);
-                Route::post('/complaints/store', [StudentComplaintController::class, 'store']);
-                Route::get('/timelines', [TimelineController::class, 'timeline']);
-                Route::get('/timelines/edit/{id}', [TimelineController::class, 'edit']);
-                Route::post('/timelines/store', [TimelineController::class, 'store']);
-                Route::get('/timelines/list', [TimelineController::class, 'timelineList']);
-                Route::get('/fees', [FeesController::class, 'fees']);
-                Route::get('/fees/edit/{id}', [FeesController::class, 'edit']);
-                Route::post('/fees/store', [FeesController::class, 'store']);
-                Route::get('/fees/list', [FeesController::class, 'feesList']);
-                // CRUD
-                Route::post('/classrooms/save', [UserTeacherController::class, 'saveClassroom']);
-                Route::post('/classrooms/delete', [UserTeacherController::class, 'deleteClassroom']);
-                Route::post('/batches/save', [UserTeacherController::class, 'saveBatch']);
-                Route::post('/batches/delete', [UserTeacherController::class, 'deleteBatch']);
-                Route::post('/students/save', [UserTeacherController::class, 'saveStudent']);
-                Route::post('/students/sync-enrollments', [UserTeacherController::class, 'syncStudentEnrollments']);
-                Route::get('/batches-by-classroom', [UserTeacherController::class, 'getBatchesByClassroom']);
-                Route::get('/exams-by-batch', [UserTeacherController::class, 'getExamsByBatch']);
-                Route::post('/students/delete', [UserTeacherController::class, 'deleteStudent']);
-                Route::get('/students/bulk-sample', [UserTeacherController::class, 'downloadStudentBulkSample']);
-                Route::post('/students/bulk-upload', [UserTeacherController::class, 'bulkUploadStudents']);
-                Route::match(['get', 'post'], '/classrooms/details/{id}/export', [UserTeacherController::class, 'exportClassroomMarks']);
-                Route::post('/classrooms/details/{id}/import-marks', [UserTeacherController::class, 'importMarksFromCsv']);
-                Route::match(['get', 'post'], '/classrooms/details/{id}/export-attendance', [UserTeacherController::class, 'exportClassroomAttendance']);
-                Route::post('/classrooms/details/{id}/import-attendance', [UserTeacherController::class, 'importAttendanceFromCsv']);
-                Route::get('/classrooms/details/{id}', [UserTeacherController::class, 'classroomsDetails']);
-                Route::post('/exams/save', [UserTeacherController::class, 'saveExam']);
-                Route::post('/exams/delete', [UserTeacherController::class, 'deleteExam']);
-                Route::post('/exams/marks/save', [UserTeacherController::class, 'saveExamMarksColumn']);
-                Route::post('/attendance/save-day', [UserTeacherController::class, 'saveBatchAttendanceDay']);
-                Route::post('/attendance/save-column', [UserTeacherController::class, 'saveAttendanceColumn']);
-            });
-    });
 
 Route::middleware('prevent-back')
     ->prefix('admin')
@@ -174,7 +25,7 @@ Route::middleware('prevent-back')
                 ->middleware('throttle:10,1');
         });
 
-        Route::middleware(['admin-all', 'admin.must_change_password'])->group(function () {
+        Route::middleware('admin-all')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('dashboard', [DashboardController::class, 'index']);
             Route::get('profile', [ProfileController::class, 'index']);
@@ -184,50 +35,101 @@ Route::middleware('prevent-back')
             Route::post('security/save_change_password', [ProfileController::class, 'save_change_password']);
             Route::get('logout', [DashboardController::class, 'logout']);
 
-            Route::prefix('common')->group(function () {
-                Route::post('upload_ppt', [CommonController::class, 'upload_ppt']);
-                Route::post('upload_files', [CommonController::class, 'upload_files']);
-                Route::post('upload_ckeditor_image', [CommonController::class, 'upload_ckeditor_image']);
+            Route::prefix('associate')->group(function () {
+                Route::get('list', [AssociateController::class, 'list'])->name('admin.associate.list');
+                Route::get('add', [AssociateController::class, 'add']);
+                Route::post('save', [AssociateController::class, 'save']);
+                Route::get('edit/{id}', [AssociateController::class, 'edit']);
+                Route::post('update/{id}', [AssociateController::class, 'update']);
+                Route::get('view/{id}', [AssociateController::class, 'view']);
             });
 
-            // teacher
-            Route::get('teacher', [TeacherController::class, 'list']);
-            Route::get('teacher/form', [TeacherController::class, 'form']);
-            Route::get('teacher/form/{id}', [TeacherController::class, 'form']);
-            Route::post('teacher/save', [TeacherController::class, 'save']);
-            Route::get('teacher/view', [TeacherController::class, 'view']);
-            Route::post('teacher/delete', [TeacherController::class, 'delete']);
-            Route::post('teacher/save_classroom', [TeacherController::class, 'saveClassroom']);
-            Route::post('teacher/delete_classroom', [TeacherController::class, 'deleteClassroom']);
-            Route::post('teacher/save_batch', [TeacherController::class, 'saveBatch']);
-            Route::post('teacher/delete_batch', [TeacherController::class, 'deleteBatch']);
-            Route::post('teacher/save_student', [TeacherController::class, 'saveStudent']);
-            Route::post('teacher/sync_student_enrollments', [TeacherController::class, 'syncStudentEnrollments']);
-            Route::post('teacher/delete_student', [TeacherController::class, 'deleteStudent']);
-            Route::get('teacher/student_view', [TeacherController::class, 'viewStudent']);
-            Route::get('teacher/get_batches_by_classroom', [TeacherController::class, 'getBatchesByClassroom']);
-            Route::get('teacher/login_as/{id}', [TeacherController::class, 'loginAs']);
+            Route::prefix('client')->group(function () {
+                Route::get('list', [ClientController::class, 'list'])->name('admin.client.list');
+                Route::get('add', [ClientController::class, 'add']);
+                Route::post('save', [ClientController::class, 'save']);
+                Route::get('edit/{id}', [ClientController::class, 'edit']);
+                Route::post('update/{id}', [ClientController::class, 'update']);
+                Route::get('view/{id}', [ClientController::class, 'view']);
+            });
 
-            // student
-            Route::get('student', [StudentController::class, 'list']);
-            Route::get('student/add', [StudentController::class, 'add']);
-            Route::get('student/edit', [StudentController::class, 'edit']);
-            Route::get('student/enrollment-options', [StudentController::class, 'enrollmentOptions']);
-            Route::post('student/delete', [StudentController::class, 'deleteStudent']);
-            Route::get('student/form', [StudentController::class, 'form']);
-            Route::post('student/save', [StudentController::class, 'saveStudent']);
-            Route::get('student/view', [StudentController::class, 'view']);
-            Route::get('fees', [AdminFeesController::class, 'index']);
+            Route::prefix('certificate-type')->group(function () {
+                Route::get('list', [CertificateTypeController::class, 'list'])->name('admin.certificate_type.list');
+                Route::get('add', [CertificateTypeController::class, 'add']);
+                Route::post('save', [CertificateTypeController::class, 'save']);
+                Route::get('edit/{id}', [CertificateTypeController::class, 'edit']);
+                Route::post('update/{id}', [CertificateTypeController::class, 'update']);
+                Route::get('view/{id}', [CertificateTypeController::class, 'view']);
+            });
 
-            // Admin bulk student upload/sample
-            Route::get('teacher/students/bulk-sample', [TeacherController::class, 'downloadStudentBulkSample']);
-            Route::post('teacher/students/bulk-upload', [TeacherController::class, 'bulkUploadStudents']);
+            Route::prefix('certificate')->group(function () {
+                Route::get('due-list', [CertificateController::class, 'dueList'])->name('admin.certificate.due_list');
+                Route::get('due-audit-list', [CertificateController::class, 'dueAuditList'])->name('admin.certificate.due_audit_list');
+                Route::get('list', [CertificateController::class, 'list'])->name('admin.certificate.list');
+                Route::get('add', [CertificateController::class, 'addForm']);
+                Route::post('save', [CertificateController::class, 'save']);
+                Route::get('edit/{id}', [CertificateController::class, 'edit']);
+                Route::post('update/{id}', [CertificateController::class, 'update']);
+                Route::get('view/{id}', [CertificateController::class, 'view']);
+                Route::get('upload/{id}', [CertificateController::class, 'uploadCertificate']);
+                Route::post('save-image/{id}', [CertificateController::class, 'saveCertificateImage']);
+                Route::get('audit', [CertificateController::class, 'auditForm']);
+                Route::post('save-audit', [CertificateController::class, 'saveAudit']);
+                Route::post('log-expiry-calc', [CertificateController::class, 'logClientExpiryCalc']);
+            });
 
-            Route::middleware('admin.super')->group(function () {
-                Route::get('admins', [AdminUserController::class, 'index']);
-                Route::post('admins', [AdminUserController::class, 'store']);
-                Route::get('admins/bulk-sample', [AdminUserController::class, 'downloadBulkSample']);
-                Route::post('admins/bulk-upload', [AdminUserController::class, 'bulkUpload']);
+            Route::prefix('invoice')->group(function () {
+                Route::get('list', [InvoiceController::class, 'list'])->name('admin.invoice.list');
+                Route::get('add', [InvoiceController::class, 'add']);
+                Route::get('clients', [InvoiceController::class, 'getClients']);
+                Route::get('certificates', [InvoiceController::class, 'getCertificates']);
+                Route::post('save', [InvoiceController::class, 'save']);
+                Route::get('edit/{id}', [InvoiceController::class, 'edit']);
+                Route::post('update/{id}', [InvoiceController::class, 'update']);
+                Route::get('view/{id}', [InvoiceController::class, 'view']);
+                Route::get('pdf/{id}', [InvoiceController::class, 'pdf']);
+            });
+
+            Route::prefix('payment')->group(function () {
+                Route::get('list', [PaymentController::class, 'list'])->name('admin.payment.list');
+                Route::get('add', [PaymentController::class, 'add']);
+                Route::get('clients', [PaymentController::class, 'getClients']);
+                Route::get('invoices', [PaymentController::class, 'getInvoices']);
+                Route::post('save', [PaymentController::class, 'save']);
+                Route::get('edit/{id}', [PaymentController::class, 'edit']);
+                Route::post('update/{id}', [PaymentController::class, 'update']);
+                Route::get('view/{id}', [PaymentController::class, 'view']);
+            });
+
+            Route::prefix('report')->group(function () {
+                Route::get('associate', [ReportController::class, 'associate'])->name('admin.report.associate');
+                Route::get('client', [ReportController::class, 'client'])->name('admin.report.client');
+            });
+
+            Route::prefix('certificate-application')->group(function () {
+                Route::get('add', [CertificateApplicationController::class, 'add'])->name('admin.certificate_application.add');
+                Route::get('list', [CertificateApplicationController::class, 'list'])->name('admin.certificate_application.list');
+                Route::get('clients', [CertificateApplicationController::class, 'getClients']);
+                Route::get('check_client', [CertificateApplicationController::class, 'checkClient']);
+                Route::post('save_documents', [CertificateApplicationController::class, 'saveDocuments']);
+                Route::post('resolve_old_client', [CertificateApplicationController::class, 'resolveOldClient']);
+                Route::get('form', [CertificateApplicationController::class, 'applicationForm'])->name('admin.certificate_application.form');
+                Route::post('save_application', [CertificateApplicationController::class, 'saveApplication']);
+                Route::get('edit/{id}', [CertificateApplicationController::class, 'edit']);
+                Route::post('update/{id}', [CertificateApplicationController::class, 'update']);
+                Route::get('view/{id}', [CertificateApplicationController::class, 'view']);
+                Route::get('pdf/{id}', [CertificateApplicationController::class, 'pdf']);
+                Route::get('documents/{id}', [CertificateApplicationController::class, 'documents']);
+                Route::get('upload-document/{id}', [CertificateApplicationController::class, 'uploadDocument']);
+                Route::post('save-document/{id}', [CertificateApplicationController::class, 'saveDocument']);
+            });
+
+            Route::prefix('common')->group(function () {
+                Route::get('states', [CommonController::class, 'getStates']);
+                Route::get('clients-by-associate', [CommonController::class, 'clientsByAssociate'])
+                    ->name('admin.common.clients_by_associate');
+                Route::post('upload_files', [CommonController::class, 'upload_files']);
+                Route::post('upload_ckeditor_image', [CommonController::class, 'uploadCkeditorImage']);
             });
         });
 

@@ -22,20 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [
-            PortalRememberFromCookie::class,
-            SyncPortalSessionUser::class,
-        ]);
         $middleware->alias([
             'prevent-back' => PreventBackHistory::class,
             'admin-auth' => AdminAuth::class,
-            'admin-all' => AdminAll::class,
-            'admin.super' => EnsureSuperAdmin::class,
-            'admin.must_change_password' => RedirectIfAdminMustChangePassword::class,
-            'portal.auth' => EnsurePortalAuthenticated::class,
-            'portal.teacher' => EnsurePortalTeacher::class,
-            'portal.student' => EnsurePortalStudent::class,
-            'portal.parent' => EnsurePortalParent::class,
+            'admin-all' => AdminAll::class
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

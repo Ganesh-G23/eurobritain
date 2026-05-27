@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\SlideExtractionService;
+use App\Models\Client;
+use App\Models\State;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -27,6 +28,33 @@ class CommonController extends Controller
         echo json_encode($this->response);
     }
 
+    public function clientsByAssociate(Request $request)
+    {
+        $associateId = (int) $request->input('associate_id', 0);
+        $query = Client::query()->orderBy('company_name');
+
+        if ($associateId > 0) {
+            $query->where('associate_id', $associateId);
+        }
+
+        return response()->json($query->get(['id', 'company_name']));
+    }
+
+    public function getStates(Request $request)
+    {
+        $countryId = (int) $request->input('country_id', 0);
+        if ($countryId <= 0) {
+            return response()->json([]);
+        }
+
+        $states = State::query()
+            ->where('country_id', $countryId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return response()->json($states);
+    }
+
     public function uploadCkeditorImage(Request $request)
     {
         if ($request->hasFile('upload')) {
@@ -48,75 +76,4 @@ class CommonController extends Controller
         ]);
     }
 
-    public function upload_ppt(Request $request)
-    {
-        $this->response = [
-            'status' => 0,
-            'msg' => "",
-            'error' => "",
-            'error_array' => [],
-            'data' => [],
-        ];
-
-        // Validate file upload
-        $validator = Validator::make($request->all(), [
-            'ppt' => 'required|file|mimes:ppt,pptx|max:5120', // 5MB max
-        ]);
-
-        if ($validator->fails()) {
-            $this->response['error'] = 'Invalid file. Please upload a PPT or PPTX file (max 5MB).';
-            $this->response['error_array'] = $validator->errors()->toArray();
-            echo json_encode($this->response);
-            return;
-        }
-
-        try {
-            $file = $request->file('ppt');
-            $destinationPath = 'uploads/temp';
-
-            // Store the PPT file
-            $path = $file->store($destinationPath);
-            $fileName = $file->hashName();
-            $fullPath = Storage::path($path);
-
-            // Extract slides as images
-            $slideExtractionService = new SlideExtractionService();
-            $slidesDir = storage_path('app/uploads/temp/slides_' . pathinfo($fileName, PATHINFO_FILENAME));
-            $slides = $slideExtractionService->extractSlidesAsImages($fullPath, $slidesDir);
-
-            // Prepare response data
-            $data = [
-                'fileName' => $fileName,
-                'filePath' => url('storage/app/' . $path),
-                'originalName' => $file->getClientOriginalName(),
-                'slides' => []
-            ];
-
-            // Add slide images to response
-            if (!empty($slides)) {
-                foreach ($slides as $slide) {
-                    // Get relative storage path
-                    $relativePath = $slideExtractionService->getStoragePath($slide['path']);
-                    $data['slides'][] = [
-                        'slide_number' => $slide['slide_number'],
-                        'image' => $slide['image'],
-                        'path' => $relativePath,
-                        'url' => url('storage/app/' . $relativePath)
-                    ];
-                }
-            }
-
-            $this->response['status'] = 1;
-            $this->response['data'] = [$data];
-            $this->response['msg'] = 'PPT uploaded successfully' . (!empty($slides) ? ' (' . count($slides) . ' slides extracted)' : '');
-        } catch (\Exception $e) {
-            $this->response['error'] = 'Error uploading file: ' . $e->getMessage();
-            // Clean up uploaded file on error
-            if (isset($path) && Storage::exists($path)) {
-                Storage::delete($path);
-            }
-        }
-
-        echo json_encode($this->response);
-    }
 }

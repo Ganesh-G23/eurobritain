@@ -18,7 +18,7 @@ class UserSeeder extends Seeder
             'email' => 'admin@gmail.com',
             'password' => '123456',
             'p' => '123456',
-            'force_password_change' => false,
+            // 'force_password_change' => false,
         ]);
     }
 }

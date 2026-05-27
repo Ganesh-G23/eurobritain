@@ -66,57 +66,11 @@ class AuthController extends Controller
             return response()->json($this->response);
         }
 
-        if ($admin->email_two_factor_enabled) {
-            if (! filled($admin->email)) {
-                $this->response['error'] = 'Two-factor sign-in is enabled but this account has no email. Contact support.';
-
-                return response()->json($this->response);
-            }
-
-            $pendingToken = Str::random(64);
-            $otp = (string) random_int(100000, 999999);
-
-            Cache::put(
-                'admin_2fa_pending:'.$pendingToken,
-                ['user_id' => (int) $admin->id],
-                now()->addSeconds(self::PENDING_TTL_SECONDS),
-            );
-            Cache::put(
-                'admin_2fa_code_hash:'.$admin->id,
-                hash('sha256', $otp),
-                now()->addSeconds(self::OTP_TTL_SECONDS),
-            );
-
-            try {
-                Mail::send('admin.emails.login_otp', [
-                    'user' => $admin,
-                    'code' => $otp,
-                ], function ($message) use ($admin) {
-                    $message->to((string) $admin->email)
-                        ->subject('Your '.config('app.name').' admin sign-in code');
-                });
-            } catch (\Throwable $e) {
-                Log::error('Admin login OTP email failed: '.$e->getMessage());
-                Cache::forget('admin_2fa_pending:'.$pendingToken);
-                Cache::forget('admin_2fa_code_hash:'.$admin->id);
-                $this->response['error'] = 'Could not send verification email. Please try again later.';
-
-                return response()->json($this->response);
-            }
-
-            $this->response['status'] = 1;
-            $this->response['requires_otp'] = true;
-            $this->response['pending_token'] = $pendingToken;
-            $this->response['msg'] = 'Enter the verification code sent to your email.';
-
-            return response()->json($this->response);
-        }
 
         $this->finalizeAdminLogin($admin);
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Login successful...';
-        $this->response['redirect_url'] = $this->redirectAfterLogin($admin);
 
         return response()->json($this->response);
     }

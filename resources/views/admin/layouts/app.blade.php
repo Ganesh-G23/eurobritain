@@ -313,55 +313,6 @@
             window.assetsPath += '/';
         }
     </script>
-    @if(false)
-    <script>
-        $(document).ready(function () {
-            const popupModal = new bootstrap.Modal(document.getElementById('userPasswordPopupModal'), {
-                backdrop: 'static',
-                keyboard: false
-            });
-            popupModal.show();
-
-            function clearPopupErrors() {
-                $('#user-password-popup-form .ajax-error').text('');
-                $('.teacher-password-msg').html('');
-            }
-
-            $(document).on('click', '#save-user-password-popup', function () {
-                clearPopupErrors();
-                const $btn = $(this);
-                $btn.attr('disabled', 'disabled').text('Please wait...');
-
-                const formData = $('#user-password-popup-form').serializeArray();
-                formData.push({ name: '_token', value: '{{ csrf_token() }}' });
-
-                $.post('{{ url("user/update_password_popup") }}', formData, function (res) {
-                    $btn.removeAttr('disabled').text('Save Password');
-                    if (res.status == 1) {
-                        popupModal.hide();
-                    } else if (res.error_array) {
-                        Object.keys(res.error_array).forEach(function (key) {
-                            const field = $('#user-password-popup-form [name="' + key + '"]');
-                            if (field.length) {
-                                field.closest('.ajax-field').find('.ajax-error').text(res.error_array[key]);
-                            }
-                        });
-                    } else if (res.error) {
-                        $('.teacher-password-msg').html('<div class="alert alert-danger">' + res.error + '</div>');
-                    }
-                }, 'json');
-            });
-
-            $(document).on('click', '#skip-user-password-popup', function () {
-                $.post('{{ url("user/skip_password_popup") }}', {
-                    _token: '{{ csrf_token() }}'
-                }, function () {
-                    popupModal.hide();
-                }, 'json');
-            });
-        });
-    </script>
-    @endif
     @yield('scripts')
 </body>
 
