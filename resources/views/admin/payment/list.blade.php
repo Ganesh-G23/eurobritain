@@ -8,11 +8,11 @@
             </div>
             <div class="card-body">
                 <form method="GET" action="{{ url('admin/payment/list') }}" class="row g-3 mb-4">
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <input type="text" name="q" class="form-control"
                             placeholder="Search invoice number" value="{{ $q }}">
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <select class="form-select" id="filter_associate_id" name="associate_id">
                             <option value="">All Associates</option>
                             @foreach ($associates as $associate)
@@ -23,7 +23,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <select class="form-select" id="filter_client_id" name="client_id"
                             data-current-client="{{ $client_id }}">
                             <option value="">All Clients</option>
@@ -35,17 +35,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <select class="form-select" name="status">
-                            <option value="">All Status</option>
-                            @foreach ($statuses as $value => $label)
-                                <option value="{{ $value }}" {{ $status === $value ? 'selected' : '' }}>
-                                    {{ $label }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3 d-flex gap-2">
+                    <div class="col-md-2 d-flex gap-2">
                         <button type="submit" class="btn btn-primary">Search</button>
                         <a href="{{ url('admin/payment/list') }}" class="btn btn-label-secondary">Reset</a>
                     </div>
@@ -60,7 +50,6 @@
                                 <th>Associate</th>
                                 <th>Client</th>
                                 <th>Amount</th>
-                                <th>Status</th>
                                 <th>Payment Date</th>
                                 <th class="text-center">Actions</th>
                             </tr>
@@ -73,13 +62,6 @@
                                     <td>{{ $row->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->client->company_name ?? '—' }}</td>
                                     <td>{{ '₹ '.number_format((float) $row->amount, 2) }}</td>
-                                    <td>
-                                        @if ($row->status === 'done')
-                                            <span class="badge bg-label-success">Done</span>
-                                        @else
-                                            <span class="badge bg-label-warning">Pending</span>
-                                        @endif
-                                    </td>
                                     <td>{{ $row->payment_date?->format('d M Y') ?? '—' }}</td>
                                     <td class="text-center">
                                         <div class="d-flex flex-wrap gap-1 justify-content-center">
@@ -92,7 +74,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">No payments found.</td>
+                                    <td colspan="7" class="text-center text-muted py-4">No payments found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

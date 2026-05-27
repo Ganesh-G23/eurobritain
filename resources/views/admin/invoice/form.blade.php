@@ -48,7 +48,7 @@
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="amount">Amount <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" class="form-control" id="amount" name="amount"
-                                value="{{ old('amount', $details->amount ?? '') }}">
+                                value="{{ old('amount', $details->total_amount ?? '') }}">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">

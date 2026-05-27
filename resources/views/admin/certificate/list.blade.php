@@ -52,11 +52,16 @@
                             <option value="audit" {{ $type === 'audit' ? 'selected' : '' }}>Audit</option>
                         </select>
                     </div>
-                    <div class="col-md-1 d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">Search</button>
+                    <div class="col-md-2">
+                        <select name="uploaded" class="form-select">
+                            <option value="">Upload Certificate (All)</option>
+                            <option value="yes" {{ $uploaded === 'yes' ? 'selected' : '' }}>Yes</option>
+                            <option value="no" {{ $uploaded === 'no' ? 'selected' : '' }}>No</option>
+                        </select>
                     </div>
-                    <div class="col-md-1 d-flex gap-2">
-                        <a href="{{ url('admin/certificate/list') }}" class="btn btn-label-secondary btn-sm">Reset</a>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Search</button>
+                        <a href="{{ url('admin/certificate/list') }}" class="btn btn-label-secondary">Reset</a>
                     </div>
                 </form>
 
@@ -71,6 +76,7 @@
                                 <th>Associate</th>
                                 <th>Client</th>
                                 <th>Certificate Type</th>
+                                <th>Date</th>
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
@@ -78,7 +84,7 @@
                             @forelse ($rows as $index => $row)
                                 <tr>
                                     <td>{{ $serial_start + $index + 1 }}</td>
-                                    <td>{{ $row->certificate_application_id }}</td>
+                                    <td>{{ $row->certificateApplication->application_number }}</td>
                                     <td>{{ $row->certificate_number }}</td>
                                     <td>
                                         @if ($row->type === 'audit')
@@ -90,6 +96,7 @@
                                     <td>{{ $row->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->client->company_name ?? '—' }}</td>
                                     <td>{{ $row->certificateType->description ?? $row->certificateType->code ?? '—' }}</td>
+                                    <td>{{ $row->issue_date?->format('Y-m-d') ?? '—' }}</td>
                                     <td class="text-center">
                                         <div class="d-flex flex-wrap gap-1 justify-content-center">
                                             <a href="{{ url('admin/certificate/view/' . $row->id) }}"
@@ -97,13 +104,13 @@
                                             <a href="{{ url('admin/certificate/edit/' . $row->id) }}"
                                                 class="btn btn-sm btn-outline-dark">Edit</a>
                                             <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
-                                                class="btn btn-sm btn-outline-primary">Add Certificate</a>
+                                                class="btn btn-sm btn-outline-primary">Upload Certificate</a>
                                         </div>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">No certificates found.</td>
+                                    <td colspan="9" class="text-center text-muted py-4">No certificates found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

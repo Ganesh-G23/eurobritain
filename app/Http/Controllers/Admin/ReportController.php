@@ -20,10 +20,9 @@ class ReportController extends Controller
 
         $rows = Associate::query()
             ->withCount(['clients', 'certificates'])
-            ->withSum('invoices as invoices_sum_amount', 'amount')
-            ->withSum([
-                'payments as completed_payments_sum_amount' => fn ($q) => $q->where('status', Payment::STATUS_DONE),
-            ], 'amount')
+            ->withSum('invoices as total_payments', 'total_amount')
+            ->withSum('invoices as completed_payments', 'paid_amount')
+            ->withSum('invoices as due_payments', 'pending_amount')
             ->when($selectedAssociateId > 0, fn ($q) => $q->where('id', $selectedAssociateId))
             ->orderBy('company_name')
             ->get();
@@ -49,10 +48,9 @@ class ReportController extends Controller
         $rows = Client::query()
             ->with(['associate:id,company_name'])
             ->withCount(['certificates'])
-            ->withSum('invoices as invoices_sum_amount', 'amount')
-            ->withSum([
-                'payments as completed_payments_sum_amount' => fn ($q) => $q->where('status', Payment::STATUS_DONE),
-            ], 'amount')
+            ->withSum('invoices as total_payments', 'total_amount')
+            ->withSum('invoices as completed_payments', 'paid_amount')
+            ->withSum('invoices as due_payments', 'pending_amount')
             ->when($selectedClientId > 0, fn ($q) => $q->where('id', $selectedClientId))
             ->orderBy('company_name')
             ->get();

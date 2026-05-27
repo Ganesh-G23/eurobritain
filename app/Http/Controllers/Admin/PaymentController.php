@@ -18,13 +18,12 @@ class PaymentController extends Controller
         $q = trim((string) $request->input('q', ''));
         $associateId = (int) $request->input('associate_id', 0);
         $clientId = (int) $request->input('client_id', 0);
-        $status = trim((string) $request->input('status', ''));
         $per_page = 10;
         $page = max(1, (int) $request->input('page', 1));
 
         $query = Payment::query()
             ->with([
-                'invoice:id,invoice_number,amount',
+                'invoice:id,invoice_number,total_amount',
                 'associate:id,company_name',
                 'client:id,company_name',
             ])
@@ -33,9 +32,6 @@ class PaymentController extends Controller
             })
             ->when($clientId > 0, function ($query) use ($clientId) {
                 $query->where('client_id', $clientId);
-            })
-            ->when(in_array($status, [Payment::STATUS_PENDING, Payment::STATUS_DONE], true), function ($query) use ($status) {
-                $query->where('status', $status);
             })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
@@ -64,8 +60,6 @@ class PaymentController extends Controller
             'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
             'associate_id' => $associateId,
             'client_id' => $clientId,
-            'status' => $status,
-            'statuses' => Payment::$statuses,
             'pagination' => pagination($total, $per_page, $page, $pageUrl),
             'serial_start' => ($page - 1) * $per_page,
         ]);
@@ -84,8 +78,8 @@ class PaymentController extends Controller
                 ])
                 ->find($invoiceId);
 
-            if ($prefilledInvoice && in_array((int) $prefilledInvoice->id, $this->getPaidInvoiceIds(), true)) {
-                return redirect('admin/invoice/list')->with('error', 'A payment already exists for invoice '.$prefilledInvoice->invoice_number.'.');
+            if ($prefilledInvoice && (float) $prefilledInvoice->pending_amount <= 0) {
+                return redirect('admin/invoice/list')->with('error', 'Invoice '.$prefilledInvoice->invoice_number.' is already fully paid.');
             }
         }
 
@@ -94,11 +88,10 @@ class PaymentController extends Controller
             'active_tab' => 'payment',
             'sub_active_tab' => 'add',
             'mode' => 'add',
-            'details' => new Payment(['status' => Payment::STATUS_PENDING]),
+            'details' => new Payment(),
             'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
             'prefilledInvoice' => $prefilledInvoice,
             'payment_date' => Carbon::today()->format('Y-m-d'),
-            'statuses' => Payment::$statuses,
         ]);
     }
 
@@ -125,21 +118,39 @@ class PaymentController extends Controller
         }
 
         $editingPaymentId = (int) $request->input('payment_id', 0);
-        $paidInvoiceIds = $this->getPaidInvoiceIds($editingPaymentId > 0 ? $editingPaymentId : null);
+        $editingInvoiceIds = [];
+
+        if ($editingPaymentId > 0) {
+            $payment = Payment::find($editingPaymentId);
+            if ($payment) {
+                $editingInvoiceIds[] = $payment->invoice_id;
+            }
+        }
 
         $invoices = Invoice::query()
             ->where('client_id', $clientId)
-            ->whereNotIn('id', $paidInvoiceIds)
+            ->where(function ($q) use ($editingInvoiceIds) {
+                $q->where('pending_amount', '>', 0)
+                  ->orWhereIn('id', $editingInvoiceIds);
+            })
             ->orderByDesc('id')
-            ->get(['id', 'invoice_number', 'invoice_date', 'amount']);
+            ->get(['id', 'invoice_number', 'invoice_date', 'total_amount', 'pending_amount']);
 
-        $payload = $invoices->map(function (Invoice $invoice) {
+        $payload = $invoices->map(function (Invoice $invoice) use ($editingPaymentId, $editingInvoiceIds) {
             $dateLabel = $invoice->invoice_date?->format('d M Y') ?? '—';
+            $displayPending = $invoice->pending_amount;
+
+            if (in_array($invoice->id, $editingInvoiceIds)) {
+                $payment = Payment::find($editingPaymentId);
+                if ($payment) {
+                    $displayPending += $payment->amount;
+                }
+            }
 
             return [
                 'id' => $invoice->id,
-                'label' => trim($invoice->invoice_number.' — '.$dateLabel.' — '.number_format((float) $invoice->amount, 2)),
-                'amount' => (float) $invoice->amount,
+                'label' => trim($invoice->invoice_number.' — '.$dateLabel.' — Pending: '.number_format((float) $displayPending, 2)),
+                'amount' => (float) $displayPending,
             ];
         })->values();
 
@@ -149,12 +160,11 @@ class PaymentController extends Controller
     public function save(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'invoice_id' => 'required|exists:invoices,id',
+            'invoice_ids' => 'required|array|min:1',
+            'invoice_ids.*' => 'required|exists:invoices,id',
             'associate_id' => 'required|exists:associates,id',
             'client_id' => 'required|exists:clients,id',
-            'amount' => 'required|numeric|min:0',
             'payment_date' => 'required|date',
-            'status' => 'required|in:pending,done',
             'admin_note' => 'nullable|string|max:5000',
         ]);
 
@@ -164,33 +174,48 @@ class PaymentController extends Controller
             return response()->json($this->response);
         }
 
-        $invoiceError = $this->validateInvoiceSelection(
-            (int) $request->input('invoice_id'),
-            (int) $request->input('client_id'),
-            (int) $request->input('associate_id')
-        );
+        $clientId = (int) $request->input('client_id');
+        $associateId = (int) $request->input('associate_id');
+        $invoiceIds = array_values(array_map('intval', (array) $request->input('invoice_ids', [])));
 
-        if ($invoiceError !== null) {
-            $this->response['error'] = $invoiceError;
+        $invoices = Invoice::query()
+            ->whereIn('id', $invoiceIds)
+            ->where('client_id', $clientId)
+            ->where('associate_id', $associateId)
+            ->get();
 
-            return response()->json($this->response);
-        }
-
-        if (in_array((int) $request->input('invoice_id'), $this->getPaidInvoiceIds(), true)) {
-            $this->response['error'] = 'A payment already exists for this invoice.';
+        if ($invoices->count() !== count($invoiceIds)) {
+            $this->response['error'] = 'One or more selected invoices are invalid.';
 
             return response()->json($this->response);
         }
 
-        Payment::query()->create([
-            'invoice_id' => $request->input('invoice_id'),
-            'associate_id' => $request->input('associate_id'),
-            'client_id' => $request->input('client_id'),
-            'amount' => $request->input('amount'),
-            'payment_date' => $request->input('payment_date'),
-            'status' => $request->input('status'),
-            'admin_note' => $request->input('admin_note'),
-        ]);
+        foreach ($invoices as $invoice) {
+            if ($invoice->pending_amount <= 0) {
+                $this->response['error'] = 'Invoice ' . $invoice->invoice_number . ' is already fully paid.';
+
+                return response()->json($this->response);
+            }
+        }
+
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($request, $invoices) {
+                foreach ($invoices as $invoice) {
+                    Payment::query()->create([
+                        'invoice_id' => $invoice->id,
+                        'associate_id' => $request->input('associate_id'),
+                        'client_id' => $request->input('client_id'),
+                        'amount' => $invoice->pending_amount,
+                        'payment_date' => $request->input('payment_date'),
+                        'admin_note' => $request->input('admin_note'),
+                    ]);
+                }
+            });
+        } catch (\Throwable $e) {
+            $this->response['error'] = 'Failed to save payment. Please try again.';
+
+            return response()->json($this->response);
+        }
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Payment saved successfully.';
@@ -212,7 +237,6 @@ class PaymentController extends Controller
             'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
             'prefilledInvoice' => null,
             'payment_date' => $details->payment_date?->format('Y-m-d'),
-            'statuses' => Payment::$statuses,
         ]);
     }
 
@@ -221,12 +245,11 @@ class PaymentController extends Controller
         $payment = Payment::query()->findOrFail($id);
 
         $validation = Validator::make($request->all(), [
-            'invoice_id' => 'required|exists:invoices,id',
+            'invoice_ids' => 'required|array|min:1',
+            'invoice_ids.*' => 'required|exists:invoices,id',
             'associate_id' => 'required|exists:associates,id',
             'client_id' => 'required|exists:clients,id',
-            'amount' => 'required|numeric|min:0',
             'payment_date' => 'required|date',
-            'status' => 'required|in:pending,done',
             'admin_note' => 'nullable|string|max:5000',
         ]);
 
@@ -236,33 +259,51 @@ class PaymentController extends Controller
             return response()->json($this->response);
         }
 
-        $invoiceError = $this->validateInvoiceSelection(
-            (int) $request->input('invoice_id'),
-            (int) $request->input('client_id'),
-            (int) $request->input('associate_id')
-        );
+        $clientId = (int) $request->input('client_id');
+        $associateId = (int) $request->input('associate_id');
+        $invoiceIds = array_values(array_map('intval', (array) $request->input('invoice_ids', [])));
 
-        if ($invoiceError !== null) {
-            $this->response['error'] = $invoiceError;
+        $invoiceId = $invoiceIds[0];
+
+        $invoice = Invoice::query()
+            ->where('id', $invoiceId)
+            ->where('client_id', $clientId)
+            ->where('associate_id', $associateId)
+            ->first();
+
+        if (! $invoice) {
+            $this->response['error'] = 'Selected invoice is invalid.';
 
             return response()->json($this->response);
         }
 
-        if (in_array((int) $request->input('invoice_id'), $this->getPaidInvoiceIds((int) $payment->id), true)) {
-            $this->response['error'] = 'A payment already exists for this invoice.';
+        $availableAmount = $invoice->pending_amount;
+        if ((int) $payment->invoice_id === (int) $invoice->id) {
+            $availableAmount += $payment->amount;
+        }
+
+        if ($availableAmount <= 0) {
+            $this->response['error'] = 'Selected invoice is already fully paid.';
 
             return response()->json($this->response);
         }
 
-        $payment->update([
-            'invoice_id' => $request->input('invoice_id'),
-            'associate_id' => $request->input('associate_id'),
-            'client_id' => $request->input('client_id'),
-            'amount' => $request->input('amount'),
-            'payment_date' => $request->input('payment_date'),
-            'status' => $request->input('status'),
-            'admin_note' => $request->input('admin_note'),
-        ]);
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $request, $invoice, $availableAmount) {
+                $payment->update([
+                    'invoice_id' => $invoice->id,
+                    'associate_id' => $request->input('associate_id'),
+                    'client_id' => $request->input('client_id'),
+                    'amount' => $availableAmount,
+                    'payment_date' => $request->input('payment_date'),
+                    'admin_note' => $request->input('admin_note'),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            $this->response['error'] = 'Failed to update payment.';
+
+            return response()->json($this->response);
+        }
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Payment updated successfully.';
@@ -275,7 +316,7 @@ class PaymentController extends Controller
     {
         $details = Payment::query()
             ->with([
-                'invoice:id,invoice_number,amount',
+                'invoice:id,invoice_number,total_amount',
                 'associate:id,company_name',
                 'client:id,company_name',
             ])
@@ -286,45 +327,6 @@ class PaymentController extends Controller
             'active_tab' => 'payment',
             'sub_active_tab' => 'list',
             'details' => $details,
-            'statuses' => Payment::$statuses,
         ]);
-    }
-
-    /**
-     * @return array<int, int>
-     */
-    protected function getPaidInvoiceIds(?int $excludePaymentId = null): array
-    {
-        return Payment::query()
-            ->when($excludePaymentId, fn ($q) => $q->where('id', '!=', $excludePaymentId))
-            ->pluck('invoice_id')
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    protected function validateInvoiceSelection(int $invoiceId, int $clientId, int $associateId): ?string
-    {
-        $invoice = Invoice::query()->find($invoiceId);
-
-        if (! $invoice) {
-            return 'Invoice not found.';
-        }
-
-        if ((int) $invoice->client_id !== $clientId) {
-            return 'Invoice does not belong to the selected client.';
-        }
-
-        if ((int) $invoice->associate_id !== $associateId) {
-            return 'Invoice does not belong to the selected associate.';
-        }
-
-        $client = Client::query()->find($clientId);
-        if (! $client || (int) $client->associate_id !== $associateId) {
-            return 'Client does not belong to the selected associate.';
-        }
-
-        return null;
     }
 }

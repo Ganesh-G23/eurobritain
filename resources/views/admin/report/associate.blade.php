@@ -25,27 +25,36 @@
                     </div>
                 </form>
 
-                @forelse ($rows as $row)
-                    @php
-                        $totalPayments = (float) ($row->invoices_sum_amount ?? 0);
-                        $completedPayments = (float) ($row->completed_payments_sum_amount ?? 0);
-                        $duePayments = max(0, $totalPayments - $completedPayments);
-                    @endphp
-                    <div class="row border-bottom py-3">
-                        <div class="col-md-4">
-                            <h6 class="mb-0">{{ $row->company_name }}</h6>
-                        </div>
-                        <div class="col-md-8 text-end">
-                            <div><strong>Total Clients:</strong> {{ $row->clients_count }}</div>
-                            <div><strong>Total Certificates:</strong> {{ $row->certificates_count }}</div>
-                            <div><strong>Total Payments:</strong> {{ number_format($totalPayments, 2) }}</div>
-                            <div><strong>Completed Payments:</strong> {{ number_format($completedPayments, 2) }}</div>
-                            <div><strong>Due Payments:</strong> {{ number_format($duePayments, 2) }}</div>
-                        </div>
-                    </div>
-                @empty
-                    <p class="text-muted mb-0">No associates found.</p>
-                @endforelse
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th>Associate Name</th>
+                                <th class="text-center">Total Clients</th>
+                                <th class="text-center">Total Certificates</th>
+                                <th class="text-end">Total Payments</th>
+                                <th class="text-end">Completed Payments</th>
+                                <th class="text-end">Due Payments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($rows as $row)
+                                <tr>
+                                    <td><strong>{{ $row->company_name }}</strong></td>
+                                    <td class="text-center">{{ $row->clients_count }}</td>
+                                    <td class="text-center">{{ $row->certificates_count }}</td>
+                                    <td class="text-end">₹ {{ number_format((float) ($row->total_payments ?? 0), 2) }}</td>
+                                    <td class="text-end">₹ {{ number_format((float) ($row->completed_payments ?? 0), 2) }}</td>
+                                    <td class="text-end">₹ {{ number_format((float) ($row->due_payments ?? 0), 2) }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">No data found.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

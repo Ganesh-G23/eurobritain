@@ -28,7 +28,13 @@
                         <strong>Client:</strong> {{ $details->client->company_name ?? '—' }}
                     </div>
                     <div class="col-md-6">
-                        <strong>Amount:</strong> {{ number_format((float) $details->amount, 2) }}
+                        <strong>Total Amount:</strong> {{ number_format((float) $details->total_amount, 2) }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Paid Amount:</strong> {{ number_format((float) $details->paid_amount, 2) }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Pending Amount:</strong> {{ number_format((float) $details->pending_amount, 2) }}
                     </div>
                     <div class="col-12">
                         <strong>Admin Note:</strong>
@@ -64,8 +70,16 @@
                         @if ($certificates->isNotEmpty())
                             <tfoot>
                                 <tr>
-                                    <th colspan="3" class="text-end">Invoice Total</th>
-                                    <th class="text-end">{{ number_format((float) $details->amount, 2) }}</th>
+                                    <th colspan="3" class="text-end">Total Amount</th>
+                                    <th class="text-end">{{ number_format((float) $details->total_amount, 2) }}</th>
+                                </tr>
+                                <tr>
+                                    <th colspan="3" class="text-end">Paid Amount</th>
+                                    <th class="text-end">{{ number_format((float) $details->paid_amount, 2) }}</th>
+                                </tr>
+                                <tr>
+                                    <th colspan="3" class="text-end">Pending Amount</th>
+                                    <th class="text-end">{{ number_format((float) $details->pending_amount, 2) }}</th>
                                 </tr>
                             </tfoot>
                         @endif

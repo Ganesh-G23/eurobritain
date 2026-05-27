@@ -48,14 +48,6 @@ class InvoiceController extends Controller
             ->take($per_page)
             ->get();
 
-        $paymentByInvoiceId = Payment::query()
-            ->whereIn('invoice_id', $rows->pluck('id'))
-            ->orderByDesc('id')
-            ->get(['id', 'invoice_id'])
-            ->keyBy(fn ($payment) => (int) $payment->invoice_id)
-            ->map(fn ($payment) => (int) $payment->id)
-            ->all();
-
         $queryParams = $request->except('page');
         $pageUrl = '?'.(empty($queryParams) ? '' : http_build_query($queryParams).'&');
 
@@ -69,7 +61,6 @@ class InvoiceController extends Controller
             'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
             'associate_id' => $associateId,
             'client_id' => $clientId,
-            'paymentByInvoiceId' => $paymentByInvoiceId,
             'pagination' => pagination($total, $per_page, $page, $pageUrl),
             'serial_start' => ($page - 1) * $per_page,
         ]);
@@ -176,7 +167,9 @@ class InvoiceController extends Controller
                     'client_id' => $request->input('client_id'),
                     'certificate_ids' => $certificateIds,
                     'invoice_date' => $request->input('invoice_date'),
-                    'amount' => $request->input('amount'),
+                    'total_amount' => $request->input('amount'),
+                    'paid_amount' => 0,
+                    'pending_amount' => $request->input('amount'),
                     'admin_note' => $request->input('admin_note'),
                 ]);
             });
@@ -244,12 +237,17 @@ class InvoiceController extends Controller
             return response()->json($this->response);
         }
 
+        $totalAmount = $request->input('amount');
+        $paidAmount = Payment::query()->where('invoice_id', $invoice->id)->sum('amount');
+
         $invoice->update([
             'associate_id' => $request->input('associate_id'),
             'client_id' => $request->input('client_id'),
             'certificate_ids' => $certificateIds,
             'invoice_date' => $request->input('invoice_date'),
-            'amount' => $request->input('amount'),
+            'total_amount' => $totalAmount,
+            'paid_amount' => $paidAmount,
+            'pending_amount' => max(0, $totalAmount - $paidAmount),
             'admin_note' => $request->input('admin_note'),
         ]);
 

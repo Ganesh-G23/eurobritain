@@ -16,6 +16,10 @@
             <div class="card-body">
                 <div class="row g-4">
                     <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Application</label>
+                        <p class="mb-0 fw-medium">{{ $details->application_number ?: '—' }}</p>
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label text-muted mb-1">Company Name</label>
                         <p class="mb-0 fw-medium">{{ $details->company_name }}</p>
                     </div>

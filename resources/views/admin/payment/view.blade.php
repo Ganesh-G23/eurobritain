@@ -34,14 +34,6 @@
                         <strong>Payment Date:</strong> {{ $details->payment_date?->format('d M Y') ?? '—' }}
                     </div>
                     <div class="col-md-6">
-                        <strong>Status:</strong>
-                        @if ($details->status === 'done')
-                            <span class="badge bg-label-success">Done</span>
-                        @else
-                            <span class="badge bg-label-warning">Pending</span>
-                        @endif
-                    </div>
-                    <div class="col-md-6">
                         <strong>Recorded On:</strong> {{ $details->created_at?->format('d M Y H:i') ?? '—' }}
                     </div>
                     <div class="col-12">

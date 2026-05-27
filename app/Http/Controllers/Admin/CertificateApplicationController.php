@@ -246,9 +246,13 @@ class CertificateApplicationController extends Controller
 
         $client = Client::query()->findOrFail((int) $request->input('client_id'));
 
-        CertificateApplication::query()->create(
+        $application = CertificateApplication::query()->create(
             $this->buildApplicationPayload($request, $client)
         );
+
+        $application->update([
+            'application_number' => 'APP-'.str_pad($application->id, 4, '0', STR_PAD_LEFT),
+        ]);
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Application saved successfully.';

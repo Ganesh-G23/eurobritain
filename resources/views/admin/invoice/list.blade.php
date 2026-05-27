@@ -49,8 +49,10 @@
                                 <th>Invoice</th>
                                 <th>Associate</th>
                                 <th>Client</th>
+                                <th>Total Amount</th>
+                                <th>Paid Amount</th>
+                                <th>Pending Amount</th>
                                 <th>Date</th>
-                                <th>Amount</th>
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
@@ -61,8 +63,10 @@
                                     <td>{{ $row->invoice_number }}</td>
                                     <td>{{ $row->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->client->company_name ?? '—' }}</td>
+                                    <td>{{ number_format((float) $row->total_amount, 2) }}</td>
+                                    <td>{{ number_format((float) $row->paid_amount, 2) }}</td>
+                                    <td>{{ number_format((float) $row->pending_amount, 2) }}</td>
                                     <td>{{ $row->invoice_date?->format('d M Y') ?? '—' }}</td>
-                                    <td>{{ number_format((float) $row->amount, 2) }}</td>
                                     <td class="text-center">
                                         <div class="d-flex flex-wrap gap-1 justify-content-center">
                                             <a href="{{ url('admin/invoice/view/' . $row->id) }}"
@@ -71,10 +75,10 @@
                                                 class="btn btn-sm btn-outline-dark">Edit</a>
                                             <a href="{{ url('admin/invoice/pdf/' . $row->id) }}" target="_blank"
                                                 class="btn btn-sm btn-outline-primary">PDF</a>
-                                            @if (isset($paymentByInvoiceId[(int) $row->id]))
-                                                <a href="{{ url('admin/payment/view/' . $paymentByInvoiceId[(int) $row->id]) }}"
+                                            @if ($row->pending_amount <= 0)
+                                                <a href="{{ url('admin/payment/list?q=' . urlencode($row->invoice_number)) }}"
                                                     class="btn btn-sm btn-outline-secondary"
-                                                    title="View recorded payment">Paid</a>
+                                                    title="View payments for this invoice">Paid</a>
                                             @else
                                                 <a href="{{ url('admin/payment/add?invoice_id=' . $row->id) }}"
                                                     class="btn btn-sm btn-outline-success">Add Payment</a>
@@ -84,7 +88,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">No invoices found.</td>
+                                    <td colspan="9" class="text-center text-muted py-4">No invoices found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

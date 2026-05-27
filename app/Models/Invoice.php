@@ -17,7 +17,9 @@ class Invoice extends Model
 
     protected $casts = [
         'invoice_date' => 'date',
-        'amount' => 'decimal:2',
+        'total_amount' => 'decimal:2',
+        'paid_amount' => 'decimal:2',
+        'pending_amount' => 'decimal:2',
         'certificate_ids' => 'array',
     ];
 

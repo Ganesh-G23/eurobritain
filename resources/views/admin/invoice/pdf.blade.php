@@ -113,8 +113,16 @@
     </tbody>
     <tfoot>
         <tr>
-            <th colspan="3" class="text-right">Total</th>
-            <th class="text-right">{{ number_format((float) $details->amount, 2) }}</th>
+            <th colspan="3" class="text-right">Total Amount</th>
+            <th class="text-right">{{ number_format((float) $details->total_amount, 2) }}</th>
+        <!-- </tr>
+        <tr>
+            <th colspan="3" class="text-right">Paid Amount</th>
+            <th class="text-right">{{ number_format((float) $details->paid_amount, 2) }}</th>
+        </tr>
+        <tr>
+            <th colspan="3" class="text-right">Pending Amount</th>
+            <th class="text-right">{{ number_format((float) $details->pending_amount, 2) }}</th> -->
         </tr>
     </tfoot>
 </table>

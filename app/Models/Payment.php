@@ -10,15 +10,6 @@ class Payment extends Model
 {
     use SoftDeletes;
 
-    public const STATUS_PENDING = 'pending';
-
-    public const STATUS_DONE = 'done';
-
-    public static array $statuses = [
-        self::STATUS_PENDING => 'Pending',
-        self::STATUS_DONE => 'Done',
-    ];
-
     protected $table = 'payments';
 
     protected $guarded = [];
@@ -27,6 +18,48 @@ class Payment extends Model
         'amount' => 'decimal:2',
         'payment_date' => 'date',
     ];
+
+    protected static function booted()
+    {
+        static::saved(function ($payment) {
+            $payment->syncInvoiceAmounts();
+        });
+
+        static::updated(function ($payment) {
+            if ($payment->wasChanged('invoice_id')) {
+                $oldInvoiceId = $payment->getOriginal('invoice_id');
+                if ($oldInvoiceId) {
+                    $invoice = Invoice::find($oldInvoiceId);
+                    if ($invoice) {
+                        $paid = Payment::query()->where('invoice_id', $invoice->id)->sum('amount');
+                        $invoice->update([
+                            'paid_amount' => $paid,
+                            'pending_amount' => max(0, $invoice->total_amount - $paid),
+                        ]);
+                    }
+                }
+            }
+            $payment->syncInvoiceAmounts();
+        });
+
+        static::deleted(function ($payment) {
+            $payment->syncInvoiceAmounts();
+        });
+    }
+
+    public function syncInvoiceAmounts()
+    {
+        if ($this->invoice_id) {
+            $invoice = Invoice::find($this->invoice_id);
+            if ($invoice) {
+                $paid = Payment::query()->where('invoice_id', $invoice->id)->sum('amount');
+                $invoice->update([
+                    'paid_amount' => $paid,
+                    'pending_amount' => max(0, $invoice->total_amount - $paid),
+                ]);
+            }
+        }
+    }
 
     public function invoice(): BelongsTo
     {

@@ -134,6 +134,7 @@ class CertificateController extends Controller
         $associateId = (int) $request->input('associate_id', 0);
         $clientId = (int) $request->input('client_id', 0);
         $certificateTypeId = (int) $request->input('certificate_type_id', 0);
+        $uploaded = trim((string) $request->input('uploaded', ''));
         $per_page = 10;
         $page = max(1, (int) $request->input('page', 1));
 
@@ -142,9 +143,19 @@ class CertificateController extends Controller
                 'associate:id,company_name',
                 'client:id,company_name',
                 'certificateType:id,description,code',
+                'certificateApplication:id,application_number'
             ])
             ->when(in_array($type, [Certificate::TYPE_CERTIFICATE, Certificate::TYPE_AUDIT], true), function ($query) use ($type) {
                 $query->where('type', $type);
+            })
+            ->when($uploaded !== '', function ($query) use ($uploaded) {
+                if ($uploaded === 'yes') {
+                    $query->whereNotNull('certificate')->where('certificate', '!=', '');
+                } elseif ($uploaded === 'no') {
+                    $query->where(function ($sub) {
+                        $sub->whereNull('certificate')->orWhere('certificate', '');
+                    });
+                }
             })
             ->when($associateId > 0, function ($query) use ($associateId) {
                 $query->where('associate_id', $associateId);
@@ -174,11 +185,11 @@ class CertificateController extends Controller
 
         return view('admin.certificate.list', [
             'title' => 'Certificate List',
-            'active_tab' => 'certificate',
-            'sub_active_tab' => 'list',
+            'active_tab' => 'certificate_list',
             'rows' => $rows,
             'q' => $q,
             'type' => $type,
+            'uploaded' => $uploaded,
             'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
             'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
             'certificateTypes' => CertificateType::query()->orderBy('description')->get(['id', 'description', 'code']),
@@ -443,7 +454,7 @@ class CertificateController extends Controller
 
         return view('admin.certificate.view', [
             'title' => 'View Certificate',
-            'active_tab' => 'certificate',
+            'active_tab' => 'certificate_list',
             'sub_active_tab' => 'list',
             'details' => $details,
         ]);
@@ -456,8 +467,8 @@ class CertificateController extends Controller
             ->findOrFail($id);
 
         return view('admin.certificate.upload', [
-            'title' => 'Add Certificate Image',
-            'active_tab' => 'certificate',
+            'title' => 'Upload Certificate',
+            'active_tab' => 'certificate_list',
             'sub_active_tab' => 'list',
             'details' => $details,
         ]);

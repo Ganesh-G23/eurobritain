@@ -50,7 +50,7 @@
                             @forelse ($rows as $index => $row)
                                 <tr>
                                     <td>{{ $serial_start + $index + 1 }}</td>
-                                    <td>{{ $row->id }}</td>
+                                    <td>{{ $row->application_number ?: '—' }}</td>
                                     <td>{{ $row->company_name }}</td>
                                     <td>
                                         <div><strong>Email:</strong> {{ $row->contact_email ?: '—' }}</div>

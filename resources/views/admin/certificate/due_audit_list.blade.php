@@ -64,7 +64,7 @@
                             @forelse ($rows as $index => $row)
                                 <tr>
                                     <td>{{ $serial_start + $index + 1 }}</td>
-                                    <td>{{ $row->id }}</td>
+                                    <td>{{ $row->application_number }}</td>
                                     <td>{{ $row->company_name }}</td>
                                     <td>{{ $row->client->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->certificateType->description ?? $row->certificateType->code ?? '—' }}</td>

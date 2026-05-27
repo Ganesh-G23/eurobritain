@@ -56,43 +56,38 @@
                         </div>
                         <div class="mb-3 col-12 ajax-field">
                             <label class="form-label" for="invoice_id">Invoice <span class="text-danger">*</span></label>
-                            <select class="form-select" id="invoice_id" name="invoice_id" {{ $isLocked ? 'disabled' : '' }}>
+                            <select class="form-select text-select2" id="invoice_id" name="invoice_ids[]" {{ $isEdit ? '' : 'multiple' }} {{ $isLocked ? 'disabled' : '' }}>
                                 @if ($isLocked && $prefilledInvoice)
                                     <option value="{{ $prefilledInvoice->id }}" selected
-                                        data-amount="{{ (float) $prefilledInvoice->amount }}">
-                                        {{ $prefilledInvoice->invoice_number }}
+                                        data-amount="{{ (float) $prefilledInvoice->pending_amount }}">
+                                        {{ $prefilledInvoice->invoice_number }} — Pending: {{ number_format($prefilledInvoice->pending_amount, 2) }}
+                                    </option>
+                                @elseif ($isEdit && $details->invoice)
+                                    <option value="{{ $details->invoice_id }}" selected
+                                        data-amount="{{ (float) $details->amount }}">
+                                        {{ $details->invoice->invoice_number }} — Amount: {{ number_format($details->amount, 2) }}
                                     </option>
                                 @else
-                                    <option value="">Select Invoice</option>
+                                    @if ($isEdit)
+                                        <option value="">Select Invoice</option>
+                                    @endif
                                 @endif
                             </select>
                             @if ($isLocked)
-                                <input type="hidden" name="invoice_id" value="{{ $preselectedInvoiceId }}">
+                                <input type="hidden" name="invoice_ids[]" value="{{ $preselectedInvoiceId }}">
                             @endif
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="amount">Amount <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" class="form-control" id="amount" name="amount"
-                                value="{{ $prefillAmount }}">
+                                value="{{ $prefillAmount }}" readonly>
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="payment_date">Payment Date <span class="text-danger">*</span></label>
                             <input type="date" class="form-control" id="payment_date" name="payment_date"
                                 value="{{ old('payment_date', $payment_date) }}">
-                            <span class="ajax-error"></span>
-                        </div>
-                        <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label" for="status">Status <span class="text-danger">*</span></label>
-                            <select class="form-select" id="status" name="status">
-                                @foreach ($statuses as $value => $label)
-                                    <option value="{{ $value }}"
-                                        {{ old('status', $details->status ?? 'pending') === $value ? 'selected' : '' }}>
-                                        {{ $label }}
-                                    </option>
-                                @endforeach
-                            </select>
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-12 ajax-field">
@@ -111,6 +106,7 @@
 @section('scripts')
     <script>
         const isLocked = {{ $isLocked ? 'true' : 'false' }};
+        const isEdit = {{ $isEdit ? 'true' : 'false' }};
         const paymentId = {{ $isEdit ? (int) $details->id : 0 }};
         const preselectedAssociateId = {{ $preselectedAssociateId }};
         const preselectedClientId = {{ $preselectedClientId }};
@@ -119,9 +115,11 @@
         const invoicesUrl = '{{ url('admin/payment/invoices') }}';
 
         function fillAmountFromInvoice() {
-            const $opt = $('#invoice_id option:selected');
-            const amt = parseFloat($opt.data('amount')) || 0;
-            $('#amount').val(amt > 0 ? amt.toFixed(2) : '');
+            let total = 0;
+            $('#invoice_id option:selected').each(function() {
+                total += parseFloat($(this).data('amount')) || 0;
+            });
+            $('#amount').val(total > 0 ? total.toFixed(2) : '0.00');
         }
 
         function loadClients(associateId, selectedClientId, callback) {
@@ -152,8 +150,15 @@
 
         function resetInvoices() {
             const $invoice = $('#invoice_id');
-            $invoice.empty().append('<option value="">Select Invoice</option>').prop('disabled', true);
-            $('#amount').val('');
+            $invoice.empty();
+            if (isEdit) {
+                $invoice.append('<option value="">Select Invoice</option>');
+            }
+            $invoice.prop('disabled', true);
+            if ($invoice.hasClass('select2-hidden-accessible')) {
+                $invoice.val(null).trigger('change');
+            }
+            $('#amount').val('0.00');
         }
 
         function loadInvoices(clientId, selectedInvoiceId) {
@@ -173,17 +178,38 @@
             }
 
             $.get(invoicesUrl, params, function(res) {
-                $invoice.empty().append('<option value="">Select Invoice</option>');
+                $invoice.empty();
+                if (isEdit) {
+                    $invoice.append('<option value="">Select Invoice</option>');
+                }
                 (res || []).forEach(function(inv) {
-                    const selected = String(inv.id) === String(selectedInvoiceId) ? ' selected' : '';
+                    const isSel = Array.isArray(selectedInvoiceId)
+                        ? selectedInvoiceId.map(String).includes(String(inv.id))
+                        : String(inv.id) === String(selectedInvoiceId);
+                    const selected = isSel ? ' selected' : '';
                     $invoice.append(
                         '<option value="' + inv.id + '" data-amount="' + inv.amount + '"' + selected + '>' +
                         $('<div>').text(inv.label).html() + '</option>'
                     );
                 });
                 $invoice.prop('disabled', false);
+
+                if (!isEdit && !$invoice.hasClass('select2-hidden-accessible')) {
+                    $invoice.select2({
+                        placeholder: 'Select invoices',
+                        allowClear: true,
+                        width: '100%'
+                    });
+                }
+
                 if (selectedInvoiceId) {
-                    $invoice.val(String(selectedInvoiceId));
+                    if (Array.isArray(selectedInvoiceId)) {
+                        $invoice.val(selectedInvoiceId.map(String)).trigger('change');
+                    } else {
+                        $invoice.val(String(selectedInvoiceId)).trigger('change');
+                    }
+                } else {
+                    $invoice.trigger('change');
                 }
                 fillAmountFromInvoice();
             }, 'json');

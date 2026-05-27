@@ -91,7 +91,7 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
 <li class="menu-item {{ $active_tab == 'certificate' ? 'active open' : '' }}">
     <a href="javascript:void(0);" class="menu-link menu-toggle">
         <i class="menu-icon icon-base ti tabler-award"></i>
-        <div data-i18n="Certificate">Certificate</div>
+        <div data-i18n="Due Certificates/Audit">Due Certificates/Audit</div>
     </a>
     <ul class="menu-sub">
         <li class="menu-item {{ $sub_active_tab == 'due_list' && $active_tab == 'certificate' ? 'active' : '' }}">
@@ -104,12 +104,14 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
                 <div data-i18n="Due Audit List">Due Audit List</div>
             </a>
         </li>
-        <li class="menu-item {{ $sub_active_tab == 'list' && $active_tab == 'certificate' ? 'active' : '' }}">
-            <a href="{{ url('admin/certificate/list') }}" class="menu-link">
-                <div data-i18n="Certificate List">Certificate List</div>
-            </a>
-        </li>
     </ul>
+</li>
+<!-- Certificate List -->
+<li class="menu-item {{ $active_tab == 'certificate_list' ? 'active' : '' }}">
+    <a href="{{ url('admin/certificate/list') }}" class="menu-link">
+        <i class="menu-icon icon-base ti tabler-award"></i>
+        <div data-i18n="Certificate List">Certificate List</div>
+    </a>
 </li>
 <!-- Invoice -->
 <li class="menu-item {{ $active_tab == 'invoice' ? 'active open' : '' }}">
