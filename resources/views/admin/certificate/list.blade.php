@@ -103,8 +103,13 @@
                                                 class="btn btn-sm btn-outline-info">View</a>
                                             <a href="{{ url('admin/certificate/edit/' . $row->id) }}"
                                                 class="btn btn-sm btn-outline-dark">Edit</a>
-                                            <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
-                                                class="btn btn-sm btn-outline-primary">Upload Certificate</a>
+                                            @if (filled($row->certificate))
+                                                <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
+                                                    class="btn btn-sm btn-outline-success">Uploaded</a>
+                                            @else
+                                                <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
+                                                    class="btn btn-sm btn-outline-primary">Upload Certificate</a>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>

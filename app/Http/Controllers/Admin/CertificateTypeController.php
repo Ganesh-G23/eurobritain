@@ -9,16 +9,35 @@ use Illuminate\Support\Facades\Validator;
 
 class CertificateTypeController extends Controller
 {
+    private function typeOptions(): array
+    {
+        return [
+            'iaf' => 'IAF (Registration)',
+            'noiaf' => 'NOIAF (Compliance)',
+        ];
+    }
+
+    private function categoryOptions(): array
+    {
+        return [
+            'system_certificate' => 'System Certificate',
+            'product_certificate' => 'Product Certificate',
+        ];
+    }
+
     public function list(Request $request)
     {
         $q = trim((string) $request->input('q', ''));
         $per_page = 10;
         $page = max(1, (int) $request->input('page', 1));
+        $type_options = $this->typeOptions();
+        $category_options = $this->categoryOptions();
 
         $query = CertificateType::query()
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
-                    $sub->where('code', 'like', '%'.$q.'%')
+                    $sub->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('code', 'like', '%'.$q.'%')
                         ->orWhere('prefix', 'like', '%'.$q.'%')
                         ->orWhere('description', 'like', '%'.$q.'%');
                 });
@@ -39,6 +58,8 @@ class CertificateTypeController extends Controller
             'sub_active_tab' => 'list',
             'rows' => $rows,
             'q' => $q,
+            'type_options' => $type_options,
+            'category_options' => $category_options,
             'pagination' => pagination($total, $per_page, $page, $pageUrl),
             'serial_start' => ($page - 1) * $per_page,
         ];
@@ -54,6 +75,8 @@ class CertificateTypeController extends Controller
             'sub_active_tab' => 'add',
             'mode' => 'add',
             'details' => new CertificateType(),
+            'type_options' => $this->typeOptions(),
+            'category_options' => $this->categoryOptions(),
         ];
 
         return view('admin.certificate_type.form', $data);
@@ -62,11 +85,15 @@ class CertificateTypeController extends Controller
     public function save(Request $request)
     {
         $validation = Validator::make($request->all(), [
+            'name' => 'required|string|max:150',
+            'types' => 'required|array|min:1',
+            'types.*' => 'required|in:iaf,noiaf',
+            'category' => 'required|in:system_certificate,product_certificate',
             'code' => 'required|string|max:50',
             'prefix' => 'required|string|max:50',
             'description' => 'nullable|string|max:2000',
-            'audit_period' => 'required|string|max:100',
-            'renewal_period' => 'required|string|max:100',
+            'audit_period' => 'required|integer|min:1|max:50',
+            'renewal_period' => 'required|integer|min:1|max:50',
             'price' => 'required|numeric|min:0',
         ]);
 
@@ -77,6 +104,9 @@ class CertificateTypeController extends Controller
         }
 
         CertificateType::query()->create([
+            'name' => $request->input('name'),
+            'types' => array_values($request->input('types', [])),
+            'category' => $request->input('category'),
             'code' => $request->input('code'),
             'prefix' => $request->input('prefix'),
             'description' => $request->input('description'),
@@ -102,6 +132,8 @@ class CertificateTypeController extends Controller
             'sub_active_tab' => 'add',
             'mode' => 'edit',
             'details' => $details,
+            'type_options' => $this->typeOptions(),
+            'category_options' => $this->categoryOptions(),
         ];
 
         return view('admin.certificate_type.form', $data);
@@ -117,11 +149,15 @@ class CertificateTypeController extends Controller
         }
 
         $validation = Validator::make($request->all(), [
+            'name' => 'required|string|max:150',
+            'types' => 'required|array|min:1',
+            'types.*' => 'required|in:iaf,noiaf',
+            'category' => 'required|in:system_certificate,product_certificate',
             'code' => 'required|string|max:50',
             'prefix' => 'required|string|max:50',
             'description' => 'nullable|string|max:2000',
-            'audit_period' => 'required|string|max:100',
-            'renewal_period' => 'required|string|max:100',
+            'audit_period' => 'required|integer|min:1|max:50',
+            'renewal_period' => 'required|integer|min:1|max:50',
             'price' => 'required|numeric|min:0',
         ]);
 
@@ -132,6 +168,9 @@ class CertificateTypeController extends Controller
         }
 
         $certificateType->update([
+            'name' => $request->input('name'),
+            'types' => array_values($request->input('types', [])),
+            'category' => $request->input('category'),
             'code' => $request->input('code'),
             'prefix' => $request->input('prefix'),
             'description' => $request->input('description'),
@@ -156,6 +195,8 @@ class CertificateTypeController extends Controller
             'active_tab' => 'certificate_type',
             'sub_active_tab' => 'list',
             'details' => $details,
+            'type_options' => $this->typeOptions(),
+            'category_options' => $this->categoryOptions(),
         ];
 
         return view('admin.certificate_type.view', $data);

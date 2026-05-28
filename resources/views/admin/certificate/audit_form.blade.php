@@ -65,7 +65,7 @@
 @endsection
 @section('scripts')
     <script>
-        const auditDays = {{ (int) ($audit_days ?? 365) }};
+        const auditYears = {{ (int) ($audit_years ?? 1) }};
         const auditPeriodRaw = @json($certificateType->audit_period ?? '');
         const renewalPeriodRaw = @json($certificateType->renewal_period ?? '');
         const logExpiryUrl = '{{ url('admin/certificate/log-expiry-calc') }}';
@@ -85,7 +85,7 @@
             }
             const latestAudit = new Date(latestAuditVal + 'T00:00:00');
             const auditExpiry = new Date(latestAudit);
-            auditExpiry.setDate(auditExpiry.getDate() + auditDays);
+            auditExpiry.setFullYear(auditExpiry.getFullYear() + auditYears);
             const calculatedAuditExpiry = formatLocalDate(auditExpiry);
             $('#audit_expiry_date').val(calculatedAuditExpiry);
 
@@ -94,9 +94,9 @@
                 latest_audit_date: latestAuditVal,
                 audit_period_raw: auditPeriodRaw,
                 renewal_period_raw: renewalPeriodRaw,
-                audit_days_used_in_js: auditDays,
+                audit_years_used_in_js: auditYears,
                 calculated_audit_expiry_date: calculatedAuditExpiry,
-                client_formula: 'audit_expiry_date = latest_audit_date + audit_days_used_in_js'
+                client_formula: 'audit_expiry_date = latest_audit_date + audit_years_used_in_js'
             };
             console.log('[CertificateExpiry] client_form_recalc', payload);
             $.post(logExpiryUrl, Object.assign({ _token: csrfToken }, payload));

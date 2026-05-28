@@ -1,30 +1,17 @@
-@extends('admin.layouts.app')
+@extends('associate.layouts.app')
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
         <div class="card">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h5 class="mb-0">{{ $title }}</h5>
-                <a href="{{ url('admin/client/list') }}" class="btn btn-label-secondary btn-sm">Back to list</a>
+                <a href="{{ url('client/list') }}" class="btn btn-label-secondary btn-sm">Back to list</a>
             </div>
             <div class="card-body">
                 <form id="ajax-form" method="POST"
-                    action="{{ $mode === 'edit' ? url('admin/client/update/' . $details->id) : url('admin/client/save') }}">
+                    action="{{ $mode === 'edit' ? url('client/update/' . $details->id) : url('client/save') }}">
                     @csrf
                     <div class="col-12 ajax-msg"></div>
                     <div class="row">
-                        <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label" for="associate_id">Select Associate <span class="text-danger">*</span></label>
-                            <select class="form-select" id="associate_id" name="associate_id">
-                                <option value="">Select associate</option>
-                                @foreach ($associates as $associate)
-                                    <option value="{{ $associate->id }}"
-                                        {{ (string) old('associate_id', $details->associate_id) === (string) $associate->id ? 'selected' : '' }}>
-                                        {{ $associate->company_name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <span class="ajax-error"></span>
-                        </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="company_name">Company Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="company_name" name="company_name"
@@ -56,7 +43,7 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="country_id">Country <span class="text-danger">*</span></label>
-                            <select class="form-select select2" id="country_id" name="country_id">
+                            <select class="form-select" id="country_id" name="country_id">
                                 <option value="">Select country</option>
                                 @foreach ($countries as $country)
                                     <option value="{{ $country->id }}"
@@ -69,7 +56,7 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="state_id">State <span class="text-danger">*</span></label>
-                            <select class="form-select select2" id="state_id" name="state_id">
+                            <select class="form-select" id="state_id" name="state_id">
                                 <option value="">Select state</option>
                                 @foreach ($preselectedStates as $state)
                                     <option value="{{ $state->id }}"
@@ -95,7 +82,7 @@
                     </div>
                     <div class="mt-2">
                         <button type="submit" class="btn btn-primary me-2 submit-button">Save</button>
-                        <a href="{{ url('admin/client/list') }}" class="btn btn-label-secondary">Cancel</a>
+                        <a href="{{ url('client/list') }}" class="btn btn-label-secondary">Cancel</a>
                     </div>
                 </form>
             </div>
@@ -112,7 +99,7 @@
                 return;
             }
             $state.append('<option value="">Loading...</option>');
-            $.get('{{ url('admin/common/states') }}', {
+            $.get('{{ url('common/states') }}', {
                 country_id: countryId
             }, function(res) {
                 $state.empty().append('<option value="">Select state</option>');

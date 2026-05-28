@@ -11,6 +11,10 @@ use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Associate\AuthController as AssociateAuthController;
+use App\Http\Controllers\Associate\CertificateApplicationController as AssociateCertificateApplicationController;
+use App\Http\Controllers\Associate\ClientController as AssociateClientController;
+use App\Http\Controllers\Associate\DashboardController as AssociateDashboardController;
 use App\Http\Controllers\CommonController;
 use Illuminate\Support\Facades\Route;
 
@@ -138,3 +142,49 @@ Route::middleware('prevent-back')
             Route::post('upload_ckeditor_image', [CommonController::class, 'uploadCkeditorImage'])->name('upload.ckeditor.image');
         });
     });
+
+Route::middleware('prevent-back')->group(function () {
+    Route::middleware('associate-auth')->group(function () {
+        Route::get('login', [AssociateAuthController::class, 'login'])->name('associate.login');
+        Route::post('login/send-otp', [AssociateAuthController::class, 'sendOtp'])
+            ->middleware('throttle:5,1');
+        Route::post('login/verify-otp', [AssociateAuthController::class, 'verifyOtp'])
+            ->middleware('throttle:10,1');
+    });
+
+    Route::middleware('associate-all')->group(function () {
+        Route::get('dashboard', [AssociateDashboardController::class, 'index']);
+        Route::prefix('client')->group(function () {
+            Route::get('list', [AssociateClientController::class, 'list']);
+            Route::get('add', [AssociateClientController::class, 'add']);
+            Route::post('save', [AssociateClientController::class, 'save']);
+            Route::get('edit/{id}', [AssociateClientController::class, 'edit']);
+            Route::post('update/{id}', [AssociateClientController::class, 'update']);
+            Route::get('view/{id}', [AssociateClientController::class, 'view']);
+        });
+        Route::prefix('common')->group(function () {
+            Route::get('states', [CommonController::class, 'getStates']);
+            Route::post('upload_files', [CommonController::class, 'upload_files']);
+        });
+        Route::prefix('certificate-application')->group(function () {
+            Route::get('add', [AssociateCertificateApplicationController::class, 'add'])
+                ->name('associate.certificate_application.add');
+            Route::get('list', [AssociateCertificateApplicationController::class, 'list'])
+                ->name('associate.certificate_application.list');
+            Route::get('check_client', [AssociateCertificateApplicationController::class, 'checkClient']);
+            Route::post('save_documents', [AssociateCertificateApplicationController::class, 'saveDocuments']);
+            Route::post('resolve_old_client', [AssociateCertificateApplicationController::class, 'resolveOldClient']);
+            Route::get('form', [AssociateCertificateApplicationController::class, 'applicationForm'])
+                ->name('associate.certificate_application.form');
+            Route::post('save_application', [AssociateCertificateApplicationController::class, 'saveApplication']);
+            Route::get('edit/{id}', [AssociateCertificateApplicationController::class, 'edit']);
+            Route::post('update/{id}', [AssociateCertificateApplicationController::class, 'update']);
+            Route::get('view/{id}', [AssociateCertificateApplicationController::class, 'view']);
+            Route::get('pdf/{id}', [AssociateCertificateApplicationController::class, 'pdf']);
+            Route::get('documents/{id}', [AssociateCertificateApplicationController::class, 'documents']);
+            Route::get('upload-document/{id}', [AssociateCertificateApplicationController::class, 'uploadDocument']);
+            Route::post('save-document/{id}', [AssociateCertificateApplicationController::class, 'saveDocument']);
+        });
+        Route::get('logout', [AssociateAuthController::class, 'logout']);
+    });
+});

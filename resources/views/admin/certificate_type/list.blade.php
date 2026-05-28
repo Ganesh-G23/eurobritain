@@ -11,7 +11,7 @@
             <div class="card-body">
                 <form method="GET" action="{{ url('admin/certificate-type/list') }}" class="row g-3 mb-4">
                     <div class="col-md-8">
-                        <input type="text" name="q" class="form-control" placeholder="Search code, prefix, description..."
+                        <input type="text" name="q" class="form-control" placeholder="Search name, code, prefix, description..."
                             value="{{ $q }}">
                     </div>
                     <div class="col-md-4 d-flex gap-2">
@@ -25,10 +25,13 @@
                         <thead>
                             <tr>
                                 <th>#</th>
+                                <th>Name</th>
                                 <th>Code</th>
                                 <th>Prefix</th>
-                                <th>Audit Period</th>
-                                <th>Renewal Period</th>
+                                <th>Type</th>
+                                <th>Certificate Type</th>
+                                <th>Audit Period (Years)</th>
+                                <th>Renewal Period (Years)</th>
                                 <th>Price</th>
                                 <th class="text-center">Actions</th>
                             </tr>
@@ -37,10 +40,22 @@
                             @forelse ($rows as $index => $row)
                                 <tr>
                                     <td>{{ $serial_start + $index + 1 }}</td>
+                                    <td>{{ $row->name ?? '—' }}</td>
                                     <td>{{ $row->code }}</td>
                                     <td>{{ $row->prefix }}</td>
-                                    <td>{{ $row->audit_period.' Days' ?? '—' }}</td>
-                                    <td>{{ $row->renewal_period.' Days' ?? '—' }}</td>
+                                    <td>
+                                        @php
+                                            $rowTypes = (array) ($row->types ?? []);
+                                        @endphp
+                                        @if (!empty($rowTypes))
+                                            {{ collect($rowTypes)->map(fn ($type) => $type_options[$type] ?? $type)->implode(', ') }}
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td>{{ $category_options[$row->category] ?? '—' }}</td>
+                                    <td>{{ $row->audit_period ? $row->audit_period.' Year'.((int) $row->audit_period > 1 ? 's' : '') : '—' }}</td>
+                                    <td>{{ $row->renewal_period ? $row->renewal_period.' Year'.((int) $row->renewal_period > 1 ? 's' : '') : '—' }}</td>
                                     <td>{{ '₹ '.number_format((float) $row->price, 2) }}</td>
                                     <td class="text-center text-nowrap">
                                         <a href="{{ url('admin/certificate-type/edit/' . $row->id) }}"
@@ -55,7 +70,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">No certificate types found.</td>
+                                    <td colspan="10" class="text-center text-muted py-4">No certificate types found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

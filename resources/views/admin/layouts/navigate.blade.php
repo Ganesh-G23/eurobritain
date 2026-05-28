@@ -10,7 +10,25 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
         <div data-i18n="Dashboard">Dashboard</div>
     </a>
 </li>
-
+<!-- Certificate Type -->
+<li class="menu-item {{ $active_tab == 'certificate_type' ? 'active open' : '' }}">
+    <a href="javascript:void(0);" class="menu-link menu-toggle">
+        <i class="menu-icon icon-base ti tabler-certificate"></i>
+        <div data-i18n="Certificate Type">Certificate Type</div>
+    </a>
+    <ul class="menu-sub">
+        <li class="menu-item {{ $sub_active_tab == 'add' && $active_tab == 'certificate_type' ? 'active' : '' }}">
+            <a href="{{ url('admin/certificate-type/add') }}" class="menu-link">
+                <div data-i18n="Add Certificate Type">Add Certificate Type</div>
+            </a>
+        </li>
+        <li class="menu-item {{ $sub_active_tab == 'list' && $active_tab == 'certificate_type' ? 'active' : '' }}">
+            <a href="{{ url('admin/certificate-type/list') }}" class="menu-link">
+                <div data-i18n="Certificate Type List">Certificate Type List</div>
+            </a>
+        </li>
+    </ul>
+</li>
 <!-- Associate -->
 <li class="menu-item {{ $active_tab == 'associate' ? 'active open' : '' }}">
     <a href="javascript:void(0);" class="menu-link menu-toggle">
@@ -45,25 +63,6 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
         <li class="menu-item {{ $sub_active_tab == 'list' && $active_tab == 'client' ? 'active' : '' }}">
             <a href="{{ url('admin/client/list') }}" class="menu-link">
                 <div data-i18n="Client List">Client List</div>
-            </a>
-        </li>
-    </ul>
-</li>
-<!-- Certificate Type -->
-<li class="menu-item {{ $active_tab == 'certificate_type' ? 'active open' : '' }}">
-    <a href="javascript:void(0);" class="menu-link menu-toggle">
-        <i class="menu-icon icon-base ti tabler-certificate"></i>
-        <div data-i18n="Certificate Type">Certificate Type</div>
-    </a>
-    <ul class="menu-sub">
-        <li class="menu-item {{ $sub_active_tab == 'add' && $active_tab == 'certificate_type' ? 'active' : '' }}">
-            <a href="{{ url('admin/certificate-type/add') }}" class="menu-link">
-                <div data-i18n="Add Certificate Type">Add Certificate Type</div>
-            </a>
-        </li>
-        <li class="menu-item {{ $sub_active_tab == 'list' && $active_tab == 'certificate_type' ? 'active' : '' }}">
-            <a href="{{ url('admin/certificate-type/list') }}" class="menu-link">
-                <div data-i18n="Certificate Type List">Certificate Type List</div>
             </a>
         </li>
     </ul>

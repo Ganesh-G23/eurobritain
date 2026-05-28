@@ -49,13 +49,13 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label">Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" name="issue_date"
+                            <input type="date" class="form-control" id="issue_date" name="issue_date"
                                 value="{{ old('issue_date', $issue_date) }}">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label">Initial Certificate Granted On</label>
-                            <input type="date" class="form-control" id="issue_date"  name="initial_certificate_granted_on"
+                            <input type="date" class="form-control" id="initial_certificate_granted_on" name="initial_certificate_granted_on"
                                 value="{{ old('initial_certificate_granted_on', $details->initial_certificate_granted_on?->format('Y-m-d')) }}">
                             <span class="ajax-error"></span>
                         </div>
@@ -90,8 +90,8 @@
 @endsection
 @section('scripts')
     <script>
-        const renewalDays = {{ (int) ($renewal_days ?? 365) }};
-        const auditDays = {{ (int) ($audit_days ?? 365) }};
+        const renewalYears = {{ (int) ($renewal_years ?? 1) }};
+        const auditYears = {{ (int) ($audit_years ?? 1) }};
         const renewalPeriodRaw = @json($certificateType->renewal_period ?? '');
         const auditPeriodRaw = @json($certificateType->audit_period ?? '');
         const logExpiryUrl = '{{ url('admin/certificate/log-expiry-calc') }}';
@@ -119,7 +119,7 @@
             }
             const issue = new Date(issueVal + 'T00:00:00');
             const expiry = new Date(issue);
-            expiry.setDate(expiry.getDate() + renewalDays);
+            expiry.setFullYear(expiry.getFullYear() + renewalYears);
             const calculatedExpiry = formatLocalDate(expiry);
             $('#date_of_expiry').val(calculatedExpiry);
 
@@ -127,12 +127,12 @@
                 issue_date: issueVal,
                 renewal_period_raw: renewalPeriodRaw,
                 audit_period_raw: auditPeriodRaw,
-                renewal_days_used_in_js: renewalDays,
-                audit_days_used_in_js: auditDays,
+                renewal_years_used_in_js: renewalYears,
+                audit_years_used_in_js: auditYears,
                 calculated_date_of_expiry: calculatedExpiry,
-                client_formula: 'date_of_expiry = issue_date + renewal_days_used_in_js (audit_days NOT applied on this form)',
-                note: renewalDays !== parseInt(String(renewalPeriodRaw).replace(/\D/g, ''), 10)
-                    ? 'JS renewal_days may not match first number in renewal_period_raw — check server parse_period_days log'
+                client_formula: 'date_of_expiry = issue_date + renewal_years_used_in_js (audit_years NOT applied on this form)',
+                note: renewalYears !== parseInt(String(renewalPeriodRaw).replace(/\D/g, ''), 10)
+                    ? 'JS renewal_years may not match first number in renewal_period_raw — check server parse_period_years log'
                     : null
             });
         }

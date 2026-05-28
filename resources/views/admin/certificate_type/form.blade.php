@@ -11,7 +11,41 @@
                     action="{{ $mode === 'edit' ? url('admin/certificate-type/update/' . $details->id) : url('admin/certificate-type/save') }}">
                     @csrf
                     <div class="col-12 ajax-msg"></div>
+                    @php
+                        $selectedTypes = old('types', $details->types ?? []);
+                    @endphp
                     <div class="row">
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label" for="name">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name"
+                                value="{{ old('name', $details->name) }}">
+                            <span class="ajax-error"></span>
+                        </div>
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label" for="types">Type <span class="text-danger">*</span></label>
+                            <select class="form-select text-select2" id="types" name="types[]" multiple>
+                                @foreach ($type_options as $value => $label)
+                                    <option value="{{ $value }}"
+                                        {{ in_array($value, (array) $selectedTypes, true) ? 'selected' : '' }}>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <span class="ajax-error"></span>
+                        </div>
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label" for="category">Certificate Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="category" name="category">
+                                <option value="">Select</option>
+                                @foreach ($category_options as $value => $label)
+                                    <option value="{{ $value }}"
+                                        {{ old('category', $details->category) === $value ? 'selected' : '' }}>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <span class="ajax-error"></span>
+                        </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="code">Code <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="code" name="code"
@@ -24,27 +58,28 @@
                                 value="{{ old('prefix', $details->prefix) }}">
                             <span class="ajax-error"></span>
                         </div>
-                        <div class="mb-3 col-12 ajax-field">
+                        <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label" for="description">Description</label>
-                            <textarea class="form-control" id="description" name="description" rows="3">{{ old('description', $details->description) }}</textarea>
+                            <input type="text" class="form-control" id="description" name="description"
+                                value="{{ old('description', $details->description) }}">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label" for="audit_period">Audit Period <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="audit_period" name="audit_period"
+                            <label class="form-label" for="audit_period">Audit Period (Years) <span class="text-danger">*</span></label>
+                            <input type="number" min="1" step="1" class="form-control" id="audit_period" name="audit_period"
                                 value="{{ old('audit_period', $details->audit_period) }}"
-                                placeholder="e.g. 365 days">
+                                placeholder="e.g. 1">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label" for="renewal_period">Renewal Period <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="renewal_period" name="renewal_period"
+                            <label class="form-label" for="renewal_period">Renewal Period (Years) <span class="text-danger">*</span></label>
+                            <input type="number" min="1" step="1" class="form-control" id="renewal_period" name="renewal_period"
                                 value="{{ old('renewal_period', $details->renewal_period) }}"
-                                placeholder="e.g. 365 days">
+                                placeholder="e.g. 3">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label" for="price">Price <span class="text-danger">*</span></label>
+                            <label class="form-label" for="price">Base Price <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" class="form-control" id="price" name="price"
                                 value="{{ old('price', $details->price) }}">
                             <span class="ajax-error"></span>
@@ -61,6 +96,16 @@
 @endsection
 @section('scripts')
     <script>
+        $(function() {
+            if ($.fn.select2) {
+                $('#types').select2({
+                    placeholder: 'Select type(s)',
+                    allowClear: true,
+                    width: '100%',
+                });
+            }
+        });
+
         $(document).on('submit', '#ajax-form', function(e) {
             e.preventDefault();
             clearAjaxErrors();

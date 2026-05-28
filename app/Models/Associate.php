@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -28,6 +29,16 @@ class Associate extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'associate_id');
+    }
+
+    public function certificateTypes(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            CertificateType::class,
+            'associate_certificate_types',
+            'associate_id',
+            'certificate_type_id'
+        )->withPivot('amount')->withTimestamps();
     }
 
     public function payments(): HasMany

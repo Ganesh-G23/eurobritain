@@ -12,4 +12,8 @@ class CertificateType extends Model
     protected $table = 'certificate_types';
 
     protected $guarded = [];
+
+    protected $casts = [
+        'types' => 'array',
+    ];
 }

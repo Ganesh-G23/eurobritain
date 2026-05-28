@@ -211,8 +211,8 @@ class CertificateController extends Controller
         $application = $this->loadApplicationForForm($applicationId);
         $client = $application->client;
         $certificateType = $application->certificateType;
-        $renewalDays = $this->parsePeriodDays($certificateType->renewal_period, 'renewal_period');
-        $auditDays = $this->parsePeriodDays($certificateType->audit_period, 'audit_period');
+        $renewalYears = $this->parsePeriodYears($certificateType->renewal_period, 'renewal_period');
+        $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
 
         $this->logExpiryCalculation('add_form_load', [
             'application_id' => $applicationId,
@@ -220,9 +220,9 @@ class CertificateController extends Controller
             'certificate_type_code' => $certificateType->code,
             'renewal_period_raw' => $certificateType->renewal_period,
             'audit_period_raw' => $certificateType->audit_period,
-            'renewal_days_for_js' => $renewalDays,
-            'audit_days_for_js' => $auditDays,
-            'client_formula' => 'date_of_expiry = issue_date + renewal_days_for_js (audit_days NOT used on certificate form)',
+            'renewal_years_for_js' => $renewalYears,
+            'audit_years_for_js' => $auditYears,
+            'client_formula' => 'date_of_expiry = issue_date + renewal_years_for_js (audit_years NOT used on certificate form)',
         ]);
 
         return view('admin.certificate.form', [
@@ -238,8 +238,8 @@ class CertificateController extends Controller
             'issue_date' => '',
             'date_of_expiry' => '',
             'audit_expiry_date' => '',
-            'renewal_days' => $renewalDays,
-            'audit_days' => $auditDays,
+            'renewal_years' => $renewalYears,
+            'audit_years' => $auditYears,
         ]);
     }
 
@@ -272,8 +272,8 @@ class CertificateController extends Controller
 
         $certificateType = $application->certificateType;
         $issueDate = Carbon::parse($request->input('issue_date'));
-        $renewalDays = $this->parsePeriodDays($certificateType->renewal_period, 'renewal_period');
-        $dateOfExpiry = $issueDate->copy()->addDays($renewalDays);
+        $renewalYears = $this->parsePeriodYears($certificateType->renewal_period, 'renewal_period');
+        $dateOfExpiry = $issueDate->copy()->addYears($renewalYears);
         $applicationUpdate = $this->buildApplicationExpiryUpdateForCertificateSave(
             $request,
             $certificateType,
@@ -287,11 +287,11 @@ class CertificateController extends Controller
             'request_latest_audit_date' => $request->input('latest_audit_date'),
             'renewal_period_raw' => $certificateType->renewal_period,
             'audit_period_raw' => $certificateType->audit_period,
-            'renewal_days' => $renewalDays,
+            'renewal_years' => $renewalYears,
             'calculated_date_of_expiry' => $dateOfExpiry->format('Y-m-d'),
             'calculated_audit_expiry_date' => $applicationUpdate['audit_expiry_date'] ?? null,
             'application_update_keys' => array_keys($applicationUpdate),
-            'formula_certificate_expiry' => 'issue_date + renewal_days',
+            'formula_certificate_expiry' => 'issue_date + renewal_years',
             'formula_audit_expiry' => $request->filled('latest_audit_date')
                 ? 'latest_audit_date + audit_period'
                 : 'skipped (renewal — latest_audit_date empty)',
@@ -345,16 +345,16 @@ class CertificateController extends Controller
 
         $application = $details->certificateApplication;
         $certificateType = $details->certificateType;
-        $renewalDays = $this->parsePeriodDays($certificateType->renewal_period, 'renewal_period');
-        $auditDays = $this->parsePeriodDays($certificateType->audit_period, 'audit_period');
+        $renewalYears = $this->parsePeriodYears($certificateType->renewal_period, 'renewal_period');
+        $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
 
         $this->logExpiryCalculation('edit_form_load', [
             'certificate_id' => $details->id,
             'certificate_type_id' => $certificateType->id,
             'renewal_period_raw' => $certificateType->renewal_period,
             'audit_period_raw' => $certificateType->audit_period,
-            'renewal_days_for_js' => $renewalDays,
-            'audit_days_for_js' => $auditDays,
+            'renewal_years_for_js' => $renewalYears,
+            'audit_years_for_js' => $auditYears,
             'stored_date_of_expiry' => $details->date_of_expiry?->format('Y-m-d'),
             'stored_issue_date' => $details->issue_date?->format('Y-m-d'),
         ]);
@@ -372,8 +372,8 @@ class CertificateController extends Controller
             'issue_date' => $details->issue_date?->format('Y-m-d') ?? '',
             'date_of_expiry' => $details->date_of_expiry?->format('Y-m-d') ?? '',
             'audit_expiry_date' => $application?->audit_expiry_date?->format('Y-m-d') ?? '',
-            'renewal_days' => $renewalDays,
-            'audit_days' => $auditDays,
+            'renewal_years' => $renewalYears,
+            'audit_years' => $auditYears,
         ]);
     }
 
@@ -399,8 +399,8 @@ class CertificateController extends Controller
 
         $issueDate = Carbon::parse($request->input('issue_date'));
         $certificateType = $certificate->certificateType;
-        $renewalDays = $this->parsePeriodDays($certificateType->renewal_period, 'renewal_period');
-        $dateOfExpiry = $issueDate->copy()->addDays($renewalDays);
+        $renewalYears = $this->parsePeriodYears($certificateType->renewal_period, 'renewal_period');
+        $dateOfExpiry = $issueDate->copy()->addYears($renewalYears);
         $applicationUpdate = $this->buildApplicationExpiryUpdateForCertificateSave(
             $request,
             $certificateType,
@@ -413,7 +413,7 @@ class CertificateController extends Controller
             'request_latest_audit_date' => $request->input('latest_audit_date'),
             'renewal_period_raw' => $certificateType->renewal_period,
             'audit_period_raw' => $certificateType->audit_period,
-            'renewal_days' => $renewalDays,
+            'renewal_years' => $renewalYears,
             'calculated_date_of_expiry' => $dateOfExpiry->format('Y-m-d'),
             'calculated_audit_expiry_date' => $applicationUpdate['audit_expiry_date'] ?? null,
             'application_update_keys' => array_keys($applicationUpdate),
@@ -513,7 +513,7 @@ class CertificateController extends Controller
 
         $application = $this->loadApplicationForForm($applicationId);
         $certificateType = $application->certificateType;
-        $auditDays = $this->parsePeriodDays($certificateType->audit_period, 'audit_period');
+        $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
         $latestCertificate = $application->certificates()->orderByDesc('id')->first();
 
         $this->logExpiryCalculation('audit_form_load', [
@@ -521,8 +521,8 @@ class CertificateController extends Controller
             'certificate_type_id' => $certificateType->id,
             'audit_period_raw' => $certificateType->audit_period,
             'renewal_period_raw' => $certificateType->renewal_period,
-            'audit_days_for_js' => $auditDays,
-            'client_formula' => 'audit_expiry_date = latest_audit_date + audit_days_for_js',
+            'audit_years_for_js' => $auditYears,
+            'client_formula' => 'audit_expiry_date = latest_audit_date + audit_years_for_js',
         ]);
 
         return view('admin.certificate.audit_form', [
@@ -535,7 +535,7 @@ class CertificateController extends Controller
             'certificateType' => $certificateType,
             'issue_date' => '',
             'audit_expiry_date' => '',
-            'audit_days' => $auditDays,
+            'audit_years' => $auditYears,
             'latest_certificate' => $latestCertificate,
         ]);
     }
@@ -573,17 +573,17 @@ class CertificateController extends Controller
         }
 
         $certificateType = $application->certificateType;
-        $auditDays = $this->parsePeriodDays($certificateType->audit_period, 'audit_period');
+        $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
         $latestAuditDate = Carbon::parse($request->input('latest_audit_date'));
-        $auditExpiryDate = $latestAuditDate->copy()->addDays($auditDays);
+        $auditExpiryDate = $latestAuditDate->copy()->addYears($auditYears);
 
         $this->logExpiryCalculation('save_audit', [
             'certificate_application_id' => $application->id,
             'request_latest_audit_date' => $request->input('latest_audit_date'),
             'audit_period_raw' => $certificateType->audit_period,
-            'audit_days' => $auditDays,
+            'audit_years' => $auditYears,
             'calculated_audit_expiry_date' => $auditExpiryDate->format('Y-m-d'),
-            'formula_audit_expiry' => 'latest_audit_date + audit_days',
+            'formula_audit_expiry' => 'latest_audit_date + audit_years',
         ]);
 
         $client = $application->client;
@@ -663,9 +663,9 @@ class CertificateController extends Controller
         ];
 
         if ($request->filled('latest_audit_date')) {
-            $auditDays = $this->parsePeriodDays($certificateType->audit_period, 'audit_period');
+            $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
             $applicationUpdate['audit_expiry_date'] = Carbon::parse($request->input('latest_audit_date'))
-                ->addDays($auditDays)
+                ->addYears($auditYears)
                 ->format('Y-m-d');
         }
 
@@ -698,8 +698,8 @@ class CertificateController extends Controller
             'latest_audit_date' => $request->input('latest_audit_date'),
             'renewal_period_raw' => $request->input('renewal_period_raw'),
             'audit_period_raw' => $request->input('audit_period_raw'),
-            'renewal_days_used_in_js' => $request->input('renewal_days_used_in_js'),
-            'audit_days_used_in_js' => $request->input('audit_days_used_in_js'),
+            'renewal_years_used_in_js' => $request->input('renewal_years_used_in_js'),
+            'audit_years_used_in_js' => $request->input('audit_years_used_in_js'),
             'calculated_date_of_expiry' => $request->input('calculated_date_of_expiry'),
             'calculated_audit_expiry_date' => $request->input('calculated_audit_expiry_date'),
             'client_formula' => $request->input('client_formula'),
@@ -714,28 +714,28 @@ class CertificateController extends Controller
         Log::info('[CertificateExpiry] '.$stage, $data);
     }
 
-    protected function parsePeriodDays(?string $period, string $label = 'period'): int
+    protected function parsePeriodYears(?string $period, string $label = 'period'): int
     {
         $raw = $period === null ? null : trim($period);
-        $parsed = 365;
+        $parsed = 1;
         $regexMatched = false;
         $regexCapture = null;
 
         if ($raw === null || $raw === '') {
-            $parsed = 365;
+            $parsed = 1;
         } elseif (preg_match('/(\d+)/', $raw, $matches)) {
             $regexMatched = true;
             $regexCapture = $matches[1];
             $parsed = max(1, (int) $matches[1]);
         }
 
-        $this->logExpiryCalculation('parse_period_days', [
+        $this->logExpiryCalculation('parse_period_years', [
             'label' => $label,
             'raw_value' => $period,
             'trimmed_value' => $raw,
             'regex_matched' => $regexMatched,
             'regex_first_number' => $regexCapture,
-            'parsed_days' => $parsed,
+            'parsed_years' => $parsed,
             'warning' => $label === 'renewal_period' && $period !== null && str_contains(strtolower((string) $period), 'audit')
                 ? 'renewal_period string contains word audit — check certificate type fields are not swapped'
                 : null,

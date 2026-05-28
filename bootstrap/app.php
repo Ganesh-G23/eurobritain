@@ -2,6 +2,8 @@
 
 use App\Http\Middleware\AdminAll;
 use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\AssociateAll;
+use App\Http\Middleware\AssociateAuth;
 use App\Http\Middleware\EnsurePortalAuthenticated;
 use App\Http\Middleware\EnsurePortalParent;
 use App\Http\Middleware\EnsurePortalStudent;
@@ -25,7 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'prevent-back' => PreventBackHistory::class,
             'admin-auth' => AdminAuth::class,
-            'admin-all' => AdminAll::class
+            'admin-all' => AdminAll::class,
+            'associate-auth' => AssociateAuth::class,
+            'associate-all' => AssociateAll::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

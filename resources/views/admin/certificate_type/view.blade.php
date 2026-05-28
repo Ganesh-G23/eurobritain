@@ -14,6 +14,10 @@
             <div class="card-body">
                 <div class="row g-4">
                     <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Name</label>
+                        <p class="mb-0 fw-medium">{{ $details->name ?? '—' }}</p>
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label text-muted mb-1">Code</label>
                         <p class="mb-0 fw-medium">{{ $details->code }}</p>
                     </div>
@@ -21,17 +25,31 @@
                         <label class="form-label text-muted mb-1">Prefix</label>
                         <p class="mb-0 fw-medium">{{ $details->prefix }}</p>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Type</label>
+                        @php
+                            $selectedTypes = (array) ($details->types ?? []);
+                            $typeLabels = collect($selectedTypes)->map(function ($type) use ($type_options) {
+                                return $type_options[$type] ?? $type;
+                            })->all();
+                        @endphp
+                        <p class="mb-0 fw-medium">{{ !empty($typeLabels) ? implode(', ', $typeLabels) : '—' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Certificate Type</label>
+                        <p class="mb-0 fw-medium">{{ $category_options[$details->category] ?? '—' }}</p>
+                    </div>
                     <div class="col-12">
                         <label class="form-label text-muted mb-1">Description</label>
                         <p class="mb-0 fw-medium">{{ $details->description ?: '—' }}</p>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label text-muted mb-1">Audit Period</label>
-                        <p class="mb-0 fw-medium">{{ $details->audit_period ?? '—' }}</p>
+                        <label class="form-label text-muted mb-1">Audit Period (Years)</label>
+                        <p class="mb-0 fw-medium">{{ $details->audit_period ? $details->audit_period.' Year'.((int) $details->audit_period > 1 ? 's' : '') : '—' }}</p>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label text-muted mb-1">Renewal Period</label>
-                        <p class="mb-0 fw-medium">{{ $details->renewal_period ?? '—' }}</p>
+                        <label class="form-label text-muted mb-1">Renewal Period (Years)</label>
+                        <p class="mb-0 fw-medium">{{ $details->renewal_period ? $details->renewal_period.' Year'.((int) $details->renewal_period > 1 ? 's' : '') : '—' }}</p>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-muted mb-1">Price</label>

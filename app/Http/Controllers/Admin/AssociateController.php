@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Associate;
+use App\Models\CertificateType;
 use App\Models\Country;
 use App\Models\State;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class AssociateController extends Controller
@@ -60,6 +62,8 @@ class AssociateController extends Controller
             'details' => new Associate(),
             'countries' => Country::query()->orderBy('name')->get(['id', 'name']),
             'preselectedStates' => collect(),
+            'certificateTypes' => $this->certificateTypeOptions(),
+            'selectedCertificateTypes' => collect(),
         ];
 
         return view('admin.associate.form', $data);
@@ -77,6 +81,9 @@ class AssociateController extends Controller
             'state_id' => 'required|exists:states,id',
             'city' => 'required|string|max:120',
             'pincode' => 'required|string|max:20',
+            'certificate_types' => 'required|array|min:1',
+            'certificate_types.*.certificate_type_id' => 'required|distinct|exists:certificate_types,id',
+            'certificate_types.*.amount' => 'required|numeric|min:0',
         ]);
 
         if ($validation->fails()) {
@@ -85,17 +92,21 @@ class AssociateController extends Controller
             return response()->json($this->response);
         }
 
-        Associate::query()->create([
-            'company_name' => $request->input('company_name'),
-            'contact_person' => $request->input('contact_person'),
-            'contact_email' => $request->input('contact_email'),
-            'contact_mobile' => $request->input('contact_mobile'),
-            'address' => $request->input('address'),
-            'country_id' => $request->input('country_id'),
-            'state_id' => $request->input('state_id'),
-            'city' => $request->input('city'),
-            'pincode' => $request->input('pincode'),
-        ]);
+        DB::transaction(function () use ($request) {
+            $associate = Associate::query()->create([
+                'company_name' => $request->input('company_name'),
+                'contact_person' => $request->input('contact_person'),
+                'contact_email' => $request->input('contact_email'),
+                'contact_mobile' => $request->input('contact_mobile'),
+                'address' => $request->input('address'),
+                'country_id' => $request->input('country_id'),
+                'state_id' => $request->input('state_id'),
+                'city' => $request->input('city'),
+                'pincode' => $request->input('pincode'),
+            ]);
+
+            $associate->certificateTypes()->sync($this->buildCertificateTypePivotPayload($request));
+        });
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Associate saved successfully.';
@@ -106,7 +117,9 @@ class AssociateController extends Controller
 
     public function edit($id)
     {
-        $details = Associate::query()->findOrFail($id);
+        $details = Associate::query()
+            ->with('certificateTypes:id,code,name,description,price')
+            ->findOrFail($id);
 
         $data = [
             'title' => 'Edit Associate',
@@ -119,6 +132,13 @@ class AssociateController extends Controller
                 ->where('country_id', $details->country_id)
                 ->orderBy('name')
                 ->get(['id', 'name']),
+            'certificateTypes' => $this->certificateTypeOptions(),
+            'selectedCertificateTypes' => $details->certificateTypes
+                ->map(fn ($type) => [
+                    'certificate_type_id' => $type->id,
+                    'amount' => $type->pivot->amount,
+                ])
+                ->values(),
         ];
 
         return view('admin.associate.form', $data);
@@ -143,6 +163,9 @@ class AssociateController extends Controller
             'state_id' => 'required|exists:states,id',
             'city' => 'required|string|max:120',
             'pincode' => 'required|string|max:20',
+            'certificate_types' => 'required|array|min:1',
+            'certificate_types.*.certificate_type_id' => 'required|distinct|exists:certificate_types,id',
+            'certificate_types.*.amount' => 'required|numeric|min:0',
         ]);
 
         if ($validation->fails()) {
@@ -151,17 +174,21 @@ class AssociateController extends Controller
             return response()->json($this->response);
         }
 
-        $associate->update([
-            'company_name' => $request->input('company_name'),
-            'contact_person' => $request->input('contact_person'),
-            'contact_email' => $request->input('contact_email'),
-            'contact_mobile' => $request->input('contact_mobile'),
-            'address' => $request->input('address'),
-            'country_id' => $request->input('country_id'),
-            'state_id' => $request->input('state_id'),
-            'city' => $request->input('city'),
-            'pincode' => $request->input('pincode'),
-        ]);
+        DB::transaction(function () use ($associate, $request) {
+            $associate->update([
+                'company_name' => $request->input('company_name'),
+                'contact_person' => $request->input('contact_person'),
+                'contact_email' => $request->input('contact_email'),
+                'contact_mobile' => $request->input('contact_mobile'),
+                'address' => $request->input('address'),
+                'country_id' => $request->input('country_id'),
+                'state_id' => $request->input('state_id'),
+                'city' => $request->input('city'),
+                'pincode' => $request->input('pincode'),
+            ]);
+
+            $associate->certificateTypes()->sync($this->buildCertificateTypePivotPayload($request));
+        });
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Associate updated successfully.';
@@ -173,7 +200,7 @@ class AssociateController extends Controller
     public function view($id)
     {
         $details = Associate::query()
-            ->with(['country:id,name', 'state:id,name'])
+            ->with(['country:id,name', 'state:id,name', 'certificateTypes:id,code,name,description'])
             ->findOrFail($id);
 
         $data = [
@@ -184,5 +211,26 @@ class AssociateController extends Controller
         ];
 
         return view('admin.associate.view', $data);
+    }
+
+    private function certificateTypeOptions()
+    {
+        return CertificateType::query()
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'description', 'price']);
+    }
+
+    private function buildCertificateTypePivotPayload(Request $request): array
+    {
+        return collect($request->input('certificate_types', []))
+            ->filter(fn ($row) => isset($row['certificate_type_id']) && $row['certificate_type_id'] !== '')
+            ->mapWithKeys(function ($row) {
+                return [
+                    (int) $row['certificate_type_id'] => [
+                        'amount' => (float) $row['amount'],
+                    ],
+                ];
+            })
+            ->all();
     }
 }
