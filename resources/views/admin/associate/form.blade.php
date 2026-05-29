@@ -101,7 +101,7 @@
             ->map(function ($type) {
                 return [
                     'id' => $type->id,
-                    'label' => trim(($type->code ?? '') . ' - ' . ($type->name ?? $type->description ?? '')),
+                    'label' => (string) ($type->description ?? ''),
                     'price' => (float) ($type->price ?? 0),
                 ];
             })
@@ -136,8 +136,7 @@
         function buildCertTypeRow(index, selectedId = '', amountVal = '') {
             const optionsHtml = certTypeOptions.map(function(option) {
                 const selected = String(option.id) === String(selectedId) ? ' selected' : '';
-                const text = `${option.label} (Base: INR ${Number(option.price).toFixed(2)})`;
-                return `<option value="${option.id}"${selected}>${text}</option>`;
+                return `<option value="${option.id}"${selected}>${option.label}</option>`;
             }).join('');
 
             return `

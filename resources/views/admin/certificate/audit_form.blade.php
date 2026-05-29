@@ -4,7 +4,7 @@
         <div class="card">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h5 class="mb-0">{{ $title }}</h5>
-                <a href="{{ url('admin/certificate/due-audit-list') }}" class="btn btn-label-secondary btn-sm">Back</a>
+                <a href="{{ url('admin/certificate/due-list') }}" class="btn btn-label-secondary btn-sm">Back</a>
             </div>
             <div class="card-body">
                 <form id="ajax-form" method="POST" action="{{ url('admin/certificate/save-audit') }}">
@@ -47,7 +47,7 @@
                         </div>
                         <div class="mb-3 col-12 ajax-field">
                             <label class="form-label">Scope</label>
-                            <textarea class="form-control" name="scope" rows="3">{{ old('scope') }}</textarea>
+                            <textarea class="form-control" name="scope" rows="3">{{ old('scope', $application->scope ?? '') }}</textarea>
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-12 ajax-field">

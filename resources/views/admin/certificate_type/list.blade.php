@@ -33,6 +33,7 @@
                                 <th>Audit Period (Years)</th>
                                 <th>Renewal Period (Years)</th>
                                 <th>Price</th>
+                                <!-- <th>Template</th> -->
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
@@ -57,6 +58,13 @@
                                     <td>{{ $row->audit_period ? $row->audit_period.' Year'.((int) $row->audit_period > 1 ? 's' : '') : '—' }}</td>
                                     <td>{{ $row->renewal_period ? $row->renewal_period.' Year'.((int) $row->renewal_period > 1 ? 's' : '') : '—' }}</td>
                                     <td>{{ '₹ '.number_format((float) $row->price, 2) }}</td>
+                                    <!-- <td>
+                                        @if ($row->certificate_template)
+                                            <a href="{{ url('storage/app/uploads/temp/' . $row->certificate_template) }}" target="_blank" title="View template">View</a>
+                                        @else
+                                            —
+                                        @endif
+                                    </td> -->
                                     <td class="text-center text-nowrap">
                                         <a href="{{ url('admin/certificate-type/edit/' . $row->id) }}"
                                             class="btn btn-sm btn-icon btn-label-primary" title="Edit">
@@ -70,7 +78,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="10" class="text-center text-muted py-4">No certificate types found.</td>
+                                    <td colspan="11" class="text-center text-muted py-4">No certificate types found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

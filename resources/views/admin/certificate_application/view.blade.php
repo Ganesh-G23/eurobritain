@@ -117,6 +117,39 @@
                         <p class="mb-0 fw-medium">{{ $details->in_design ?: '—' }}</p>
                     </div>
                     <div class="col-12">
+                        <h6 class="mb-2">Trademark Details</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Trademark Name</label>
+                        <p class="mb-0 fw-medium">{{ $details->trademark_name ?: '—' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Trademark Application Number</label>
+                        <p class="mb-0 fw-medium">{{ $details->trademark_application_number ?: '—' }}</p>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label text-muted mb-1">Trademark Image</label>
+                        @if ($details->trademark_image_url)
+                            @php
+                                $tmExt = strtolower(pathinfo($details->trademark_image, PATHINFO_EXTENSION));
+                                $tmIsImage = in_array($tmExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+                            @endphp
+                            @if ($tmIsImage)
+                                <div>
+                                    <a href="{{ $details->trademark_image_url }}" target="_blank">
+                                        <img src="{{ $details->trademark_image_url }}" alt="Trademark Image" class="img-thumbnail" style="max-height:200px; max-width:320px; object-fit:contain;">
+                                    </a>
+                                </div>
+                            @else
+                                <p class="mb-0">
+                                    <a href="{{ $details->trademark_image_url }}" target="_blank">{{ $details->trademark_image }}</a>
+                                </p>
+                            @endif
+                        @else
+                            <p class="mb-0 fw-medium">—</p>
+                        @endif
+                    </div>
+                    <div class="col-12">
                         <label class="form-label text-muted mb-1">Service Requested Audit Type</label>
                         <p class="mb-0 fw-medium">{{ !empty($auditTypeNames) ? implode(', ', $auditTypeNames) : '—' }}</p>
                     </div>

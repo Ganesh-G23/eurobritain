@@ -84,6 +84,20 @@
                                 value="{{ old('price', $details->price) }}">
                             <span class="ajax-error"></span>
                         </div>
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label">Certificate Template</label>
+                            <input type="file" class="form-control" id="certificate_template_file" accept="image/*,.pdf,.doc,.docx">
+                            <input type="hidden" name="certificate_template" id="certificate_template"
+                                value="{{ old('certificate_template', $details->certificate_template) }}">
+                            @if (!empty($details->certificate_template))
+                                <div class="mt-1 small">
+                                    Current:
+                                    <a href="{{ url('storage/app/uploads/temp/' . $details->certificate_template) }}" target="_blank">{{ $details->certificate_template }}</a>
+                                </div>
+                            @endif
+                            <span class="small text-muted file-upload-status" data-for="certificate_template"></span>
+                            <span class="ajax-error"></span>
+                        </div>
                     </div>
                     <div class="mt-2">
                         <button type="submit" class="btn btn-primary me-2 submit-button">Save</button>
@@ -96,6 +110,9 @@
 @endsection
 @section('scripts')
     <script>
+        const uploadUrl = '{{ url('admin/common/upload_files') }}';
+        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
         $(function() {
             if ($.fn.select2) {
                 $('#types').select2({
@@ -104,6 +121,44 @@
                     width: '100%',
                 });
             }
+        });
+
+        $('#certificate_template_file').on('change', function() {
+            const file = this.files[0];
+            const $hidden = $('#certificate_template');
+            const $status = $('.file-upload-status[data-for="certificate_template"]');
+
+            if (!file) {
+                return;
+            }
+
+            $status.text('Uploading...');
+            const formData = new FormData();
+            formData.append('files[]', file);
+            formData.append('_token', csrfToken);
+
+            $.ajax({
+                url: uploadUrl,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                success: function(res) {
+                    if (res && res.status == 1 && res.data && res.data[0]) {
+                        $hidden.val(res.data[0].fileName);
+                        $status.removeClass('text-danger').addClass('text-success').text('Uploaded: ' + res.data[0].fileName);
+                    } else {
+                        $hidden.val('');
+                        $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                    }
+                },
+                error: function() {
+                    $hidden.val('');
+                    $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                }
+            });
         });
 
         $(document).on('submit', '#ajax-form', function(e) {

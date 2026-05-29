@@ -45,4 +45,11 @@ class CertificateApplication extends Model
             ? url('storage/app/uploads/temp/'.$this->application_document)
             : null;
     }
+
+    public function getTrademarkImageUrlAttribute(): ?string
+    {
+        return $this->trademark_image
+            ? url('storage/app/uploads/temp/'.$this->trademark_image)
+            : null;
+    }
 }

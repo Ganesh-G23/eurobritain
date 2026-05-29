@@ -38,6 +38,42 @@
         const uploadUrl = '{{ url('admin/common/upload_files') }}';
         const csrfToken = $('meta[name="csrf-token"]').attr('content');
 
+        function resetCertificateTypeDropdown(prefix) {
+            $('#' + prefix + '_certificate_type_id')
+                .prop('disabled', true)
+                .empty()
+                .append('<option value="">Select System Standard</option>');
+        }
+
+        function loadCertificateTypesFor(prefix) {
+            const associateId = $('#associate_id').val();
+            const type = $('#' + prefix + '_app_type').val();
+            const category = $('#' + prefix + '_app_category').val();
+            const $dropdown = $('#' + prefix + '_certificate_type_id');
+
+            resetCertificateTypeDropdown(prefix);
+
+            if (!associateId || !type || !category) {
+                return;
+            }
+
+            $dropdown.prop('disabled', true).empty().append('<option value="">Loading...</option>');
+
+            $.get('{{ url('admin/certificate-application/certificate-types') }}', {
+                associate_id: associateId,
+                type: type,
+                category: category
+            }, function(res) {
+                $dropdown.empty().append('<option value="">Select System Standard</option>');
+                (res || []).forEach(function(ct) {
+                    $dropdown.append('<option value="' + ct.id + '">' + ct.description + '</option>');
+                });
+                $dropdown.prop('disabled', false);
+            }, 'json').fail(function() {
+                resetCertificateTypeDropdown(prefix);
+            });
+        }
+
         function resetClientForms() {
             $('#new-client-form-wrap, #old-client-form-wrap').addClass('d-none');
             $('#new-client-form, #old-client-form').each(function() {
@@ -45,11 +81,21 @@
                 $(this).find('input[type="hidden"]').not('[name="_token"]').val('');
                 $(this).find('.file-upload-status').text('');
             });
+            resetCertificateTypeDropdown('new');
+            resetCertificateTypeDropdown('old');
         }
 
         function setClientIdOnForms(clientId) {
             $('#new_form_client_id, #old_form_client_id').val(clientId);
         }
+
+        $(document).on('change', '#new_app_type, #new_app_category', function() {
+            loadCertificateTypesFor('new');
+        });
+
+        $(document).on('change', '#old_app_type, #old_app_category', function() {
+            loadCertificateTypesFor('old');
+        });
 
         $('#associate_id').on('change', function() {
             const associateId = $(this).val();
@@ -169,5 +215,8 @@
 
         bindCertAppFormSubmit('#new-client-form');
         bindCertAppFormSubmit('#old-client-form');
+
+        resetCertificateTypeDropdown('new');
+        resetCertificateTypeDropdown('old');
     </script>
 @endsection

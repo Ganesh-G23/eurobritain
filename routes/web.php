@@ -68,7 +68,6 @@ Route::middleware('prevent-back')
 
             Route::prefix('certificate')->group(function () {
                 Route::get('due-list', [CertificateController::class, 'dueList'])->name('admin.certificate.due_list');
-                Route::get('due-audit-list', [CertificateController::class, 'dueAuditList'])->name('admin.certificate.due_audit_list');
                 Route::get('list', [CertificateController::class, 'list'])->name('admin.certificate.list');
                 Route::get('add', [CertificateController::class, 'addForm']);
                 Route::post('save', [CertificateController::class, 'save']);
@@ -114,6 +113,7 @@ Route::middleware('prevent-back')
                 Route::get('add', [CertificateApplicationController::class, 'add'])->name('admin.certificate_application.add');
                 Route::get('list', [CertificateApplicationController::class, 'list'])->name('admin.certificate_application.list');
                 Route::get('clients', [CertificateApplicationController::class, 'getClients']);
+                Route::get('certificate-types', [CertificateApplicationController::class, 'getCertificateTypes']);
                 Route::get('check_client', [CertificateApplicationController::class, 'checkClient']);
                 Route::post('save_documents', [CertificateApplicationController::class, 'saveDocuments']);
                 Route::post('resolve_old_client', [CertificateApplicationController::class, 'resolveOldClient']);

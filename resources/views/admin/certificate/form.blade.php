@@ -1,6 +1,15 @@
 @extends('admin.layouts.app')
 @php
     $isEdit = ($mode ?? 'add') === 'edit';
+    $certMode = $cert_mode ?? ($isEdit ? 'edit' : 'add');
+    $requireLatestAudit = ! $isEdit;
+    $showAuditExpiryPreview = ! $isEdit;
+    $initialGrantedValue = old(
+        'initial_certificate_granted_on',
+        $isEdit
+            ? $details->initial_certificate_granted_on?->format('Y-m-d')
+            : ($certMode === 'renewal' ? ($initial_granted_default ?? '') : '')
+    );
 @endphp
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
@@ -16,6 +25,7 @@
                     @csrf
                     @if (!$isEdit)
                         <input type="hidden" name="certificate_application_id" value="{{ $application->id }}">
+                        <input type="hidden" name="cert_mode" value="{{ $certMode }}">
                     @endif
 
                     <div class="col-12 ajax-msg"></div>
@@ -55,14 +65,19 @@
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
                             <label class="form-label">Initial Certificate Granted On</label>
-                            <input type="date" class="form-control" id="initial_certificate_granted_on" name="initial_certificate_granted_on"
-                                value="{{ old('initial_certificate_granted_on', $details->initial_certificate_granted_on?->format('Y-m-d')) }}">
+                            <input type="date" class="form-control" id="initial_certificate_granted_on"
+                                name="initial_certificate_granted_on" value="{{ $initialGrantedValue }}">
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6 ajax-field">
-                            <label class="form-label">Date of Latest Audit</label>
-                            <input type="date" class="form-control" name="latest_audit_date"
-                                value="{{ old('latest_audit_date', $details->latest_audit_date?->format('Y-m-d')) }}">
+                            <label class="form-label">Date of Latest Audit
+                                @if ($requireLatestAudit)
+                                    <span class="text-danger">*</span>
+                                @endif
+                            </label>
+                            <input type="date" class="form-control" id="latest_audit_date" name="latest_audit_date"
+                                value="{{ old('latest_audit_date', $details->latest_audit_date?->format('Y-m-d')) }}"
+                                @if ($requireLatestAudit) required @endif>
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-md-6">
@@ -70,9 +85,16 @@
                             <input type="date" class="form-control" id="date_of_expiry" readonly
                                 value="{{ $date_of_expiry }}">
                         </div>
+                        @if ($showAuditExpiryPreview)
+                            <div class="mb-3 col-md-6">
+                                <label class="form-label">Audit Expiry Date</label>
+                                <input type="date" class="form-control" id="audit_expiry_date_preview" readonly
+                                    value="{{ $audit_expiry_date }}">
+                            </div>
+                        @endif
                         <div class="mb-3 col-12 ajax-field">
                             <label class="form-label">Scope</label>
-                            <textarea class="form-control" name="scope" rows="3">{{ old('scope', $details->scope) }}</textarea>
+                            <textarea class="form-control" name="scope" rows="3">{{ old('scope', $details->scope ?? ($isEdit ? null : ($application->scope ?? ''))) }}</textarea>
                             <span class="ajax-error"></span>
                         </div>
                         <div class="mb-3 col-12 ajax-field">
@@ -92,10 +114,12 @@
     <script>
         const renewalYears = {{ (int) ($renewal_years ?? 1) }};
         const auditYears = {{ (int) ($audit_years ?? 1) }};
+        const certMode = @json($certMode);
         const renewalPeriodRaw = @json($certificateType->renewal_period ?? '');
         const auditPeriodRaw = @json($certificateType->audit_period ?? '');
         const logExpiryUrl = '{{ url('admin/certificate/log-expiry-calc') }}';
         const csrfToken = $('meta[name="csrf-token"]').attr('content');
+        const showAuditExpiryPreview = {{ $showAuditExpiryPreview ? 'true' : 'false' }};
 
         function formatLocalDate(d) {
             const year = d.getFullYear();
@@ -112,6 +136,43 @@
             }, payload));
         }
 
+        function recalcAuditExpiryPreview() {
+            if (!showAuditExpiryPreview) {
+                return;
+            }
+            const latestAuditVal = $('#latest_audit_date').val();
+            if (!latestAuditVal) {
+                $('#audit_expiry_date_preview').val('');
+                return;
+            }
+            const latestAudit = new Date(latestAuditVal + 'T00:00:00');
+            const auditExpiry = new Date(latestAudit);
+            auditExpiry.setFullYear(auditExpiry.getFullYear() + auditYears);
+            const calculatedAuditExpiry = formatLocalDate(auditExpiry);
+            $('#audit_expiry_date_preview').val(calculatedAuditExpiry);
+
+            logClientExpiry({
+                latest_audit_date: latestAuditVal,
+                audit_period_raw: auditPeriodRaw,
+                audit_years_used_in_js: auditYears,
+                calculated_audit_expiry_date: calculatedAuditExpiry,
+                client_formula: 'audit_expiry_date = latest_audit_date + audit_years_used_in_js'
+            });
+        }
+
+        function prefillFromIssueDate() {
+            const issueVal = $('#issue_date').val();
+            if (!issueVal) {
+                return;
+            }
+            if (!$('#latest_audit_date').val()) {
+                $('#latest_audit_date').val(issueVal);
+            }
+            if (certMode === 'first_issue' && !$('#initial_certificate_granted_on').val()) {
+                $('#initial_certificate_granted_on').val(issueVal);
+            }
+        }
+
         function recalcExpiryDates() {
             const issueVal = $('#issue_date').val();
             if (!issueVal) {
@@ -123,6 +184,9 @@
             const calculatedExpiry = formatLocalDate(expiry);
             $('#date_of_expiry').val(calculatedExpiry);
 
+            prefillFromIssueDate();
+            recalcAuditExpiryPreview();
+
             logClientExpiry({
                 issue_date: issueVal,
                 renewal_period_raw: renewalPeriodRaw,
@@ -130,14 +194,12 @@
                 renewal_years_used_in_js: renewalYears,
                 audit_years_used_in_js: auditYears,
                 calculated_date_of_expiry: calculatedExpiry,
-                client_formula: 'date_of_expiry = issue_date + renewal_years_used_in_js (audit_years NOT applied on this form)',
-                note: renewalYears !== parseInt(String(renewalPeriodRaw).replace(/\D/g, ''), 10)
-                    ? 'JS renewal_years may not match first number in renewal_period_raw — check server parse_period_years log'
-                    : null
+                client_formula: 'date_of_expiry = issue_date + renewal_years; audit_expiry_date = latest_audit_date + audit_years'
             });
         }
 
         $('#issue_date').on('change', recalcExpiryDates);
+        $('#latest_audit_date').on('change', recalcAuditExpiryPreview);
 
         $(document).on('submit', '#ajax-form', function(e) {
             e.preventDefault();

@@ -135,6 +135,19 @@
         <td colspan="3">{{ $certificateStandard }}</td>
     </tr>
     <tr>
+        <!-- <td class="th-label" colspan="4">Trademark Details</td>
+    </tr>
+    <tr>
+        <td class="th-label">Trademark Name :</td>
+        <td>{{ $details->trademark_name ?? '' }}</td>
+        <td class="th-label">Application Number :</td>
+        <td>{{ $details->trademark_application_number ?? '' }}</td>
+    </tr>
+    <tr>
+        <td class="th-label">Trademark Image :</td>
+        <td colspan="3">{{ $details->trademark_image ?? '' }}</td>
+    </tr>
+    <tr> -->
         <td class="th-label">Service Requested Audit Type :</td>
         <td colspan="3">{{ $auditTypesText }}</td>
     </tr>

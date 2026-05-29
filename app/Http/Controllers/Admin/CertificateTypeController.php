@@ -95,6 +95,7 @@ class CertificateTypeController extends Controller
             'audit_period' => 'required|integer|min:1|max:50',
             'renewal_period' => 'required|integer|min:1|max:50',
             'price' => 'required|numeric|min:0',
+            'certificate_template' => 'nullable|string|max:255',
         ]);
 
         if ($validation->fails()) {
@@ -113,6 +114,7 @@ class CertificateTypeController extends Controller
             'audit_period' => $request->input('audit_period'),
             'renewal_period' => $request->input('renewal_period'),
             'price' => $request->input('price'),
+            'certificate_template' => $request->input('certificate_template'),
         ]);
 
         $this->response['status'] = 1;
@@ -159,6 +161,7 @@ class CertificateTypeController extends Controller
             'audit_period' => 'required|integer|min:1|max:50',
             'renewal_period' => 'required|integer|min:1|max:50',
             'price' => 'required|numeric|min:0',
+            'certificate_template' => 'nullable|string|max:255',
         ]);
 
         if ($validation->fails()) {
@@ -177,6 +180,7 @@ class CertificateTypeController extends Controller
             'audit_period' => $request->input('audit_period'),
             'renewal_period' => $request->input('renewal_period'),
             'price' => $request->input('price'),
+            'certificate_template' => $request->input('certificate_template'),
         ]);
 
         $this->response['status'] = 1;

@@ -65,7 +65,7 @@
                                     <tbody>
                                         @foreach ($details->certificateTypes as $certificateType)
                                             <tr>
-                                                <td>{{ $certificateType->code }} - {{ $certificateType->name ?? $certificateType->description ?? '-' }}</td>
+                                                <td>{{ $certificateType->description ?? '-' }}</td>
                                                 <td class="text-end">{{ number_format((float) $certificateType->pivot->amount, 2) }}</td>
                                             </tr>
                                         @endforeach

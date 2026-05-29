@@ -56,12 +56,16 @@
                                 <th>Company</th>
                                 <th>Associate</th>
                                 <th>Certificate Type</th>
-                                <th>Expiry</th>
+                                <th>Type</th>
+                                <th>Next Due</th>
                                 <th class="text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse ($rows as $index => $row)
+                                @php
+                                    $dueInfo = $row->due_info ?? [];
+                                @endphp
                                 <tr>
                                     <td>{{ $serial_start + $index + 1 }}</td>
                                     <td>{{ $row->application_number }}</td>
@@ -69,20 +73,27 @@
                                     <td>{{ $row->client->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->certificateType->description ?? $row->certificateType->code ?? '—' }}</td>
                                     <td>
-                                        @if ($row->date_of_expiry)
-                                            {{ $row->date_of_expiry->format('d M Y') }}
+                                        <span class="badge {{ $dueInfo['badge_class'] ?? 'bg-label-secondary' }}">
+                                            {{ $dueInfo['label'] ?? '—' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (!empty($dueInfo['due_date']))
+                                            {{ $dueInfo['due_date']->format('d M Y') }}
                                         @else
                                             <span class="badge bg-label-warning">First issue due</span>
                                         @endif
                                     </td>
                                     <td class="text-center">
-                                        <a href="{{ url('admin/certificate/add?application_id=' . $row->id) }}"
-                                            class="btn btn-sm btn-primary">Certificate</a>
+                                        <a href="{{ $dueInfo['action_url'] ?? '#' }}"
+                                            class="btn btn-sm {{ ($dueInfo['kind'] ?? '') === 'surveillance' ? 'btn-warning' : 'btn-primary' }}">
+                                            {{ $dueInfo['action_label'] ?? 'Open' }}
+                                        </a>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">No due certificates found.</td>
+                                    <td colspan="8" class="text-center text-muted py-4">No due items found.</td>
                                 </tr>
                             @endforelse
                         </tbody>

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 class CertificateController extends Controller
 {
-    public const DUE_WINDOW_DAYS = 10;
+    public const DUE_WINDOW_DAYS = 1500;
 
     public function dueList(Request $request)
     {
@@ -31,65 +31,12 @@ class CertificateController extends Controller
             ->with([
                 'client:id,company_name,associate_id',
                 'client.associate:id,company_name',
-                'certificateType:id,description,code',
+                'certificateType:id,description,code,renewal_period,audit_period',
+                'certificates:id,certificate_application_id,type',
             ])
             ->where(function ($q) use ($threshold) {
                 $q->whereNull('date_of_expiry')
-                    ->orWhere('date_of_expiry', '<=', $threshold);
-            })
-            ->when($associateId > 0, function ($query) use ($associateId) {
-                $query->whereHas('client', fn ($c) => $c->where('associate_id', $associateId));
-            })
-            ->when($clientId > 0, function ($query) use ($clientId) {
-                $query->where('client_id', $clientId);
-            })
-            ->when($certificateTypeId > 0, function ($query) use ($certificateTypeId) {
-                $query->where('certificate_type_id', $certificateTypeId);
-            });
-
-        $total = (clone $query)->count();
-        $rows = $query->orderByDesc('id')
-            ->skip(($page - 1) * $per_page)
-            ->take($per_page)
-            ->get();
-
-        $queryParams = $request->except('page');
-        $pageUrl = '?'.(empty($queryParams) ? '' : http_build_query($queryParams).'&');
-
-        return view('admin.certificate.due_list', [
-            'title' => 'Certificate Due List',
-            'active_tab' => 'certificate',
-            'sub_active_tab' => 'due_list',
-            'rows' => $rows,
-            'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
-            'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
-            'certificateTypes' => CertificateType::query()->orderBy('description')->get(['id', 'description', 'code']),
-            'associate_id' => $associateId,
-            'client_id' => $clientId,
-            'certificate_type_id' => $certificateTypeId,
-            'pagination' => pagination($total, $per_page, $page, $pageUrl),
-            'serial_start' => ($page - 1) * $per_page,
-        ]);
-    }
-
-    public function dueAuditList(Request $request)
-    {
-        $associateId = (int) $request->input('associate_id', 0);
-        $clientId = (int) $request->input('client_id', 0);
-        $certificateTypeId = (int) $request->input('certificate_type_id', 0);
-        $per_page = 10;
-        $page = max(1, (int) $request->input('page', 1));
-        $threshold = Carbon::today()->addDays(self::DUE_WINDOW_DAYS);
-
-        $query = CertificateApplication::query()
-            ->with([
-                'client:id,company_name,associate_id',
-                'client.associate:id,company_name',
-                'certificateType:id,description,code',
-            ])
-            ->whereHas('certificates')
-            ->where(function ($q) use ($threshold) {
-                $q->whereNull('audit_expiry_date')
+                    ->orWhere('date_of_expiry', '<=', $threshold)
                     ->orWhere('audit_expiry_date', '<=', $threshold);
             })
             ->when($associateId > 0, function ($query) use ($associateId) {
@@ -103,18 +50,23 @@ class CertificateController extends Controller
             });
 
         $total = (clone $query)->count();
-        $rows = $query->orderByDesc('id')
+        $rows = $query
+            ->orderByRaw('COALESCE(LEAST(date_of_expiry, audit_expiry_date), date_of_expiry, audit_expiry_date) ASC')
             ->skip(($page - 1) * $per_page)
             ->take($per_page)
             ->get();
 
+        $rows->each(function (CertificateApplication $row) {
+            $row->due_info = $this->deriveDueInfo($row);
+        });
+
         $queryParams = $request->except('page');
         $pageUrl = '?'.(empty($queryParams) ? '' : http_build_query($queryParams).'&');
 
-        return view('admin.certificate.due_audit_list', [
-            'title' => 'Due Audit List',
+        return view('admin.certificate.due_list', [
+            'title' => 'Due List',
             'active_tab' => 'certificate',
-            'sub_active_tab' => 'due_audit_list',
+            'sub_active_tab' => 'due_list',
             'rows' => $rows,
             'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
             'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
@@ -180,6 +132,22 @@ class CertificateController extends Controller
             ->take($per_page)
             ->get();
 
+        $applicationIds = $rows->pluck('certificate_application_id')->filter()->unique()->values();
+        if ($applicationIds->isNotEmpty()) {
+            $applicationsById = CertificateApplication::query()
+                ->with(['certificates' => fn ($q) => $q->orderBy('id')])
+                ->whereIn('id', $applicationIds)
+                ->get(['id'])
+                ->keyBy('id');
+
+            $rows->each(function (Certificate $row) use ($applicationsById) {
+                $application = $applicationsById->get($row->certificate_application_id);
+                $row->stage_info = $application
+                    ? $this->deriveCertificateStage($row, $application)
+                    : ['label' => ucfirst((string) $row->type), 'badge_class' => 'bg-label-secondary'];
+            });
+        }
+
         $queryParams = $request->except('page');
         $pageUrl = '?'.(empty($queryParams) ? '' : http_build_query($queryParams).'&');
 
@@ -208,28 +176,58 @@ class CertificateController extends Controller
             abort(404);
         }
 
-        $application = $this->loadApplicationForForm($applicationId);
+        $application = CertificateApplication::query()
+            ->with([
+                'client.associate:id,company_name',
+                'certificateType:id,description,code,prefix,renewal_period,audit_period,price',
+                'certificates' => fn ($q) => $q->orderBy('id'),
+            ])
+            ->findOrFail($applicationId);
+
         $client = $application->client;
         $certificateType = $application->certificateType;
         $renewalYears = $this->parsePeriodYears($certificateType->renewal_period, 'renewal_period');
         $auditYears = $this->parsePeriodYears($certificateType->audit_period, 'audit_period');
 
+        $certMode = is_null($application->date_of_expiry) && is_null($application->audit_expiry_date)
+            ? 'first_issue'
+            : 'renewal';
+
+        $firstCert = $application->certificates
+            ->where('type', Certificate::TYPE_CERTIFICATE)
+            ->sortBy('id')
+            ->first();
+
+        $initialGrantedDefault = $firstCert
+            ? ($firstCert->initial_certificate_granted_on?->format('Y-m-d')
+                ?? $firstCert->issue_date?->format('Y-m-d'))
+            : null;
+
+        $title = match ($certMode) {
+            'first_issue' => 'First Issue Certificate',
+            'renewal' => 'Renew Certificate',
+            default => 'Add Certificate',
+        };
+
         $this->logExpiryCalculation('add_form_load', [
             'application_id' => $applicationId,
+            'cert_mode' => $certMode,
             'certificate_type_id' => $certificateType->id,
             'certificate_type_code' => $certificateType->code,
             'renewal_period_raw' => $certificateType->renewal_period,
             'audit_period_raw' => $certificateType->audit_period,
             'renewal_years_for_js' => $renewalYears,
             'audit_years_for_js' => $auditYears,
-            'client_formula' => 'date_of_expiry = issue_date + renewal_years_for_js (audit_years NOT used on certificate form)',
+            'client_formula' => 'date_of_expiry = issue_date + renewal_years; audit_expiry_date = latest_audit_date + audit_years',
         ]);
 
         return view('admin.certificate.form', [
-            'title' => 'Add Certificate',
+            'title' => $title,
             'active_tab' => 'certificate',
             'sub_active_tab' => 'due_list',
             'mode' => 'add',
+            'cert_mode' => $certMode,
+            'initial_granted_default' => $initialGrantedDefault,
             'application' => $application,
             'details' => new Certificate(),
             'associate' => $client->associate,
@@ -364,6 +362,8 @@ class CertificateController extends Controller
             'active_tab' => 'certificate',
             'sub_active_tab' => 'list',
             'mode' => 'edit',
+            'cert_mode' => 'edit',
+            'initial_granted_default' => null,
             'application' => $application,
             'details' => $details,
             'associate' => $details->associate,
@@ -389,7 +389,7 @@ class CertificateController extends Controller
             return response()->json($this->response);
         }
 
-        $validation = $this->certificateValidationRules($request, false);
+        $validation = $this->certificateValidationRules($request, false, true);
 
         if ($validation->fails()) {
             $this->response['error_array'] = formatErrors($validation->errors()->toArray());
@@ -526,9 +526,9 @@ class CertificateController extends Controller
         ]);
 
         return view('admin.certificate.audit_form', [
-            'title' => 'Audit Certificate',
+            'title' => 'Surveillance Audit',
             'active_tab' => 'certificate',
-            'sub_active_tab' => 'due_audit_list',
+            'sub_active_tab' => 'due_list',
             'application' => $application,
             'associate' => $application->client->associate,
             'client' => $application->client,
@@ -545,7 +545,7 @@ class CertificateController extends Controller
         $validation = Validator::make($request->all(), [
             'certificate_application_id' => 'required|exists:certificate_applications,id',
             'issue_date' => 'required|date',
-            'latest_audit_date' => 'nullable|date',
+            'latest_audit_date' => 'required|date',
             'scope' => 'nullable|string|max:5000',
             'admin_note' => 'nullable|string|max:5000',
         ]);
@@ -633,9 +633,150 @@ class CertificateController extends Controller
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Audit updated successfully.';
-        $this->response['redirect_url'] = url('admin/certificate/due-audit-list');
+        $this->response['redirect_url'] = url('admin/certificate/due-list');
 
         return response()->json($this->response);
+    }
+
+    /**
+     * @return array{kind: string, label: string, due_date: ?Carbon, action_url: string, action_label: string, badge_class: string}
+     */
+    protected function deriveDueInfo(CertificateApplication $app): array
+    {
+        $certificates = $app->relationLoaded('certificates')
+            ? $app->certificates
+            : $app->certificates()->get(['id', 'certificate_application_id', 'type']);
+
+        $certRows = $certificates->where('type', Certificate::TYPE_CERTIFICATE);
+        $certCount = $certRows->count();
+        $latestCert = $certRows->sortByDesc('id')->first();
+        $latestCertId = $latestCert?->id;
+
+        $auditCountInCurrentCycle = $latestCertId
+            ? $certificates
+                ->where('type', Certificate::TYPE_AUDIT)
+                ->where('id', '>', $latestCertId)
+                ->count()
+            : 0;
+
+        $certificateType = $app->certificateType;
+        $renewalYears = $this->parsePeriodYears($certificateType?->renewal_period, 'renewal_period');
+        $auditYears = $this->parsePeriodYears($certificateType?->audit_period, 'audit_period');
+        $surveillancesPerCycle = $auditYears > 0
+            ? max(0, intdiv($renewalYears, $auditYears) - 1)
+            : 0;
+
+        if ($certCount === 0) {
+            $kind = 'first_issue';
+            $label = 'First Issue';
+            $dueDate = null;
+            $actionUrl = url('admin/certificate/add?application_id='.$app->id);
+            $actionLabel = 'Certificate';
+            $badgeClass = 'bg-label-warning';
+        } elseif ($auditCountInCurrentCycle < $surveillancesPerCycle) {
+            $kind = 'surveillance';
+            $n = $auditCountInCurrentCycle + 1;
+            $label = $this->ordinal($n).' Surveillance';
+            $dueDate = $app->audit_expiry_date;
+            $actionUrl = url('admin/certificate/audit?application_id='.$app->id);
+            $actionLabel = 'Audit';
+            $badgeClass = 'bg-label-info';
+        } else {
+            $kind = 'renewal';
+            $n = $certCount;
+            $label = $this->ordinal($n).' Renewal';
+            $dueDate = $app->date_of_expiry;
+            $actionUrl = url('admin/certificate/add?application_id='.$app->id);
+            $actionLabel = 'Certificate';
+            $badgeClass = 'bg-label-primary';
+        }
+
+        return [
+            'kind' => $kind,
+            'label' => $label,
+            'due_date' => $dueDate,
+            'action_url' => $actionUrl,
+            'action_label' => $actionLabel,
+            'badge_class' => $badgeClass,
+        ];
+    }
+
+    protected function ordinal(int $n): string
+    {
+        if ($n % 100 >= 11 && $n % 100 <= 13) {
+            return $n.'th';
+        }
+
+        return match ($n % 10) {
+            1 => $n.'st',
+            2 => $n.'nd',
+            3 => $n.'rd',
+            default => $n.'th',
+        };
+    }
+
+    /**
+     * Compute the cycle-stage label for a single Certificate row inside its application's history.
+     * Cert-type rows: first cert = First Issue, second cert = 1st Renewal, third cert = 2nd Renewal, ...
+     * Audit-type rows: counted within the current cycle (i.e., since the latest preceding cert-type row).
+     *
+     * @return array{label: string, badge_class: string, kind: string}
+     */
+    protected function deriveCertificateStage(Certificate $row, CertificateApplication $app): array
+    {
+        $certificates = $app->relationLoaded('certificates')
+            ? $app->certificates->sortBy('id')->values()
+            : $app->certificates()->orderBy('id')->get();
+
+        if ($row->type === Certificate::TYPE_CERTIFICATE) {
+            $certIndex = $certificates
+                ->where('type', Certificate::TYPE_CERTIFICATE)
+                ->values()
+                ->search(fn (Certificate $c) => $c->id === $row->id);
+
+            if ($certIndex === false || $certIndex === 0) {
+                return [
+                    'label' => 'First Issue',
+                    'badge_class' => 'bg-label-warning',
+                    'kind' => 'first_issue',
+                ];
+            }
+
+            return [
+                'label' => $this->ordinal($certIndex).' Renewal',
+                'badge_class' => 'bg-label-primary',
+                'kind' => 'renewal',
+            ];
+        }
+
+        if ($row->type === Certificate::TYPE_AUDIT) {
+            $previousCertId = $certificates
+                ->where('type', Certificate::TYPE_CERTIFICATE)
+                ->where('id', '<', $row->id)
+                ->max('id') ?? 0;
+
+            $surveillanceNumber = $certificates
+                ->where('type', Certificate::TYPE_AUDIT)
+                ->where('id', '>', $previousCertId)
+                ->where('id', '<=', $row->id)
+                ->count();
+
+            if ($surveillanceNumber < 1) {
+                $surveillanceNumber = 1;
+            }
+
+            return [
+                'label' => $this->ordinal($surveillanceNumber).' Surveillance',
+                'badge_class' => 'bg-label-info',
+                'kind' => 'surveillance',
+            ];
+        }
+
+        return [
+            'label' => ucfirst((string) $row->type),
+            'badge_class' => 'bg-label-secondary',
+            'kind' => $row->type,
+        ];
     }
 
     protected function loadApplicationForForm(int $applicationId): CertificateApplication
@@ -672,7 +813,7 @@ class CertificateController extends Controller
         return $applicationUpdate;
     }
 
-    protected function certificateValidationRules(Request $request, bool $requireApplication = true)
+    protected function certificateValidationRules(Request $request, bool $requireApplication = true, bool $isUpdate = false)
     {
         $rules = [
             'amount' => 'required|numeric|min:0',
@@ -685,6 +826,11 @@ class CertificateController extends Controller
 
         if ($requireApplication) {
             $rules['certificate_application_id'] = 'required|exists:certificate_applications,id';
+        }
+
+        $certMode = $request->input('cert_mode', 'edit');
+        if (! $isUpdate && in_array($certMode, ['first_issue', 'renewal'], true)) {
+            $rules['latest_audit_date'] = 'required|date';
         }
 
         return Validator::make($request->all(), $rules);

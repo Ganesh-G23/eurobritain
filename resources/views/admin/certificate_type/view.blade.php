@@ -55,6 +55,33 @@
                         <label class="form-label text-muted mb-1">Price</label>
                         <p class="mb-0 fw-medium">{{ number_format((float) $details->price, 2) }}</p>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted mb-1">Certificate Template</label>
+                        @if ($details->certificate_template)
+                            @php
+                                $templateExt = strtolower(pathinfo($details->certificate_template, PATHINFO_EXTENSION));
+                                $isImage = in_array($templateExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'], true);
+                            @endphp
+                            @if ($isImage)
+                                <div>
+                                    <a href="{{ $details->certificate_template_url }}" target="_blank">
+                                        <img src="{{ $details->certificate_template_url }}"
+                                            alt="Certificate Template"
+                                            class="img-fluid rounded border"
+                                            style="max-height: 240px;">
+                                    </a>
+                                </div>
+                            @else
+                                <p class="mb-0 fw-medium">
+                                    <a href="{{ $details->certificate_template_url }}" target="_blank">
+                                        <i class="icon-base ti tabler-file me-1"></i>{{ $details->certificate_template }}
+                                    </a>
+                                </p>
+                            @endif
+                        @else
+                            <p class="mb-0 fw-medium">—</p>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>

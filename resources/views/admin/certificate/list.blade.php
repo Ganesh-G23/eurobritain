@@ -87,11 +87,10 @@
                                     <td>{{ $row->certificateApplication->application_number }}</td>
                                     <td>{{ $row->certificate_number }}</td>
                                     <td>
-                                        @if ($row->type === 'audit')
-                                            <span class="badge bg-label-warning">Audit</span>
-                                        @else
-                                            <span class="badge bg-label-primary">Certificate</span>
-                                        @endif
+                                        @php
+                                            $stage = $row->stage_info ?? ['label' => ucfirst((string) $row->type), 'badge_class' => 'bg-label-secondary'];
+                                        @endphp
+                                        <span class="badge {{ $stage['badge_class'] }}">{{ $stage['label'] }}</span>
                                     </td>
                                     <td>{{ $row->associate->company_name ?? '—' }}</td>
                                     <td>{{ $row->client->company_name ?? '—' }}</td>

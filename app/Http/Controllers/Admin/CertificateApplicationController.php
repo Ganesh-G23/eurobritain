@@ -14,6 +14,22 @@ use Illuminate\Support\Facades\Validator;
 
 class CertificateApplicationController extends Controller
 {
+    private function typeOptions(): array
+    {
+        return [
+            'iaf' => 'IAF (Registration)',
+            'noiaf' => 'NOIAF (Compliance)',
+        ];
+    }
+
+    private function categoryOptions(): array
+    {
+        return [
+            'system_certificate' => 'System Certificate',
+            'product_certificate' => 'Product Certificate',
+        ];
+    }
+
     public function add()
     {
         $data = [
@@ -21,10 +37,38 @@ class CertificateApplicationController extends Controller
             'active_tab' => 'certificate_application',
             'sub_active_tab' => 'add',
             'associates' => Associate::query()->orderBy('company_name')->get(['id', 'company_name']),
-            'certificateTypes' => CertificateType::query()->orderBy('description')->get(['id', 'description']),
+            'typeOptions' => $this->typeOptions(),
+            'categoryOptions' => $this->categoryOptions(),
         ];
 
         return view('admin.certificate_application.add', $data);
+    }
+
+    public function getCertificateTypes(Request $request)
+    {
+        $associateId = (int) $request->input('associate_id', 0);
+        $type = trim((string) $request->input('type', ''));
+        $category = trim((string) $request->input('category', ''));
+
+        if ($associateId <= 0 || $type === '' || $category === '') {
+            return response()->json([]);
+        }
+
+        $allowedTypes = array_keys($this->typeOptions());
+        $allowedCategories = array_keys($this->categoryOptions());
+
+        if (! in_array($type, $allowedTypes, true) || ! in_array($category, $allowedCategories, true)) {
+            return response()->json([]);
+        }
+
+        $types = CertificateType::query()
+            ->whereHas('associates', fn ($q) => $q->where('associates.id', $associateId))
+            ->where('category', $category)
+            ->whereJsonContains('types', $type)
+            ->orderBy('description')
+            ->get(['id', 'description']);
+
+        return response()->json($types);
     }
 
     public function list(Request $request)
@@ -495,6 +539,9 @@ class CertificateApplicationController extends Controller
             'address_shift_details.*.shifts.*.to' => 'required|string|max:20',
             'service_request_audit_type' => 'required|array|min:1',
             'service_request_audit_type.*' => 'integer|exists:audit_types,id',
+            'trademark_name' => 'nullable|string|max:255',
+            'trademark_application_number' => 'nullable|string|max:255',
+            'trademark_image' => 'nullable|string|max:255',
         ]);
     }
 
@@ -552,6 +599,9 @@ class CertificateApplicationController extends Controller
             'executive_personnel' => $request->input('executive_personnel'),
             'in_design' => $request->input('in_design'),
             'service_request_audit_type' => $auditTypeIds,
+            'trademark_name' => $request->input('trademark_name'),
+            'trademark_application_number' => $request->input('trademark_application_number'),
+            'trademark_image' => $request->input('trademark_image'),
         ];
     }
 }

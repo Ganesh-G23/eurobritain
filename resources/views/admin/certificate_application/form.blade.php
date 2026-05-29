@@ -154,6 +154,36 @@
                         </div>
                     </div>
 
+                    <h6 class="mb-3">Trademark Details</h6>
+                    <div class="row">
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="form-control" name="trademark_name"
+                                value="{{ old('trademark_name', $details->trademark_name) }}">
+                            <span class="ajax-error"></span>
+                        </div>
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label">Application Number</label>
+                            <input type="text" class="form-control" name="trademark_application_number"
+                                value="{{ old('trademark_application_number', $details->trademark_application_number) }}">
+                            <span class="ajax-error"></span>
+                        </div>
+                        <div class="mb-3 col-md-6 ajax-field">
+                            <label class="form-label">Trademark Image</label>
+                            <input type="file" class="form-control" id="trademark_image_file" accept="image/*,.pdf">
+                            <input type="hidden" name="trademark_image" id="trademark_image"
+                                value="{{ old('trademark_image', $details->trademark_image) }}">
+                            @if (!empty($details->trademark_image))
+                                <div class="mt-1 small">
+                                    Current:
+                                    <a href="{{ url('storage/app/uploads/temp/' . $details->trademark_image) }}" target="_blank">{{ $details->trademark_image }}</a>
+                                </div>
+                            @endif
+                            <span class="small text-muted file-upload-status" data-for="trademark_image"></span>
+                            <span class="ajax-error"></span>
+                        </div>
+                    </div>
+
                     <div class="mb-3 ajax-field">
                         <label class="form-label d-block">Service Requested Audit Type <span class="text-danger">*</span></label>
                         @foreach ($auditTypes as $auditType)
@@ -175,7 +205,47 @@
 @endsection
 @section('scripts')
     <script>
+        const uploadUrl = '{{ url('admin/common/upload_files') }}';
+        const csrfToken = $('meta[name="csrf-token"]').attr('content');
         const initialAddressShifts = @json($addressShifts);
+
+        $('#trademark_image_file').on('change', function() {
+            const file = this.files[0];
+            const $hidden = $('#trademark_image');
+            const $status = $('.file-upload-status[data-for="trademark_image"]');
+
+            if (!file) {
+                return;
+            }
+
+            $status.text('Uploading...');
+            const formData = new FormData();
+            formData.append('files[]', file);
+            formData.append('_token', csrfToken);
+
+            $.ajax({
+                url: uploadUrl,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                success: function(res) {
+                    if (res && res.status == 1 && res.data && res.data[0]) {
+                        $hidden.val(res.data[0].fileName);
+                        $status.removeClass('text-danger').addClass('text-success').text('Uploaded: ' + res.data[0].fileName);
+                    } else {
+                        $hidden.val('');
+                        $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                    }
+                },
+                error: function() {
+                    $hidden.val('');
+                    $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                }
+            });
+        });
 
         function buildShiftRow(addrIndex, shiftIndex, fromVal = '', toVal = '') {
             return `
