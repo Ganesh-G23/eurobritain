@@ -12,7 +12,7 @@
                         <input type="text" name="q" class="form-control"
                             placeholder="Search invoice number" value="{{ $q }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <select class="form-select" id="filter_associate_id" name="associate_id">
                             <option value="">All Associates</option>
                             @foreach ($associates as $associate)
@@ -23,7 +23,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <select class="form-select" id="filter_client_id" name="client_id"
                             data-current-client="{{ $client_id }}">
                             <option value="">All Clients</option>
@@ -33,6 +33,13 @@
                                     {{ $client->company_name }}
                                 </option>
                             @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" name="payment_status">
+                            <option value="">Payment Status</option>
+                            <option value="paid" {{ $payment_status === 'paid' ? 'selected' : '' }}>Paid</option>
+                            <option value="unpaid" {{ $payment_status === 'unpaid' ? 'selected' : '' }}>Unpaid</option>
                         </select>
                     </div>
                     <div class="col-md-3 d-flex gap-2">

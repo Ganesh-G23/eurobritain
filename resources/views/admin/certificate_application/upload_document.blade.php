@@ -10,10 +10,26 @@
                 <p class="text-muted mb-3">Company: <strong>{{ $application->company_name }}</strong></p>
 
                 @if ($application->application_document)
-                    <div class="alert alert-info py-2 mb-3">
-                        Current file:
-                        <a href="{{ $application->application_document_url }}" target="_blank">{{ $application->application_document }}</a>
-                    </div>
+                    @php
+                        $appDocExt = strtolower(pathinfo($application->application_document, PATHINFO_EXTENSION));
+                        $appDocIsImage = in_array($appDocExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+                    @endphp
+                    @if ($appDocIsImage)
+                        <div class="mb-3">
+                            <a href="{{ $application->application_document_url }}" target="_blank">
+                                <img src="{{ $application->application_document_url }}" alt="Application Document" class="img-thumbnail"
+                                    style="max-height:200px; max-width:320px; object-fit:contain;">
+                            </a>
+                        </div>
+                    @else
+                        <div class="mb-3">
+                            <a href="{{ $application->application_document_url }}" target="_blank"
+                                class="d-inline-flex align-items-center gap-1">
+                                <i class="icon-base ti tabler-file-text"></i>
+                                <span>{{ $application->application_document }}</span>
+                            </a>
+                        </div>
+                    @endif
                 @endif
 
                 <form id="ajax-form" method="POST" action="{{ url('admin/certificate-application/save-document/' . $application->id) }}">

@@ -8,7 +8,7 @@
         <div class="row">
             <div class="mb-3 col-md-6">
                 <label class="form-label" for="old_app_type">Type <span class="text-danger">*</span></label>
-                <select class="form-select" id="old_app_type">
+                <select class="form-select" id="old_app_type" name="type">
                     <option value="">Select Type</option>
                     @foreach ($typeOptions as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>

@@ -20,6 +20,10 @@ class InvoiceController extends Controller
         $q = trim((string) $request->input('q', ''));
         $associateId = (int) $request->input('associate_id', 0);
         $clientId = (int) $request->input('client_id', 0);
+        $paymentStatus = trim((string) $request->input('payment_status', ''));
+        if (! in_array($paymentStatus, ['paid', 'unpaid'], true)) {
+            $paymentStatus = '';
+        }
         $per_page = 10;
         $page = max(1, (int) $request->input('page', 1));
 
@@ -33,6 +37,12 @@ class InvoiceController extends Controller
             })
             ->when($clientId > 0, function ($query) use ($clientId) {
                 $query->where('client_id', $clientId);
+            })
+            ->when($paymentStatus === 'paid', function ($query) {
+                $query->where('pending_amount', '<=', 0);
+            })
+            ->when($paymentStatus === 'unpaid', function ($query) {
+                $query->where('pending_amount', '>', 0);
             })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
@@ -61,6 +71,7 @@ class InvoiceController extends Controller
             'clients' => Client::query()->orderBy('company_name')->get(['id', 'company_name']),
             'associate_id' => $associateId,
             'client_id' => $clientId,
+            'payment_status' => $paymentStatus,
             'pagination' => pagination($total, $per_page, $page, $pageUrl),
             'serial_start' => ($page - 1) * $per_page,
         ]);

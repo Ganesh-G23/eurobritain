@@ -13,10 +13,26 @@
                 </p>
 
                 @if ($details->certificate)
-                    <div class="alert alert-info py-2 mb-3">
-                        Current file:
-                        <a href="{{ $details->certificate_url }}" target="_blank">{{ $details->certificate }}</a>
-                    </div>
+                    @php
+                        $certExt = strtolower(pathinfo($details->certificate, PATHINFO_EXTENSION));
+                        $certIsImage = in_array($certExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+                    @endphp
+                    @if ($certIsImage)
+                        <div class="mb-3">
+                            <a href="{{ $details->certificate_url }}" target="_blank">
+                                <img src="{{ $details->certificate_url }}" alt="Certificate" class="img-thumbnail"
+                                    style="max-height:200px; max-width:320px; object-fit:contain;">
+                            </a>
+                        </div>
+                    @else
+                        <div class="mb-3">
+                            <a href="{{ $details->certificate_url }}" target="_blank"
+                                class="d-inline-flex align-items-center gap-1">
+                                <i class="icon-base ti tabler-file-text"></i>
+                                <span>{{ $details->certificate }}</span>
+                            </a>
+                        </div>
+                    @endif
                 @endif
 
                 <form id="ajax-form" method="POST" action="{{ url('admin/certificate/save-image/' . $details->id) }}">

@@ -23,8 +23,19 @@
                     @csrf
                     <input type="hidden" name="client_id" value="{{ $isEdit ? $details->client_id : $client_id }}">
                     <input type="hidden" name="certificate_type_id" value="{{ $isEdit ? $details->certificate_type_id : $certificate_type_id }}">
+                    <input type="hidden" name="type" value="{{ $isEdit ? $details->type : ($type ?? '') }}">
 
                     <div class="col-12 ajax-msg"></div>
+
+                    @php
+                        $applicationType = $isEdit ? ($details->type ?? '') : ($type ?? '');
+                        $applicationTypeLabel = ($typeOptions ?? [])[$applicationType] ?? strtoupper($applicationType ?: '—');
+                    @endphp
+                    @if ($applicationType)
+                        <div class="alert alert-info py-2 mb-4">
+                            <strong>Application Type:</strong> {{ $applicationTypeLabel }}
+                        </div>
+                    @endif
 
                     @if (!$isEdit && isset($certificateType))
                         <div class="alert alert-secondary py-2 mb-4">

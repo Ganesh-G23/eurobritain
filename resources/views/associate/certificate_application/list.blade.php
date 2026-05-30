@@ -62,7 +62,11 @@
                                             <a href="{{ url('certificate-application/edit/' . $row->id) }}"
                                                 class="btn btn-sm btn-outline-dark">Edit</a>
                                             <button type="button" class="btn btn-sm btn-outline-primary view-pdf-btn"
-                                                data-id="{{ $row->id }}">View Pdf</button>
+                                                data-id="{{ $row->id }}">Application Form</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary attendence-sheet-btn"
+                                                data-id="{{ $row->id }}">Attendence Sheet</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary client-agreement-btn"
+                                                data-id="{{ $row->id }}">Client Agreement</button>
                                             <a href="{{ url('certificate-application/view/' . $row->id) }}"
                                                 class="btn btn-sm btn-outline-info">View Details</a>
                                             <a href="{{ url('certificate-application/documents/' . $row->id) }}"
@@ -95,6 +99,16 @@
         $(document).on('click', '.view-pdf-btn', function() {
             const id = $(this).data('id');
             window.open('{{ url('certificate-application/pdf') }}/' + id, '_blank');
+        });
+
+        $(document).on('click', '.attendence-sheet-btn', function() {
+            const id = $(this).data('id');
+            window.open('{{ url('certificate-application/attendence-sheet') }}/' + id, '_blank');
+        });
+
+        $(document).on('click', '.client-agreement-btn', function() {
+            const id = $(this).data('id');
+            window.open('{{ url('certificate-application/client-agreement') }}/' + id, '_blank');
         });
     </script>
 @endsection

@@ -161,6 +161,7 @@ class CertificateApplicationController extends Controller
         $validation = Validator::make($request->all(), [
             'client_id' => 'required|exists:clients,id',
             'certificate_type_id' => 'required|exists:certificate_types,id',
+            'type' => 'required|in:iaf,noiaf',
             'legal_proof' => 'required|string|max:255',
             'pan' => 'required|string|max:255',
             'purchase_bills' => 'required|string|max:255',
@@ -212,10 +213,15 @@ class CertificateApplicationController extends Controller
         ]);
 
         $certificateTypeId = (int) $request->input('certificate_type_id');
+        $type = $request->input('type');
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Documents saved successfully.';
-        $this->response['redirect_url'] = url('admin/certificate-application/form?client_id='.$clientId.'&certificate_type_id='.$certificateTypeId);
+        $this->response['redirect_url'] = url('admin/certificate-application/form?'.http_build_query([
+            'client_id' => $clientId,
+            'certificate_type_id' => $certificateTypeId,
+            'type' => $type,
+        ]));
 
         return response()->json($this->response);
     }
@@ -225,6 +231,7 @@ class CertificateApplicationController extends Controller
         $validation = Validator::make($request->all(), [
             'client_id' => 'required|exists:clients,id',
             'certificate_type_id' => 'required|exists:certificate_types,id',
+            'type' => 'required|in:iaf,noiaf',
         ]);
 
         if ($validation->fails()) {
@@ -242,10 +249,15 @@ class CertificateApplicationController extends Controller
         }
 
         $certificateTypeId = (int) $request->input('certificate_type_id');
+        $type = $request->input('type');
 
         $this->response['status'] = 1;
         $this->response['msg'] = 'Proceeding to certificate application.';
-        $this->response['redirect_url'] = url('admin/certificate-application/form?client_id='.$clientId.'&certificate_type_id='.$certificateTypeId);
+        $this->response['redirect_url'] = url('admin/certificate-application/form?'.http_build_query([
+            'client_id' => $clientId,
+            'certificate_type_id' => $certificateTypeId,
+            'type' => $type,
+        ]));
 
         return response()->json($this->response);
     }
@@ -254,8 +266,9 @@ class CertificateApplicationController extends Controller
     {
         $clientId = (int) $request->input('client_id', 0);
         $certificateTypeId = (int) $request->input('certificate_type_id', 0);
+        $type = trim((string) $request->input('type', ''));
 
-        if ($clientId <= 0 || $certificateTypeId <= 0) {
+        if ($clientId <= 0 || $certificateTypeId <= 0 || ! in_array($type, ['iaf', 'noiaf'], true)) {
             abort(404);
         }
 
@@ -272,6 +285,8 @@ class CertificateApplicationController extends Controller
             'certificateType' => $certificateType,
             'client_id' => $clientId,
             'certificate_type_id' => $certificateTypeId,
+            'type' => $type,
+            'typeOptions' => $this->typeOptions(),
             'auditTypes' => AuditType::query()->orderBy('id')->get(['id', 'name']),
         ];
 
@@ -321,6 +336,7 @@ class CertificateApplicationController extends Controller
             'certificateType' => $details->certificateType,
             'client_id' => $details->client_id,
             'certificate_type_id' => $details->certificate_type_id,
+            'typeOptions' => $this->typeOptions(),
             'auditTypes' => AuditType::query()->orderBy('id')->get(['id', 'name']),
         ];
 
@@ -378,6 +394,7 @@ class CertificateApplicationController extends Controller
             'sub_active_tab' => 'list',
             'details' => $details,
             'auditTypeNames' => $auditTypeNames,
+            'typeOptions' => $this->typeOptions(),
         ];
 
         return view('admin.certificate_application.view', $data);
@@ -398,7 +415,9 @@ class CertificateApplicationController extends Controller
                 ->all();
         }
 
-        $logoPath = public_path('admin_theme/assets/img/logo.png');
+        $isIaf = $details->type === 'iaf';
+
+        $logoPath = public_path($isIaf ? 'admin_theme/assets/img/iaf_logo.png' : 'admin_theme/assets/img/logo.png');
         if (! file_exists($logoPath)) {
             $logoPath = '';
         }
@@ -408,7 +427,11 @@ class CertificateApplicationController extends Controller
             mkdir($tempDir, 0755, true);
         }
 
-        $html = view('admin.certificate_application.pdf', [
+        $view = $isIaf
+            ? 'admin.certificate_application.iaf_pdf'
+            : 'admin.certificate_application.pdf';
+
+        $html = view($view, [
             'details' => $details,
             'auditTypeNames' => $auditTypeNames,
             'logoPath' => $logoPath,
@@ -424,17 +447,162 @@ class CertificateApplicationController extends Controller
             'tempDir' => $tempDir,
         ]);
 
-        $pdfTitle = trim('Certification Application Form'.($details->company_name ? ' - '.$details->company_name : ''));
-        $mpdf->SetTitle($pdfTitle);
-        $mpdf->SetAuthor('Eurobritain Certifications Limited');
-        $mpdf->SetCreator('Eurobritain Certifications Limited');
+        $safeCompany = $details->company_name
+            ? preg_replace('/[^A-Za-z0-9_-]+/', '_', $details->company_name)
+            : 'application';
+
+        if ($isIaf) {
+            $pdfTitle = trim('Certification Application Form'.($details->company_name ? ' - '.$details->company_name : ''));
+            $mpdf->SetTitle($pdfTitle);
+            $mpdf->SetAuthor('Magnitude Management Services Private Limited');
+            $mpdf->SetCreator('Magnitude Management Services Private Limited');
+            $filename = $safeCompany.'-iaf-application-form.pdf';
+        } else {
+            $pdfTitle = trim('Certification Application Form'.($details->company_name ? ' - '.$details->company_name : ''));
+            $mpdf->SetTitle($pdfTitle);
+            $mpdf->SetAuthor('Eurobritain Certifications Limited');
+            $mpdf->SetCreator('Eurobritain Certifications Limited');
+            $filename = $safeCompany.'-certification-application.pdf';
+        }
 
         $mpdf->WriteHTML($html);
+
+        return response(
+            $mpdf->Output($filename, \Mpdf\Output\Destination::STRING_RETURN),
+            200,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            ]
+        );
+    }
+
+    public function attendenceSheet($id)
+    {
+        $details = CertificateApplication::query()
+            ->with(['certificateType:id,description,code'])
+            ->findOrFail($id);
+
+        $isIaf = $details->type === 'iaf';
+
+        $logoPath = public_path($isIaf ? 'admin_theme/assets/img/iaf_logo.png' : 'admin_theme/assets/img/logo.png');
+        if (! file_exists($logoPath)) {
+            $logoPath = '';
+        }
+
+        $tempDir = storage_path('app/mpdf-temp');
+        if (! is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $html = view('admin.certificate_application.attendence_sheet', [
+            'details' => $details,
+            'logoPath' => $logoPath,
+            'isIaf' => $isIaf,
+        ])->render();
+
+        $mpdf = new \Mpdf\Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4',
+            'margin_left' => 10,
+            'margin_right' => 10,
+            'margin_top' => 10,
+            'margin_bottom' => 14,
+            'tempDir' => $tempDir,
+        ]);
 
         $safeCompany = $details->company_name
             ? preg_replace('/[^A-Za-z0-9_-]+/', '_', $details->company_name)
             : 'application';
-        $filename = $safeCompany.'-certification-application.pdf';
+
+        $pdfTitle = trim('Attendance Sheet'.($details->company_name ? ' - '.$details->company_name : ''));
+        $mpdf->SetTitle($pdfTitle);
+
+        if ($isIaf) {
+            $mpdf->SetAuthor('Magnitude Management Services Private Limited');
+            $mpdf->SetCreator('Magnitude Management Services Private Limited');
+        } else {
+            $mpdf->SetAuthor('Eurobritain Certifications Limited');
+            $mpdf->SetCreator('Eurobritain Certifications Limited');
+        }
+
+        $filename = $safeCompany.'-attendance-sheet.pdf';
+
+        $mpdf->WriteHTML($html);
+
+        return response(
+            $mpdf->Output($filename, \Mpdf\Output\Destination::STRING_RETURN),
+            200,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            ]
+        );
+    }
+
+    public function clientAgreement($id)
+    {
+        $details = CertificateApplication::query()
+            ->with(['certificateType:id,description,code'])
+            ->findOrFail($id);
+
+        $isIaf = $details->type === 'iaf';
+
+        $logoPath = public_path($isIaf ? 'admin_theme/assets/img/iaf_logo.png' : 'admin_theme/assets/img/logo.png');
+        if (! file_exists($logoPath)) {
+            $logoPath = '';
+        }
+
+        $brand = $isIaf ? [
+            'short' => 'MMS',
+            'full' => 'MAGNITUDE MANAGEMENT SERVICES PRIVATE LIMITED',
+            'website' => 'www.mmscertification.com',
+            'law' => 'Indian Laws',
+            'jurisdiction' => 'New Delhi',
+            'left_signatory' => 'Magnitude Management Services Pvt. Ltd.',
+        ] : [
+            'short' => 'EUROBRITAIN',
+            'full' => '',
+            'website' => 'www.eurobritain.co.uk',
+            'law' => 'Indian Laws',
+            'jurisdiction' => 'New Delhi',
+            'left_signatory' => 'Eurobritain Certifications Limited',
+        ];
+
+        $tempDir = storage_path('app/mpdf-temp');
+        if (! is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $html = view('admin.certificate_application.client_agreement', [
+            'details' => $details,
+            'logoPath' => $logoPath,
+            'isIaf' => $isIaf,
+            'brand' => $brand,
+        ])->render();
+
+        $mpdf = new \Mpdf\Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4',
+            'margin_left' => 10,
+            'margin_right' => 10,
+            'margin_top' => 10,
+            'margin_bottom' => 14,
+            'tempDir' => $tempDir,
+        ]);
+
+        $safeCompany = $details->company_name
+            ? preg_replace('/[^A-Za-z0-9_-]+/', '_', $details->company_name)
+            : 'application';
+
+        $pdfTitle = trim('Client Agreement'.($details->company_name ? ' - '.$details->company_name : ''));
+        $mpdf->SetTitle($pdfTitle);
+        $mpdf->SetAuthor($brand['full']);
+        $mpdf->SetCreator($brand['full']);
+
+        $filename = $safeCompany.'-client-agreement.pdf';
+
+        $mpdf->WriteHTML($html);
 
         return response(
             $mpdf->Output($filename, \Mpdf\Output\Destination::STRING_RETURN),
@@ -513,6 +681,7 @@ class CertificateApplicationController extends Controller
         return Validator::make($request->all(), [
             'client_id' => 'required|exists:clients,id',
             'certificate_type_id' => 'required|exists:certificate_types,id',
+            'type' => 'required|in:iaf,noiaf',
             'scope' => 'required|string|max:5000',
             'communication_person' => 'required|string|max:255',
             'fax_number' => 'nullable|string|max:30',
@@ -572,6 +741,7 @@ class CertificateApplicationController extends Controller
         return [
             'client_id' => (int) $request->input('client_id'),
             'certificate_type_id' => (int) $request->input('certificate_type_id'),
+            'type' => $request->input('type'),
             'company_name' => $client->company_name,
             'address' => $client->address,
             'contact_mobile' => $client->contact_mobile,

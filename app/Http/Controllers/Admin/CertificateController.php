@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 class CertificateController extends Controller
 {
-    public const DUE_WINDOW_DAYS = 1500;
+    public const DUE_WINDOW_DAYS = 1100;
 
     public function dueList(Request $request)
     {

@@ -46,7 +46,7 @@
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Invoice #</th>
+                                <th>Invoice</th>
                                 <th>Associate</th>
                                 <th>Client</th>
                                 <th>Amount</th>

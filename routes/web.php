@@ -123,6 +123,8 @@ Route::middleware('prevent-back')
                 Route::post('update/{id}', [CertificateApplicationController::class, 'update']);
                 Route::get('view/{id}', [CertificateApplicationController::class, 'view']);
                 Route::get('pdf/{id}', [CertificateApplicationController::class, 'pdf']);
+                Route::get('attendence-sheet/{id}', [CertificateApplicationController::class, 'attendenceSheet']);
+                Route::get('client-agreement/{id}', [CertificateApplicationController::class, 'clientAgreement']);
                 Route::get('documents/{id}', [CertificateApplicationController::class, 'documents']);
                 Route::get('upload-document/{id}', [CertificateApplicationController::class, 'uploadDocument']);
                 Route::post('save-document/{id}', [CertificateApplicationController::class, 'saveDocument']);
@@ -172,6 +174,7 @@ Route::middleware('prevent-back')->group(function () {
             Route::get('list', [AssociateCertificateApplicationController::class, 'list'])
                 ->name('associate.certificate_application.list');
             Route::get('check_client', [AssociateCertificateApplicationController::class, 'checkClient']);
+            Route::get('certificate-types', [AssociateCertificateApplicationController::class, 'getCertificateTypes']);
             Route::post('save_documents', [AssociateCertificateApplicationController::class, 'saveDocuments']);
             Route::post('resolve_old_client', [AssociateCertificateApplicationController::class, 'resolveOldClient']);
             Route::get('form', [AssociateCertificateApplicationController::class, 'applicationForm'])
@@ -181,6 +184,8 @@ Route::middleware('prevent-back')->group(function () {
             Route::post('update/{id}', [AssociateCertificateApplicationController::class, 'update']);
             Route::get('view/{id}', [AssociateCertificateApplicationController::class, 'view']);
             Route::get('pdf/{id}', [AssociateCertificateApplicationController::class, 'pdf']);
+            Route::get('attendence-sheet/{id}', [AssociateCertificateApplicationController::class, 'attendenceSheet']);
+            Route::get('client-agreement/{id}', [AssociateCertificateApplicationController::class, 'clientAgreement']);
             Route::get('documents/{id}', [AssociateCertificateApplicationController::class, 'documents']);
             Route::get('upload-document/{id}', [AssociateCertificateApplicationController::class, 'uploadDocument']);
             Route::post('save-document/{id}', [AssociateCertificateApplicationController::class, 'saveDocument']);
