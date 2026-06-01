@@ -14,18 +14,28 @@ class CommonController extends Controller
     {
         $data = [];
         $destinationPath = 'uploads/temp';
-        if ($request->file('files')) {
-            foreach ($request->file('files') as $key => $file) {
-                $path = $file->store($destinationPath);
-                // $data[] = url('storage/app/' . $path);
-                $data[] = ['fileName' => $file->hashName(), 'filePath' => url('storage/app/' . $path)];
-            }
 
-            $this->response['status'] = 1;
-            $this->response['data'] = $data;
+        if (! $request->hasFile('files')) {
+            $this->response['error'] = 'No file selected.';
+
+            return response()->json($this->response);
         }
 
-        echo json_encode($this->response);
+        foreach ($request->file('files') as $file) {
+            if (! $file->isValid()) {
+                $this->response['error'] = 'Uploaded file is invalid.';
+
+                return response()->json($this->response);
+            }
+
+            $path = $file->store($destinationPath);
+            $data[] = ['fileName' => $file->hashName(), 'filePath' => url('storage/app/' . $path)];
+        }
+
+        $this->response['status'] = 1;
+        $this->response['data'] = $data;
+
+        return response()->json($this->response);
     }
 
     public function clientsByAssociate(Request $request)

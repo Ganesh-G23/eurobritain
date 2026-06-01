@@ -13,8 +13,12 @@ function formatErrors($errors = [])
 
     if (count($errors) > 0) {
         foreach ($errors as $k => $v) {
-            if (count(explode('.', $k)) > 1) {
-                $nk = explode('.', $k)[0] . '[' . explode('.', $k)[1] . ']';
+            $parts = explode('.', $k);
+            if (count($parts) > 1) {
+                $nk = array_shift($parts);
+                foreach ($parts as $segment) {
+                    $nk .= '[' . $segment . ']';
+                }
                 $error_array[$nk] = $v[0];
             } else {
                 $error_array[$k] = $v[0];

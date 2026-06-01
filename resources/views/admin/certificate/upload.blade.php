@@ -16,6 +16,7 @@
                     @php
                         $certExt = strtolower(pathinfo($details->certificate, PATHINFO_EXTENSION));
                         $certIsImage = in_array($certExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+                        $downloadName = ($details->certificate_number ?: 'certificate') . ($certExt ? '.' . $certExt : '');
                     @endphp
                     @if ($certIsImage)
                         <div class="mb-3">
@@ -33,6 +34,15 @@
                             </a>
                         </div>
                     @endif
+                    <div class="mb-3">
+                        <a href="{{ $details->certificate_url }}"
+                            class="btn btn-sm btn-outline-secondary"
+                            download="{{ $downloadName }}"
+                            target="_blank" rel="noopener">
+                            <i class="icon-base ti tabler-download me-1"></i>
+                            Download Certificate
+                        </a>
+                    </div>
                 @endif
 
                 <form id="ajax-form" method="POST" action="{{ url('admin/certificate/save-image/' . $details->id) }}">

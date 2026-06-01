@@ -64,6 +64,8 @@ Route::middleware('prevent-back')
                 Route::get('edit/{id}', [CertificateTypeController::class, 'edit']);
                 Route::post('update/{id}', [CertificateTypeController::class, 'update']);
                 Route::get('view/{id}', [CertificateTypeController::class, 'view']);
+                Route::get('template-coords/{id}', [CertificateTypeController::class, 'templateCoords']);
+                Route::post('save-template-coords/{id}', [CertificateTypeController::class, 'saveTemplateCoords']);
             });
 
             Route::prefix('certificate')->group(function () {
@@ -76,6 +78,7 @@ Route::middleware('prevent-back')
                 Route::get('view/{id}', [CertificateController::class, 'view']);
                 Route::get('upload/{id}', [CertificateController::class, 'uploadCertificate']);
                 Route::post('save-image/{id}', [CertificateController::class, 'saveCertificateImage']);
+                Route::post('generate/{id}', [CertificateController::class, 'generateCertificate']);
                 Route::get('audit', [CertificateController::class, 'auditForm']);
                 Route::post('save-audit', [CertificateController::class, 'saveAudit']);
                 Route::post('log-expiry-calc', [CertificateController::class, 'logClientExpiryCalc']);

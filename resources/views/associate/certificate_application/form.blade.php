@@ -191,13 +191,15 @@
         function buildShiftRow(addrIndex, shiftIndex, fromVal = '', toVal = '') {
             return `
                 <div class="row g-2 align-items-end shift-row mb-2" data-shift-index="${shiftIndex}">
-                    <div class="col-md-5">
-                        <label class="form-label small">From</label>
+                    <div class="col-md-5 ajax-field">
+                        <label class="form-label small">From <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="address_shift_details[${addrIndex}][shifts][${shiftIndex}][from]" value="${fromVal}" placeholder="09:00">
+                        <span class="ajax-error d-block"></span>
                     </div>
-                    <div class="col-md-5">
-                        <label class="form-label small">To</label>
+                    <div class="col-md-5 ajax-field">
+                        <label class="form-label small">To <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="address_shift_details[${addrIndex}][shifts][${shiftIndex}][to]" value="${toVal}" placeholder="18:00">
+                        <span class="ajax-error d-block"></span>
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-sm btn-outline-danger remove-shift-row">×</button>
@@ -226,9 +228,10 @@
                                 <button type="button" class="btn btn-sm btn-outline-danger remove-address-block">Remove Site</button>
                             </div>
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-3 ajax-field">
                             <label class="form-label">Address <span class="text-danger">*</span></label>
                             <textarea class="form-control" name="address_shift_details[${addrIndex}][address]" rows="2">${addressVal}</textarea>
+                            <span class="ajax-error d-block"></span>
                         </div>
                         <div class="shifts-container">${shiftsHtml}</div>
                     </div>

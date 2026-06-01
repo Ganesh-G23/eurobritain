@@ -205,4 +205,132 @@ class CertificateTypeController extends Controller
 
         return view('admin.certificate_type.view', $data);
     }
+
+    public function templateCoords($id)
+    {
+        $details = CertificateType::query()->findOrFail($id);
+
+        if (empty($details->certificate_template)) {
+            return redirect(url('admin/certificate-type/edit/'.$details->id))
+                ->with('error', 'Upload a certificate template image first.');
+        }
+
+        $extension = strtolower(pathinfo($details->certificate_template, PATHINFO_EXTENSION));
+        $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+
+        if (! $isImage) {
+            return redirect(url('admin/certificate-type/edit/'.$details->id))
+                ->with('error', 'Template field positions can only be configured for image templates (PNG / JPG).');
+        }
+
+        return view('admin.certificate_type.template_coords', [
+            'title' => 'Configure Template Fields — '.$details->name,
+            'active_tab' => 'certificate_type',
+            'sub_active_tab' => 'list',
+            'details' => $details,
+        ]);
+    }
+
+    public function saveTemplateCoords(Request $request, $id)
+    {
+        $certificateType = CertificateType::query()->find($id);
+        if (! $certificateType) {
+            $this->response['error'] = 'Certificate type not found.';
+
+            return response()->json($this->response);
+        }
+
+        $validation = Validator::make($request->all(), [
+            'template_coords' => 'nullable|string',
+        ]);
+
+        if ($validation->fails()) {
+            $this->response['error_array'] = formatErrors($validation->errors()->toArray());
+
+            return response()->json($this->response);
+        }
+
+        $templateCoords = $this->parseTemplateCoords($request->input('template_coords'));
+        if ($templateCoords === false) {
+            $this->response['error'] = 'Invalid template field positions.';
+
+            return response()->json($this->response);
+        }
+
+        $certificateType->update([
+            'template_coords' => $templateCoords,
+        ]);
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Template field positions saved.';
+        $this->response['redirect_url'] = url('admin/certificate-type/list');
+
+        return response()->json($this->response);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>|null|false
+     */
+    private function parseTemplateCoords(?string $raw): array|null|false
+    {
+        if ($raw === null || trim($raw) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return false;
+        }
+
+        $allowedAlign = ['left', 'center', 'right'];
+        $allowedValign = ['top', 'middle', 'bottom'];
+        $normalized = [];
+
+        foreach ($decoded as $field => $config) {
+            if (! is_array($config)) {
+                return false;
+            }
+
+            if (! isset($config['x'], $config['y']) || ! is_numeric($config['x']) || ! is_numeric($config['y'])) {
+                return false;
+            }
+
+            $entry = [
+                'x' => (int) $config['x'],
+                'y' => (int) $config['y'],
+            ];
+
+            if (isset($config['w']) && is_numeric($config['w'])) {
+                $entry['w'] = max(20, (int) $config['w']);
+            }
+
+            if (isset($config['h']) && is_numeric($config['h'])) {
+                $entry['h'] = max(12, (int) $config['h']);
+            }
+
+            if (isset($config['size']) && is_numeric($config['size'])) {
+                $entry['size'] = max(6, (int) $config['size']);
+            }
+
+            if (isset($config['align']) && in_array($config['align'], $allowedAlign, true)) {
+                $entry['align'] = $config['align'];
+            }
+
+            if (isset($config['valign']) && in_array($config['valign'], $allowedValign, true)) {
+                $entry['valign'] = $config['valign'];
+            }
+
+            if (isset($config['color']) && is_string($config['color']) && preg_match('/^#[0-9A-Fa-f]{3,6}$/', $config['color'])) {
+                $entry['color'] = $config['color'];
+            }
+
+            if (isset($config['bold'])) {
+                $entry['bold'] = filter_var($config['bold'], FILTER_VALIDATE_BOOLEAN);
+            }
+
+            $normalized[(string) $field] = $entry;
+        }
+
+        return $normalized;
+    }
 }

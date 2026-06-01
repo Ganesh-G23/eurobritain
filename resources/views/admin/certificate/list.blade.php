@@ -102,12 +102,28 @@
                                                 class="btn btn-sm btn-outline-info">View</a>
                                             <a href="{{ url('admin/certificate/edit/' . $row->id) }}"
                                                 class="btn btn-sm btn-outline-dark">Edit</a>
-                                            @if (filled($row->certificate))
-                                                <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
-                                                    class="btn btn-sm btn-outline-success">Uploaded</a>
+                                            @php
+                                                $isIaf = ($row->certificateApplication->type ?? 'noiaf') === 'iaf';
+                                            @endphp
+                                            @if ($isIaf)
+                                                @if (filled($row->certificate))
+                                                    <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
+                                                        class="btn btn-sm btn-outline-success">Uploaded</a>
+                                                @else
+                                                    <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
+                                                        class="btn btn-sm btn-outline-primary">Upload Certificate</a>
+                                                @endif
                                             @else
-                                                <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
-                                                    class="btn btn-sm btn-outline-primary">Upload Certificate</a>
+                                                @if (filled($row->certificate))
+                                                    <a href="{{ url('admin/certificate/upload/' . $row->id) }}"
+                                                        class="btn btn-sm btn-outline-success">Generated</a>
+                                                @else
+                                                    <button type="button" class="btn btn-sm btn-outline-primary generate-cert-btn"
+                                                        data-id="{{ $row->id }}"
+                                                        data-action="{{ url('admin/certificate/generate/' . $row->id) }}">
+                                                        Generate Certificate
+                                                    </button>
+                                                @endif
                                             @endif
                                         </div>
                                     </td>
@@ -130,4 +146,31 @@
 @endsection
 @section('scripts')
     @include('admin.partials._client_associate_cascade_js')
+    <script>
+        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+        $(document).on('click', '.generate-cert-btn', function() {
+            const $btn = $(this);
+            const action = $btn.data('action');
+            const originalLabel = $btn.data('original-label') || $btn.text();
+
+            $btn.prop('disabled', true).text('Generating...');
+
+            $.post(action, { _token: csrfToken }, function(res) {
+                $btn.prop('disabled', false).text(originalLabel);
+                if (res && res.status == 1 && res.redirect_url) {
+                    window.location.href = res.redirect_url;
+                    return;
+                }
+                if (typeof processAjaxResponse === 'function') {
+                    processAjaxResponse(res, 0);
+                } else if (res && res.error) {
+                    alert(res.error);
+                }
+            }, 'json').fail(function() {
+                $btn.prop('disabled', false).text(originalLabel);
+                alert('Unable to generate certificate.');
+            });
+        });
+    </script>
 @endsection

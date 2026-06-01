@@ -16,6 +16,7 @@ class CertificateType extends Model
 
     protected $casts = [
         'types' => 'array',
+        'template_coords' => 'array',
     ];
 
     public function associates(): BelongsToMany

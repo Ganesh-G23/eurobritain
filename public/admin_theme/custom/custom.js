@@ -1,5 +1,7 @@
 function processAjaxResponse(res, time = 1500, el = undefined,scrollTop="yes"){
 	var status = false;
+	var firstMatchedField = null;
+	var unmatchedErrors = [];
 	if(res['status'] == 1){
 		if(el){
 			$(el).find('.ajax-msg').html('<div class="alert alert-success" role="alert"><div class="alert-heading">'+res['msg']+'</div></div>');
@@ -21,25 +23,42 @@ function processAjaxResponse(res, time = 1500, el = undefined,scrollTop="yes"){
 			}
 		}else if(res['error_array']){
 			Object.keys(res['error_array']).map(function(key){
-				$('[name="'+key+'"]').closest('.ajax-field').find('.ajax-error').html(res['error_array'][key]);
+				var $field = $('[name="'+key+'"]');
+				if(!$field.length){
+					$field = $('[data-field="'+key+'"]');
+				}
+				var $errorTarget = $field.closest('.ajax-field').find('.ajax-error').first();
+				if(!$errorTarget.length){
+					$errorTarget = $('[data-field="'+key+'"].ajax-error');
+				}
+				if($errorTarget.length){
+					$errorTarget.html(res['error_array'][key]);
+					if(!firstMatchedField && $field.length){ firstMatchedField = $field; }
+				}else{
+					unmatchedErrors.push(res['error_array'][key]);
+				}
 			});
+			if(unmatchedErrors.length){
+				var html = '<div class="alert alert-danger" role="alert"><ul class="mb-0 ps-3">';
+				unmatchedErrors.forEach(function(msg){ html += '<li>'+msg+'</li>'; });
+				html += '</ul></div>';
+				if(el){ $(el).find('.ajax-msg').html(html); } else { $('.ajax-msg').html(html); }
+			}
 		}
 	}
 	if(scrollTop=="yes"){
 		if(el){
-		    console.log($(el).offset());
 			if(res['status'] == 0){
-				if(res['error_array']){
-					if(Object.keys(res['error_array'])[0]){
-						$('html,body').animate({scrollTop: $(el).find('[name="'+Object.keys(res['error_array'])[0]+'"]').offset().top-75},'slow');
-					}else{
-						$('html,body').animate({scrollTop: $(el).offset().top-75},'slow');
-					}
-				}else{
-					$('html,body').animate({scrollTop: $(el).offset().top-75},'slow');
+				var $scrollTarget = firstMatchedField && firstMatchedField.length ? firstMatchedField : $(el);
+				var offset = $scrollTarget.offset();
+				if(offset){
+					$('html,body').animate({scrollTop: offset.top-75},'slow');
 				}
 			}else{
-				$('html,body').animate({scrollTop: $(el).offset().top-75},'slow');
+				var elOffset = $(el).offset();
+				if(elOffset){
+					$('html,body').animate({scrollTop: elOffset.top-75},'slow');
+				}
 			}
 		}else{
 			$('html, body').animate({scrollTop: 0}, 500);

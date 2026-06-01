@@ -97,6 +97,16 @@
                             @endif
                             <span class="small text-muted file-upload-status" data-for="certificate_template"></span>
                             <span class="ajax-error"></span>
+                            @if ($mode === 'edit' && !empty($details->certificate_template))
+                                <div class="mt-2">
+                                    <a href="{{ url('admin/certificate-type/template-coords/' . $details->id) }}"
+                                        class="btn btn-sm btn-label-primary">
+                                        <i class="icon-base ti tabler-target me-1"></i> Configure Template Fields
+                                    </a>
+                                </div>
+                            @elseif ($mode === 'add')
+                                <div class="form-text">Save the certificate type first, then configure template field positions from the list page.</div>
+                            @endif
                         </div>
                     </div>
                     <div class="mt-2">

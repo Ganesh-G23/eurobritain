@@ -74,6 +74,17 @@
                                             class="btn btn-sm btn-icon btn-label-info" title="View">
                                             <i class="icon-base ti tabler-eye"></i>
                                         </a>
+                                        @php
+                                            $tplExt = strtolower(pathinfo((string) $row->certificate_template, PATHINFO_EXTENSION));
+                                            $tplIsImage = $row->certificate_template
+                                                && in_array($tplExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+                                        @endphp
+                                        @if ($tplIsImage)
+                                            <a href="{{ url('admin/certificate-type/template-coords/' . $row->id) }}"
+                                                class="btn btn-sm btn-icon btn-label-secondary" title="Configure Template Fields">
+                                                <i class="icon-base ti tabler-target"></i>
+                                            </a>
+                                        @endif
                                     </td>
                                 </tr>
                             @empty

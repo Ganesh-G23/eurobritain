@@ -8,6 +8,7 @@ use App\Models\Certificate;
 use App\Models\CertificateApplication;
 use App\Models\CertificateType;
 use App\Models\Client;
+use App\Services\CertificateImageGenerator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +96,7 @@ class CertificateController extends Controller
                 'associate:id,company_name',
                 'client:id,company_name',
                 'certificateType:id,description,code',
-                'certificateApplication:id,application_number'
+                'certificateApplication:id,application_number,type'
             ])
             ->when(in_array($type, [Certificate::TYPE_CERTIFICATE, Certificate::TYPE_AUDIT], true), function ($query) use ($type) {
                 $query->where('type', $type);
@@ -504,6 +505,54 @@ class CertificateController extends Controller
         return response()->json($this->response);
     }
 
+    public function generateCertificate($id)
+    {
+        $cert = Certificate::query()
+            ->with([
+                'client:id,company_name,address',
+                'certificateType:id,certificate_template,template_coords',
+                'certificateApplication:id,type,audit_expiry_date,scope',
+            ])
+            ->find($id);
+
+        if (! $cert) {
+            $this->response['error'] = 'Certificate not found.';
+
+            return response()->json($this->response);
+        }
+
+        if (($cert->certificateApplication->type ?? null) === 'iaf') {
+            $this->response['error'] = 'IAF certificates must be uploaded.';
+
+            return response()->json($this->response);
+        }
+
+        $template = $cert->certificateType->certificate_template ?? null;
+        $coords = $cert->certificateType->template_coords ?? [];
+
+        if (! $template || empty($coords)) {
+            $this->response['error'] = 'Configure template and field positions on the certificate type first.';
+
+            return response()->json($this->response);
+        }
+
+        $result = app(CertificateImageGenerator::class)->generate($cert);
+
+        if (! $result) {
+            $this->response['error'] = 'Unable to generate certificate.';
+
+            return response()->json($this->response);
+        }
+
+        $cert->update(['certificate' => $result]);
+
+        $this->response['status'] = 1;
+        $this->response['msg'] = 'Certificate generated successfully.';
+        $this->response['redirect_url'] = url('admin/certificate/upload/'.$cert->id);
+
+        return response()->json($this->response);
+    }
+
     public function auditForm(Request $request)
     {
         $applicationId = (int) $request->input('application_id', 0);
@@ -618,7 +667,6 @@ class CertificateController extends Controller
                     'latest_audit_date' => $request->input('latest_audit_date'),
                     'scope' => $request->input('scope'),
                     'admin_note' => $request->input('admin_note'),
-                    'certificate' => $latestCertificate->certificate,
                 ]);
 
                 $application->update([

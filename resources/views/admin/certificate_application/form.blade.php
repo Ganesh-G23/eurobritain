@@ -217,8 +217,24 @@
 @section('scripts')
     <script>
         const uploadUrl = '{{ url('admin/common/upload_files') }}';
-        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+        const csrfToken = '{{ csrf_token() }}';
         const initialAddressShifts = @json($addressShifts);
+
+        function ajaxFailureMessage(xhr, fallbackMessage) {
+            if (xhr && xhr.status === 419) {
+                return fallbackMessage + ' CSRF token expired. Please reload the page and try again.';
+            }
+
+            if (xhr && xhr.status === 413) {
+                return fallbackMessage + ' File is too large.';
+            }
+
+            if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                return fallbackMessage + ' ' + xhr.responseJSON.message;
+            }
+
+            return fallbackMessage;
+        }
 
         $('#trademark_image_file').on('change', function() {
             const file = this.files[0];
@@ -248,12 +264,12 @@
                         $status.removeClass('text-danger').addClass('text-success').text('Uploaded: ' + res.data[0].fileName);
                     } else {
                         $hidden.val('');
-                        $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                        $status.removeClass('text-success').addClass('text-danger').text(res.error || 'Upload failed.');
                     }
                 },
-                error: function() {
+                error: function(xhr) {
                     $hidden.val('');
-                    $status.removeClass('text-success').addClass('text-danger').text('Upload failed.');
+                    $status.removeClass('text-success').addClass('text-danger').text(ajaxFailureMessage(xhr, 'Upload failed.'));
                 }
             });
         });
@@ -261,13 +277,15 @@
         function buildShiftRow(addrIndex, shiftIndex, fromVal = '', toVal = '') {
             return `
                 <div class="row g-2 align-items-end shift-row mb-2" data-shift-index="${shiftIndex}">
-                    <div class="col-md-5">
-                        <label class="form-label small">From</label>
+                    <div class="col-md-5 ajax-field">
+                        <label class="form-label small">From <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="address_shift_details[${addrIndex}][shifts][${shiftIndex}][from]" value="${fromVal}" placeholder="09:00">
+                        <span class="ajax-error d-block"></span>
                     </div>
-                    <div class="col-md-5">
-                        <label class="form-label small">To</label>
+                    <div class="col-md-5 ajax-field">
+                        <label class="form-label small">To <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" name="address_shift_details[${addrIndex}][shifts][${shiftIndex}][to]" value="${toVal}" placeholder="18:00">
+                        <span class="ajax-error d-block"></span>
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-sm btn-outline-danger remove-shift-row">×</button>
@@ -290,9 +308,10 @@
                                 <button type="button" class="btn btn-sm btn-outline-danger remove-address-block">Remove Site</button>
                             </div>
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-3 ajax-field">
                             <label class="form-label">Address <span class="text-danger">*</span></label>
                             <textarea class="form-control" name="address_shift_details[${addrIndex}][address]" rows="2">${addressVal}</textarea>
+                            <span class="ajax-error d-block"></span>
                         </div>
                         <div class="shifts-container">${shiftsHtml}</div>
                     </div>
@@ -371,11 +390,28 @@
             const saveBtn = _this.find('.submit-button');
             saveBtn.prop('disabled', true).text('Saving...');
 
-            $.post(_this.attr('action'), _this.serializeArray(), function(res) {
-                saveBtn.prop('disabled', false).text('{{ $isEdit ? 'Update' : 'Submit' }}');
-                processAjaxResponse(res, 1000, _this);
-            }, 'json').fail(function() {
-                saveBtn.prop('disabled', false).text('{{ $isEdit ? 'Update' : 'Submit' }}');
+            const formData = _this.serializeArray();
+            if (!formData.some(function(item) { return item.name === '_token'; })) {
+                formData.push({ name: '_token', value: csrfToken });
+            }
+
+            $.ajax({
+                url: _this.attr('action'),
+                type: 'POST',
+                data: formData,
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                success: function(res) {
+                    saveBtn.prop('disabled', false).text('{{ $isEdit ? 'Update' : 'Submit' }}');
+                    processAjaxResponse(res, 1000, _this);
+                },
+                error: function(xhr) {
+                    saveBtn.prop('disabled', false).text('{{ $isEdit ? 'Update' : 'Submit' }}');
+                    _this.find('.ajax-msg')
+                        .html('<div class="alert alert-danger" role="alert"><span></span></div>')
+                        .find('span')
+                        .text(ajaxFailureMessage(xhr, 'Save failed.'));
+                }
             });
         });
     </script>
