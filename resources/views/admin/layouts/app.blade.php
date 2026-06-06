@@ -11,6 +11,22 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="description" content="" />
 
+    <!-- Apply saved theme (light/dark/system) before render to avoid flash & keep it persistent across pages -->
+    <script>
+        (function () {
+            try {
+                var templateName = document.documentElement.getAttribute('data-template') || 'vertical-menu-template';
+                var storedTheme = localStorage.getItem('templateCustomizer-' + templateName + '--Theme');
+                if (storedTheme) {
+                    var resolvedTheme = storedTheme === 'system'
+                        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                        : storedTheme;
+                    document.documentElement.setAttribute('data-bs-theme', resolvedTheme);
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ url('public/admin_theme/assets/img/favicon/favicon.ico') }}" />
 

@@ -11,6 +11,22 @@
     <title>{{ config('app.name') }} | {{ $title ?? 'Dashboard' }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
+    <!-- Apply saved theme (light/dark/system) before render to avoid flash & keep it persistent across pages -->
+    <script>
+        (function () {
+            try {
+                var templateName = document.documentElement.getAttribute('data-template') || 'vertical-menu-template';
+                var storedTheme = localStorage.getItem('templateCustomizer-' + templateName + '--Theme');
+                if (storedTheme) {
+                    var resolvedTheme = storedTheme === 'system'
+                        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                        : storedTheme;
+                    document.documentElement.setAttribute('data-bs-theme', resolvedTheme);
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     <link rel="icon" type="image/x-icon" href="{{ url('public/admin_theme/assets/img/favicon/favicon.ico') }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
