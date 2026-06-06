@@ -2,7 +2,9 @@
 $sub_active_tab = $sub_active_tab ?? "";
 $active_tab = $active_tab ?? "";
 $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
+$isAuditor = $adminLevel === 2;
 @endphp
+@unless($isAuditor)
 <!-- Dashboards -->
 <li class="menu-item {{ $active_tab == 'dashboard' ? 'active' : '' }}">
     <a href="{{ url('admin/dashboard') }}" class="menu-link">
@@ -86,6 +88,7 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
         </li>
     </ul>
 </li>
+@endunless
 <!-- Due List -->
 <li class="menu-item {{ $active_tab == 'certificate' ? 'active' : '' }}">
     <a href="{{ url('admin/certificate/due-list') }}" class="menu-link">
@@ -93,6 +96,7 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
         <div data-i18n="Due List">Due List</div>
     </a>
 </li>
+@unless($isAuditor)
 <!-- Certificate List -->
 <li class="menu-item {{ $active_tab == 'certificate_list' ? 'active' : '' }}">
     <a href="{{ url('admin/certificate/list') }}" class="menu-link">
@@ -157,6 +161,28 @@ $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
         </li>
     </ul>
 </li>
+@endunless
+@if($adminLevel === 1)
+<!-- Auditor -->
+<li class="menu-item {{ $active_tab == 'auditor' ? 'active open' : '' }}">
+    <a href="javascript:void(0);" class="menu-link menu-toggle">
+        <i class="menu-icon icon-base ti tabler-user-check"></i>
+        <div data-i18n="Auditor">Auditor</div>
+    </a>
+    <ul class="menu-sub">
+        <li class="menu-item {{ $sub_active_tab == 'add' && $active_tab == 'auditor' ? 'active' : '' }}">
+            <a href="{{ url('admin/auditor/add') }}" class="menu-link">
+                <div data-i18n="Add Auditor">Add Auditor</div>
+            </a>
+        </li>
+        <li class="menu-item {{ $sub_active_tab == 'list' && $active_tab == 'auditor' ? 'active' : '' }}">
+            <a href="{{ url('admin/auditor/list') }}" class="menu-link">
+                <div data-i18n="Auditor List">Auditor List</div>
+            </a>
+        </li>
+    </ul>
+</li>
+@endif
 
 <!-- Forms & Tables -->
 <li class="menu-header small">

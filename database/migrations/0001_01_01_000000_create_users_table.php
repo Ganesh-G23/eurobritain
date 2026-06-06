@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->integer('user_level')->default(1); // 1: super admin, 2: admin
+            $table->integer('user_level')->default(1); // 1: super admin, 2: auditor
             $table->string('name');
             $table->string('email')->unique();
             $table->string('phone')->nullable();

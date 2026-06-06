@@ -27,6 +27,7 @@ class CertificateController extends Controller
         $per_page = 10;
         $page = max(1, (int) $request->input('page', 1));
         $threshold = Carbon::today()->addDays(self::DUE_WINDOW_DAYS);
+        $isAuditor = (int) data_get(session('admin'), 'user_level', 0) === 2;
 
         $query = CertificateApplication::query()
             ->with([
@@ -50,16 +51,35 @@ class CertificateController extends Controller
                 $query->where('certificate_type_id', $certificateTypeId);
             });
 
-        $total = (clone $query)->count();
-        $rows = $query
-            ->orderByRaw('COALESCE(LEAST(date_of_expiry, audit_expiry_date), date_of_expiry, audit_expiry_date) ASC')
-            ->skip(($page - 1) * $per_page)
-            ->take($per_page)
-            ->get();
+        if ($isAuditor) {
+            $allRows = $query
+                ->orderByRaw('COALESCE(LEAST(date_of_expiry, audit_expiry_date), date_of_expiry, audit_expiry_date) ASC')
+                ->get();
 
-        $rows->each(function (CertificateApplication $row) {
-            $row->due_info = $this->deriveDueInfo($row);
-        });
+            $allRows->each(function (CertificateApplication $row) {
+                $row->due_info = $this->deriveDueInfo($row);
+            });
+
+            $filteredRows = $allRows
+                ->filter(fn (CertificateApplication $row) => ($row->due_info['kind'] ?? '') === 'surveillance')
+                ->values();
+
+            $total = $filteredRows->count();
+            $rows = $filteredRows
+                ->slice(($page - 1) * $per_page, $per_page)
+                ->values();
+        } else {
+            $total = (clone $query)->count();
+            $rows = $query
+                ->orderByRaw('COALESCE(LEAST(date_of_expiry, audit_expiry_date), date_of_expiry, audit_expiry_date) ASC')
+                ->skip(($page - 1) * $per_page)
+                ->take($per_page)
+                ->get();
+
+            $rows->each(function (CertificateApplication $row) {
+                $row->due_info = $this->deriveDueInfo($row);
+            });
+        }
 
         $queryParams = $request->except('page');
         $pageUrl = '?'.(empty($queryParams) ? '' : http_build_query($queryParams).'&');

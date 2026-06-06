@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class AdminAuth
+class SuperAdmin
 {
     /**
      * Handle an incoming request.
@@ -15,12 +15,10 @@ class AdminAuth
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (session('admin')) {
-            $redirect = (int) data_get(session('admin'), 'user_level', 0) === 2
-                ? 'admin/certificate/due-list'
-                : 'admin/dashboard';
+        $adminLevel = (int) data_get(session('admin'), 'user_level', 0);
 
-            return redirect($redirect);
+        if ($adminLevel !== 1) {
+            return redirect('admin/certificate/due-list');
         }
 
         return $next($request);

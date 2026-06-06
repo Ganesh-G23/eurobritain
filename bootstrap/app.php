@@ -4,15 +4,9 @@ use App\Http\Middleware\AdminAll;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AssociateAll;
 use App\Http\Middleware\AssociateAuth;
-use App\Http\Middleware\EnsurePortalAuthenticated;
-use App\Http\Middleware\EnsurePortalParent;
-use App\Http\Middleware\EnsurePortalStudent;
-use App\Http\Middleware\EnsurePortalTeacher;
-use App\Http\Middleware\EnsureSuperAdmin;
-use App\Http\Middleware\PortalRememberFromCookie;
+use App\Http\Middleware\AuditorScope;
 use App\Http\Middleware\PreventBackHistory;
-use App\Http\Middleware\RedirectIfAdminMustChangePassword;
-use App\Http\Middleware\SyncPortalSessionUser;
+use App\Http\Middleware\SuperAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -28,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'prevent-back' => PreventBackHistory::class,
             'admin-auth' => AdminAuth::class,
             'admin-all' => AdminAll::class,
+            'super-admin' => SuperAdmin::class,
+            'auditor-scope' => AuditorScope::class,
             'associate-auth' => AssociateAuth::class,
             'associate-all' => AssociateAll::class,
         ]);

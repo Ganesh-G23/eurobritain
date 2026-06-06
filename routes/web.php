@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AssociateController;
+use App\Http\Controllers\Admin\AuditorController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\CertificateApplicationController;
 use App\Http\Controllers\Admin\CertificateController;
@@ -29,7 +30,7 @@ Route::middleware('prevent-back')
                 ->middleware('throttle:10,1');
         });
 
-        Route::middleware('admin-all')->group(function () {
+        Route::middleware(['admin-all', 'auditor-scope'])->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('dashboard', [DashboardController::class, 'index']);
             Route::get('profile', [ProfileController::class, 'index']);
@@ -38,6 +39,15 @@ Route::middleware('prevent-back')
             Route::get('security', [ProfileController::class, 'security']);
             Route::post('security/save_change_password', [ProfileController::class, 'save_change_password']);
             Route::get('logout', [DashboardController::class, 'logout']);
+
+            Route::prefix('auditor')->middleware('super-admin')->group(function () {
+                Route::get('list', [AuditorController::class, 'list'])->name('admin.auditor.list');
+                Route::get('add', [AuditorController::class, 'add']);
+                Route::post('save', [AuditorController::class, 'save']);
+                Route::get('edit/{id}', [AuditorController::class, 'edit']);
+                Route::post('update/{id}', [AuditorController::class, 'update']);
+                Route::get('view/{id}', [AuditorController::class, 'view']);
+            });
 
             Route::prefix('associate')->group(function () {
                 Route::get('list', [AssociateController::class, 'list'])->name('admin.associate.list');

@@ -157,6 +157,10 @@ class AuthController extends Controller
             return url('admin/security');
         }
 
+        if ((int) $admin->user_level === 2) {
+            return url('admin/certificate/due-list');
+        }
+
         return url('admin/dashboard');
     }
 }
